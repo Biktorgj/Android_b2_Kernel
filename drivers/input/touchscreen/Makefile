@@ -80,5 +80,4 @@ obj-$(CONFIG_TOUCHSCREEN_MELFAS_NOTE)   += mms152_ts.o
 obj-$(CONFIG_TOUCHSCREEN_FTS) += fts_ts.o fts_fwu.o
 obj-$(CONFIG_TOUCHSCREEN_MMS134S)       += mms134s.o
 obj-$(CONFIG_TOUCHSCREEN_MELFAS_W)	+= mms_ts_w.o
-obj-$(CONFIG_TOUCHSCREEN_ZINITIX_BT432)	+= zinitix/
-obj-$(CONFIG_TOUCHSCREEN_ZINITIX_BT532)	+= zinitix/
+obj-$(CONFIG_TOUCHSCREEN_ZINITIX_BT432)	+= zxt_bt432_ts.o

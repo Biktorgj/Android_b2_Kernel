@@ -18,17 +18,10 @@
 #include <linux/i2c.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-subdev.h>
-#if defined(CONFIG_VIDEO_S5K4ECGX)
 #include <media/s5k4ecgx.h>
-#elif defined(CONFIG_VIDEO_SR352)
-#include <media/sr352.h>
-#endif
 #include <linux/videodev2.h>
-#ifdef CONFIG_VIDEO_SAMSUNG_EXT_CAMERA
-#include <linux/videodev2_exynos_camera_ext.h>
-#else
 #include <linux/videodev2_exynos_camera.h>
-#endif
+#include <linux/bug.h>
 #include <plat/iovmm.h>
 #if defined(CONFIG_SOC_EXYNOS4415)
 #include <mach/regs-clock-exynos4415.h>
@@ -43,7 +36,7 @@
 #endif
 
 #define MODULE_NAME			"exynos-fimc-lite"
-#if defined(CONFIG_VIDEO_S5K4ECGX) || defined(CONFIG_VIDEO_SR030PC50) || defined(CONFIG_VIDEO_SR352) || defined(CONFIG_VIDEO_SR130PC20) 
+#if defined(CONFIG_VIDEO_S5K4ECGX) || defined(CONFIG_VIDEO_SR030PC50)
 #define DEFAULT_FLITE_SINK_WIDTH	640
 #define DEFAULT_FLITE_SINK_HEIGHT	480
 #else
@@ -277,10 +270,8 @@ static int flite_s_stream(struct v4l2_subdev *sd, int enable)
 		if (flite->id == 1)
 			flite_hw_set_lite_B_csis_source(flite, FLITE_SRC_CSIS_A);
 		flite_hw_set_cam_source_size(flite);
+		flite->ovf_cnt = 0;
 
-#ifdef CONFIG_VIDEO_SAMSUNG_EXT_CAMERA
-		flite->dbg_irq_cnt = 0;
-#endif
 		if (!(flite->output & FLITE_OUTPUT_MEM)) {
 			flite_info("@local out start@");
 			flite_hw_set_camera_type(flite, cam);
@@ -304,17 +295,8 @@ static int flite_s_stream(struct v4l2_subdev *sd, int enable)
 			flite_hw_set_output_dma(flite, true);
 			int_src = FLITE_REG_CIGCTRL_IRQ_OVFEN0_ENABLE |
 				FLITE_REG_CIGCTRL_IRQ_LASTEN0_ENABLE |
-#ifndef CONFIG_VIDEO_SAMSUNG_EXT_CAMERA
 				FLITE_REG_CIGCTRL_IRQ_ENDEN0_ENABLE |
 				FLITE_REG_CIGCTRL_IRQ_STARTEN0_DISABLE;
-#else
-				FLITE_REG_CIGCTRL_IRQ_ENDEN0_ENABLE;
-
-			if (flite->cap_mode)
-				int_src |= FLITE_REG_CIGCTRL_IRQ_STARTEN0_ENABLE;
-			else
-				int_src |= FLITE_REG_CIGCTRL_IRQ_STARTEN0_DISABLE;
-#endif
 			flite_hw_set_out_order(flite);
 			flite_hw_set_output_size(flite);
 			flite_hw_set_dma_offset(flite);
@@ -328,12 +310,9 @@ static int flite_s_stream(struct v4l2_subdev *sd, int enable)
 		flite_hw_set_interrupt_source(flite, int_src);
 		flite_hw_set_window_offset(flite);
 		flite_hw_set_capture_start(flite);
-		flite->ovf_cnt = 0;
 
 		set_bit(FLITE_ST_STREAM, &flite->state);
 	} else {
-		if (flite->ovf_cnt > 0)
-			flite_err("overflow generated(cnt:%u)", flite->ovf_cnt);
 		INIT_LIST_HEAD(&flite->active_buf_q);
 		INIT_LIST_HEAD(&flite->pending_buf_q);
 		if (test_bit(FLITE_ST_STREAM, &flite->state)) {
@@ -390,33 +369,17 @@ static irqreturn_t flite_irq_handler(int irq, void *priv)
 		wake_up(&flite->irq_queue);
 		break;
 	case FLITE_REG_CISTATUS_IRQ_SRC_FRMSTART:
-#ifdef CONFIG_VIDEO_SAMSUNG_EXT_CAMERA
-		if (flite->dbg_irq_cnt < 1)
-			flite_info("frame start [%d]", flite->dbg_irq_cnt);
-		else		
-			flite_dbg("frame start");
-
-		goto unlock;
-#else
 		flite_dbg("frame start");
-#endif
 		break;
 	case FLITE_REG_CISTATUS_IRQ_SRC_FRMEND:
 		set_bit(FLITE_ST_RUN, &flite->state);
-#if !defined(CONFIG_VIDEO_S5K4ECGX) && !defined(CONFIG_VIDEO_SR352)
+		flite->ovf_cnt = 0;
+#if !defined(CONFIG_VIDEO_S5K4ECGX)
 		/* TODO: need to choice sensor id */
 		flite->sensor[0].priv_ops(flite->sensor[0].sd,
 			FLITE_REG_CISTATUS_IRQ_SRC_FRMEND);
 #endif
-#ifdef CONFIG_VIDEO_SAMSUNG_EXT_CAMERA
-		if (flite->dbg_irq_cnt < 20) {
-			flite_info("frame end [%d]", flite->dbg_irq_cnt);
-			flite->dbg_irq_cnt++;
-		} else
 		flite_dbg("frame end");
-#else
-		flite_dbg("frame end");
-#endif
 		break;
 	}
 #if defined(CONFIG_MEDIA_CONTROLLER)
@@ -446,8 +409,6 @@ static irqreturn_t flite_irq_handler(int irq, void *priv)
 			clear_bit(FLITE_ST_RUN, &flite->state);
 		}
 	}
-unlock:
-#elif defined(CONFIG_VIDEO_SAMSUNG_EXT_CAMERA)
 unlock:
 #endif
 	spin_unlock(&flite->slock);
@@ -940,76 +901,6 @@ static int flite_pipeline_initialize(struct flite_dev *flite,
 	return ret;
 }
 
-#ifdef CONFIG_VIDEO_SAMSUNG_EXT_CAMERA
-static int flite_s_ctrl(struct v4l2_ctrl *ctrl)
-{
-	struct flite_dev *flite = ctrl_to_dev(ctrl);
-	struct flite_pipeline *p = &flite->pipeline;
-	struct v4l2_control ctrl_con;
-	int ret;
-
-	flite_dbg("%s: V4l2 control ID =0x%08x, val = %d\n",
-		__func__, ctrl->id - V4L2_CID_PRIVATE_BASE, ctrl->val);
-	flite_dbg("flite =0x%08x, sensor = 0x%08x\n",
-		(unsigned int)flite, (unsigned int)p->sensor);
-
-	switch (ctrl->id) {
-	case V4L2_CID_CACHEABLE:
-		user_to_drv(flite->flite_ctrls.cacheable, ctrl->val);
-		break;
-	case V4L2_CID_CAMERA_FRAME_RATE:
-		flite->frame_rate = ctrl->val;
-	case V4L2_CID_CAPTURE:
-		flite->cap_mode = ctrl->val ? 1 : 0;
-		break;
-	case V4L2_CID_CAMERA_RESET:
-		ret = v4l2_subdev_call(p->sensor, core, reset, 1);
-		return ret;
-	default:
-		break;
-	}
-
-	ctrl_con.id = ctrl->id;
-	ctrl_con.value = ctrl->val;
-	ret = v4l2_subdev_call(p->sensor, core, s_ctrl, &ctrl_con);
-	if (ret < 0 && ret != -ENOIOCTLCMD)
-		return -EINVAL;
-
-	return 0;
-}
-
-static int flite_g_ctrl(struct v4l2_ctrl *ctrl)
-{
-	struct flite_dev *flite = ctrl_to_dev(ctrl);
-	struct flite_pipeline *p = &flite->pipeline;
-	struct v4l2_control ctrl_con;
-	int ret;
-
-	flite_dbg("%s: V4l2 control ID =0x%08x, val = %d\n",
-		__func__, ctrl->id - V4L2_CID_PRIVATE_BASE, ctrl->val);
-	flite_dbg("flite =0x%08x, sensor = 0x%08x\n",
-		(unsigned int)flite, (unsigned int)p->sensor);
-
-	switch (ctrl->id) {
-	case V4L2_CID_CACHEABLE:
-		user_to_drv(flite->flite_ctrls.cacheable, ctrl->val);
-		break;
-	default:
-		break;
-	}
-
-	ctrl_con.id = ctrl->id;
-	ctrl_con.value = ctrl->val;
-	ret = v4l2_subdev_call(p->sensor, core, g_ctrl, &ctrl_con);
-	if (ret < 0 && ret != -ENOIOCTLCMD)
-		return -EINVAL;
-
-	ctrl->val = ctrl_con.value;
-
-	return 0;
-}
-#else /* !CONFIG_VIDEO_SAMSUNG_EXT_CAMERA */
-
 static int flite_s_ctrl(struct v4l2_ctrl *ctrl)
 {
 	struct flite_dev *flite = ctrl_to_dev(ctrl);
@@ -1122,7 +1013,6 @@ static int flite_g_ctrl(struct v4l2_ctrl *ctrl)
 
 	return 0;
 }
-#endif /* !CONFIG_VIDEO_SAMSUNG_EXT_CAMERA */
 
 const struct v4l2_ctrl_ops flite_ctrl_ops = {
 	.s_ctrl = flite_s_ctrl,
@@ -1130,7 +1020,7 @@ const struct v4l2_ctrl_ops flite_ctrl_ops = {
 };
 
 static const struct v4l2_ctrl_config flite_custom_ctrl[] = {
-	{	/* FLITE CTRL 0 */
+	{
 		.ops = &flite_ctrl_ops,
 		.id = V4L2_CID_CACHEABLE,
 		.name = "Set cacheable",
@@ -1138,7 +1028,7 @@ static const struct v4l2_ctrl_config flite_custom_ctrl[] = {
 		.flags = V4L2_CTRL_FLAG_SLIDER,
 		.max = 1,
 		.def = true,
-	}, {	/* FLITE CTRL 1 */
+	}, {
 		.ops = &flite_ctrl_ops,
 		.id = V4L2_CID_SCENEMODE,
 		.name = "Set camera scene mode",
@@ -1148,51 +1038,7 @@ static const struct v4l2_ctrl_config flite_custom_ctrl[] = {
 		.max = V4L2_SCENE_MODE_MAX,
 		.step = 1,
 		.def = 0,
-	},
-#ifdef CONFIG_VIDEO_SAMSUNG_EXT_CAMERA
-	{	/* FLITE CTRL 2 */
-		.ops = &flite_ctrl_ops,
-		.id = V4L2_CID_FOCUS_MODE,
-		.name = "Set camera focus mode",
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.flags = V4L2_CTRL_FLAG_SLIDER,
-		.min = -1,
-		.max = 65500,
-		.step = 1,
-		.def = -1,
-	}, {	/* FLITE CTRL 3 */
-		.ops = &flite_ctrl_ops,
-		.id = V4L2_CID_WHITE_BALANCE_PRESET,
-		.name = "Set camera white balance",
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.flags = V4L2_CTRL_FLAG_SLIDER,
-		.min = -1,
-		.max = V4L2_WHITE_BALANCE_MAX,
-		.step = 1,
-		.def = -1,
-	}, {	/* FLITE CTRL 4 */
-		.ops = &flite_ctrl_ops,
-		.id = V4L2_CID_IMAGE_EFFECT,
-		.name = "Set camera image effect",
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.flags = V4L2_CTRL_FLAG_SLIDER,
-		.min = -1,
-		.max = V4L2_IMAGE_EFFECT_MAX,
-		.step = 1,
-		.def = -1,
-	}, {	/* FLITE CTRL 5 */
-		.ops = &flite_ctrl_ops,
-		.id = V4L2_CID_CAM_ISO,
-		.name = "Set camera image effect",
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.flags = V4L2_CTRL_FLAG_SLIDER,
-		.min = -1,
-		.max = 65500,
-		.step = 1,
-		.def = -1,
-	},
-#else /* !CONFIG_VIDEO_SAMSUNG_EXT_CAMERA */
-	{	/* FLITE CTRL 2 */
+	}, {
 		.ops = &flite_ctrl_ops,
 		.id = V4L2_CID_FOCUS_MODE,
 		.name = "Set camera focus mode",
@@ -1202,7 +1048,7 @@ static const struct v4l2_ctrl_config flite_custom_ctrl[] = {
 		.max = 65500,
 		.step = 1,
 		.def = 0,
-	}, {	/* FLITE CTRL 3 */
+	}, {
 		.ops = &flite_ctrl_ops,
 		.id = V4L2_CID_WHITE_BALANCE_PRESET,
 		.name = "Set camera white balance",
@@ -1212,7 +1058,7 @@ static const struct v4l2_ctrl_config flite_custom_ctrl[] = {
 		.max = V4L2_WHITE_BALANCE_MAX,
 		.step = 1,
 		.def = 0,
-	}, {	/* FLITE CTRL 4 */
+	}, {
 		.ops = &flite_ctrl_ops,
 		.id = V4L2_CID_IMAGE_EFFECT,
 		.name = "Set camera image effect",
@@ -1222,7 +1068,7 @@ static const struct v4l2_ctrl_config flite_custom_ctrl[] = {
 		.max = V4L2_IMAGE_EFFECT_MAX,
 		.step = 1,
 		.def = 0,
-	}, {	/* FLITE CTRL 5 */
+	}, {
 		.ops = &flite_ctrl_ops,
 		.id = V4L2_CID_CAM_ISO,
 		.name = "Set camera image effect",
@@ -1232,9 +1078,7 @@ static const struct v4l2_ctrl_config flite_custom_ctrl[] = {
 		.max = 65500,
 		.step = 1,
 		.def = 0,
-	},
-#endif
-	{	/* FLITE CTRL 6 */
+	}, {
 		.ops = &flite_ctrl_ops,
 		.id = V4L2_CID_CAM_CONTRAST,
 		.name = "Set camera contrast",
@@ -1244,7 +1088,7 @@ static const struct v4l2_ctrl_config flite_custom_ctrl[] = {
 		.max = V4L2_CONTRAST_MAX,
 		.step = 1,
 		.def = 0,
-	}, {	/* FLITE CTRL 7 */
+	}, {
 		.ops = &flite_ctrl_ops,
 		.id = V4L2_CID_CAM_SATURATION,
 		.name = "Set camera saturation",
@@ -1254,7 +1098,7 @@ static const struct v4l2_ctrl_config flite_custom_ctrl[] = {
 		.max = V4L2_SATURATION_MAX,
 		.step = 1,
 		.def = 0,
-	}, {	/* FLITE CTRL 8 */
+	}, {
 		.ops = &flite_ctrl_ops,
 		.id = V4L2_CID_CAM_SHARPNESS,
 		.name = "Set camera sharpness",
@@ -1264,61 +1108,7 @@ static const struct v4l2_ctrl_config flite_custom_ctrl[] = {
 		.max = V4L2_SHARPNESS_MAX,
 		.step = 1,
 		.def = 0,
-	},
-#ifdef CONFIG_VIDEO_SAMSUNG_EXT_CAMERA
-	{	/* FLITE CTRL 9 */
-		.ops = &flite_ctrl_ops,
-		.id = V4L2_CID_CAM_BRIGHTNESS,
-		.name = "Set camera brightness",
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.flags = V4L2_CTRL_FLAG_SLIDER,
-		.min = -100,
-		.max = 65500,
-		.step = 1,
-		.def = -100,
-	}, {	/* FLITE CTRL 10 */
-		.ops = &flite_ctrl_ops,
-		.id = V4L2_CID_CAPTURE,
-		.name = "Set camera start_capture",
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.flags = V4L2_CTRL_FLAG_SLIDER,
-		.min = -1,
-		.max = 0x7FFFFFFF,
-		.step = 1,
-		.def = -1,
-	}, {	/* FLITE CTRL 11 */
-		.ops = &flite_ctrl_ops,
-		.id = V4L2_CID_CAM_METERING,
-		.name = "Set camera metering",
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.flags = V4L2_CTRL_FLAG_SLIDER,
-		.min = -1,
-		.max = V4L2_METERING_MAX,
-		.step = 1,
-		.def = -1,
-	}, {	/* FLITE CTRL 12 */
-		.ops = &flite_ctrl_ops,
-		.id = V4L2_CID_CAMERA_FRAME_RATE,
-		.name = "Set camera frame rate",
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.flags = V4L2_CTRL_FLAG_SLIDER,
-		.min = -1,
-		.max = FRAME_RATE_MAX,
-		.step = 1,
-		.def = FRAME_RATE_AUTO,
-	}, {	/* FLITE CTRL 13 */
-		.ops = &flite_ctrl_ops,
-		.id = V4L2_CID_CAM_SET_AUTO_FOCUS,
-		.name = "Set camera auto focus",
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.flags = V4L2_CTRL_FLAG_SLIDER,
-		.min = -1,
-		.max = V4L2_AUTO_FOCUS_MAX,
-		.step = 1,
-		.def = -1,
-	},
-#else /* !CONFIG_VIDEO_SAMSUNG_EXT_CAMERA */
-	{	/* FLITE CTRL 9 */
+	}, {
 		.ops = &flite_ctrl_ops,
 		.id = V4L2_CID_CAM_BRIGHTNESS,
 		.name = "Set camera brightness",
@@ -1328,7 +1118,7 @@ static const struct v4l2_ctrl_config flite_custom_ctrl[] = {
 		.max = 2,
 		.step = 1,
 		.def = 0,
-	}, {	/* FLITE CTRL 10 */
+	}, {
 		.ops = &flite_ctrl_ops,
 		.id = V4L2_CID_CAPTURE,
 		.name = "Set camera start_capture",
@@ -1336,7 +1126,7 @@ static const struct v4l2_ctrl_config flite_custom_ctrl[] = {
 		.flags = V4L2_CTRL_FLAG_SLIDER,
 		.max = 1,
 		.def = false,
-	}, {	/* FLITE CTRL 11 */
+	}, {
 		.ops = &flite_ctrl_ops,
 		.id = V4L2_CID_CAM_METERING,
 		.name = "Set camera metering",
@@ -1346,7 +1136,7 @@ static const struct v4l2_ctrl_config flite_custom_ctrl[] = {
 		.max = V4L2_METERING_MAX,
 		.step = 1,
 		.def = 0,
-	}, {	/* FLITE CTRL 12 */
+	}, {
 		.ops = &flite_ctrl_ops,
 		.id = V4L2_CID_CAM_FRAME_RATE,
 		.name = "Set camera frame rate",
@@ -1356,7 +1146,7 @@ static const struct v4l2_ctrl_config flite_custom_ctrl[] = {
 		.max = V4L2_FRAME_RATE_MAX,
 		.step = 1,
 		.def = 0,
-	}, {	/* FLITE CTRL 13 */
+	}, {
 		.ops = &flite_ctrl_ops,
 		.id = V4L2_CID_CAM_SET_AUTO_FOCUS,
 		.name = "Set camera auto focus",
@@ -1366,9 +1156,7 @@ static const struct v4l2_ctrl_config flite_custom_ctrl[] = {
 		.max = V4L2_AUTO_FOCUS_MAX,
 		.step = 1,
 		.def = 0,
-	},
-#endif
-	{	/* FLITE CTRL 14 */
+	}, {
 		.ops = &flite_ctrl_ops,
 		.id = V4L2_CID_CAM_OBJECT_POSITION_X,
 		.name = "Set camera object position x",
@@ -1378,7 +1166,7 @@ static const struct v4l2_ctrl_config flite_custom_ctrl[] = {
 		.max = 65500,
 		.step = 1,
 		.def = 0,
-	}, {	/* FLITE CTRL 15 */
+	}, {
 		.ops = &flite_ctrl_ops,
 		.id = V4L2_CID_CAM_OBJECT_POSITION_Y,
 		.name = "Set camera object position y",
@@ -1388,7 +1176,7 @@ static const struct v4l2_ctrl_config flite_custom_ctrl[] = {
 		.max = 65500,
 		.step = 1,
 		.def = 0,
-	}, {	/* FLITE CTRL 16 */
+	}, {
 		.ops = &flite_ctrl_ops,
 		.id = V4L2_CID_CAM_FACE_DETECTION,
 		.name = "Set camera face detection",
@@ -1398,7 +1186,7 @@ static const struct v4l2_ctrl_config flite_custom_ctrl[] = {
 		.max = V4L2_FACE_DETECTION_MAX,
 		.step = 1,
 		.def = 0,
-	}, {	/* FLITE CTRL 17 */
+	}, {
 		.ops = &flite_ctrl_ops,
 		.id = V4L2_CID_CAM_WDR,
 		.name = "Set camera wide dynamic range",
@@ -1408,17 +1196,17 @@ static const struct v4l2_ctrl_config flite_custom_ctrl[] = {
 		.max = V4L2_WDR_MAX,
 		.step = 1,
 		.def = 0,
-	}, {	/* FLITE CTRL 18 */
+	}, {
 		.ops = &flite_ctrl_ops,
 		.id = V4L2_CID_CAM_AUTO_FOCUS_RESULT,
 		.name = "Set camera auto focus result",
 		.type = V4L2_CTRL_TYPE_INTEGER,
 		.flags = V4L2_CTRL_FLAG_SLIDER | V4L2_CTRL_FLAG_VOLATILE,
 		.min = 0,
-		.max = 65500, /* V4L2_CAMERA_AF_STATUS_MAX, */
+		.max = V4L2_CAMERA_AF_STATUS_MAX,
 		.step = 1,
 		.def = 0,
-	}, {	/* FLITE CTRL 19 */
+	}, {
 		.ops = &flite_ctrl_ops,
 		.id = V4L2_CID_JPEG_QUALITY,
 		.name = "Set camera jpeg quality",
@@ -1429,18 +1217,6 @@ static const struct v4l2_ctrl_config flite_custom_ctrl[] = {
 		.step = 1,
 		.def = 0,
 	}, {
-		/* FLITE CTRL 20*/
-#ifdef CONFIG_VIDEO_SAMSUNG_EXT_CAMERA
-		.ops = &flite_ctrl_ops,
-		.id = V4L2_CID_CAMERA_EXIF_ISO,
-		.name = "exif iso",
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.flags = V4L2_CTRL_FLAG_SLIDER | V4L2_CTRL_FLAG_VOLATILE,
-		.min = 0,
-		.max = 65500,
-		.step = 1,
-		.def = 0,
-#else
 		.ops = &flite_ctrl_ops,
 		.id = V4L2_CID_CAM_GET_ISO,
 		.name = "Set camera get iso",
@@ -1450,8 +1226,7 @@ static const struct v4l2_ctrl_config flite_custom_ctrl[] = {
 		.max = 65500,
 		.step = 1,
 		.def = 0,
-#endif
-	}, {	/* FLITE CTRL 21 */
+	}, {
 		.ops = &flite_ctrl_ops,
 		.id = V4L2_CID_CAM_GET_SHT_TIME,
 		.name = "Set camera shutter speed",
@@ -1461,7 +1236,7 @@ static const struct v4l2_ctrl_config flite_custom_ctrl[] = {
 		.max = 65500,
 		.step = 1,
 		.def = 0,
-	}, {	/* FLITE CTRL 22 */
+	}, {
 		.ops = &flite_ctrl_ops,
 		.id = V4L2_CID_CAM_AEAWB_LOCK_UNLOCK,
 		.name = "Set camera ae & awb lock & unlock",
@@ -1471,7 +1246,7 @@ static const struct v4l2_ctrl_config flite_custom_ctrl[] = {
 		.max = V4L2_AE_AWB_MAX,
 		.step = 1,
 		.def = 0,
-	}, {	/* FLITE CTRL 23*/
+	}, {
 		.ops = &flite_ctrl_ops,
 		.id = V4L2_CID_CAM_CAF_START_STOP,
 		.name = "Set camera continuous AF start stop",
@@ -1481,7 +1256,7 @@ static const struct v4l2_ctrl_config flite_custom_ctrl[] = {
 		.max = V4L2_CAF_MAX,
 		.step = 1,
 		.def = 0,
-	}, {	/* FLITE CTRL 24 */
+	}, {
 		.ops = &flite_ctrl_ops,
 		.id = V4L2_CID_CAM_ZOOM,
 		.name = "Set camera Zoom",
@@ -1491,121 +1266,7 @@ static const struct v4l2_ctrl_config flite_custom_ctrl[] = {
 		.max = V4L2_ZOOM_LEVEL_MAX,
 		.step = 1,
 		.def = 0,
-	},
-#ifdef CONFIG_VIDEO_SAMSUNG_EXT_CAMERA
-	{
-		/* FLITE CTRL 25 */
-		.ops = &flite_ctrl_ops,
-		.id = V4L2_CID_CAMERA_VT_MODE,
-		.name = "vt mode",
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.flags = V4L2_CTRL_FLAG_SLIDER,
-		.min = -1,
-		.max = 65500,
-		.step = 1,
-		.def = -1,
 	}, {
-		/* FLITE CTRL 26 */
-		.ops = &flite_ctrl_ops,
-		.id = V4L2_CID_CAMERA_SENSOR_MODE,
-		.name = "sensor mode",
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.flags = V4L2_CTRL_FLAG_SLIDER,
-		.min = -1,
-		.max = 65500,
-		.step = 1,
-		.def = -1,	
-	}, {
-		/* FLITE CTRL 27 (1)*/
-		.ops = &flite_ctrl_ops,
-		.id = V4L2_CID_CAMERA_TOUCH_AF_START_STOP,
-		.name = "touch AF",
-		.type = V4L2_CTRL_TYPE_BUTTON,
-		.flags = V4L2_CTRL_FLAG_SLIDER,
-		.min = 0,
-		.max = TOUCH_AF_MAX,
-		.step = 1,
-		.def = TOUCH_AF_STOP,
-	}, {
-		/* FLITE CTRL 28 */
-		.ops = &flite_ctrl_ops,
-		.id = V4L2_CID_CAMERA_FLASH_MODE,
-		.name = "flash mode",
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.flags = V4L2_CTRL_FLAG_SLIDER,
-		.min = -1,
-		.max = FLASH_MODE_MAX,
-		.step = 1,
-		.def = -1,
-	}, {
-		/* FLITE CTRL 29 */
-		.ops = &flite_ctrl_ops,
-		.id = V4L2_CID_CAMERA_ANTI_SHAKE,
-		.name = "antishake",
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.flags = V4L2_CTRL_FLAG_SLIDER,
-		.min = ANTI_SHAKE_OFF,
-		.max = ANTI_SHAKE_MAX,
-		.step = 1,
-		.def = ANTI_SHAKE_OFF,	
-	}, {
-		/* FLITE CTRL 30 */
-		.ops = &flite_ctrl_ops,
-		.id = V4L2_CID_CAMERA_CHECK_ESD,
-		.name = "check ESD",
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.flags = V4L2_CTRL_FLAG_SLIDER,
-		.min = 0,
-		.max = 65500,
-		.step = 1,
-		.def = 0,	
-	}, {
-		/* FLITE CTRL 31 */
-		.ops = &flite_ctrl_ops,
-		.id = V4L2_CID_CAMERA_ANTI_BANDING,
-		.name = "check ESD",
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.flags = V4L2_CTRL_FLAG_SLIDER,
-		.min = -1,
-		.max = ANTI_BANDING_OFF,
-		.step = 1,
-		.def = -1,
-	}, {
-		/* FLITE CTRL 32 */
-		.ops = &flite_ctrl_ops,
-		.id = V4L2_CID_CAMERA_EXIF_EXPTIME,
-		.name = "exif exptime",
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.flags = V4L2_CTRL_FLAG_SLIDER | V4L2_CTRL_FLAG_VOLATILE,
-		.min = 0,
-		.max = 65500,
-		.step = 1,
-		.def = 0,
-	}, {
-		/* FLITE CTRL 33 */
-		.ops = &flite_ctrl_ops,
-		.id = V4L2_CID_CAMERA_EXIF_FLASH,
-		.name = "exif flash",
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.flags = V4L2_CTRL_FLAG_SLIDER | V4L2_CTRL_FLAG_VOLATILE,
-		.min = -1,
-		.max = 65500,
-		.step = 1,
-		.def = -1,
-	}, {
-		/* FLITE CTRL 34 */
-		.ops = &flite_ctrl_ops,
-		.id = V4L2_CID_CAMERA_RESET,
-		.name = "reset sub-devices",
-		.type = V4L2_CTRL_TYPE_BUTTON,
-		.flags = V4L2_CTRL_FLAG_SLIDER,
-		.min = 0,
-		.max = 65500,
-		.step = 1,
-		.def = 0,
-	},
-#else /* !CONFIG_VIDEO_SAMSUNG_EXT_CAMERA */
-	{
 		.ops = &flite_ctrl_ops,
 		.id = V4L2_CID_CAM_FLASH_MODE,
 		.name = "Set camera flash mode",
@@ -1623,7 +1284,6 @@ static const struct v4l2_ctrl_config flite_custom_ctrl[] = {
 		.flags = V4L2_CTRL_FLAG_SLIDER,
 		.def = 0,
 	},
-#endif /* CONFIG_VIDEO_SAMSUNG_EXT_CAMERA */
 };
 
 static int flite_ctrls_create(struct flite_dev *flite)
@@ -1682,33 +1342,10 @@ static int flite_ctrls_create(struct flite_dev *flite)
 					&flite_custom_ctrl[23], NULL);
 	flite->flite_ctrls.digital_zoom = v4l2_ctrl_new_custom(&flite->ctrl_handler,
 					&flite_custom_ctrl[24], NULL);
-#ifdef CONFIG_VIDEO_SAMSUNG_EXT_CAMERA
-	flite->flite_ctrls.vt_mode = v4l2_ctrl_new_custom(&flite->ctrl_handler,
-					&flite_custom_ctrl[25], NULL);
-	flite->flite_ctrls.sensor_mode = v4l2_ctrl_new_custom(&flite->ctrl_handler,
-					&flite_custom_ctrl[26], NULL);
-	flite->flite_ctrls.touch_af_startstop = v4l2_ctrl_new_custom(&flite->ctrl_handler,
-					&flite_custom_ctrl[27], NULL);
-	flite->flite_ctrls.flash_mode = v4l2_ctrl_new_custom(&flite->ctrl_handler,
-					&flite_custom_ctrl[28], NULL);
-	flite->flite_ctrls.antishake = v4l2_ctrl_new_custom(&flite->ctrl_handler,
-					&flite_custom_ctrl[29], NULL);
-	flite->flite_ctrls.check_esd = v4l2_ctrl_new_custom(&flite->ctrl_handler,
-					&flite_custom_ctrl[30], NULL);
-	flite->flite_ctrls.antibanding = v4l2_ctrl_new_custom(&flite->ctrl_handler,
-					&flite_custom_ctrl[31], NULL);
-	flite->flite_ctrls.exif_exptime = v4l2_ctrl_new_custom(&flite->ctrl_handler,
-					&flite_custom_ctrl[32], NULL);
-	flite->flite_ctrls.exif_flash = v4l2_ctrl_new_custom(&flite->ctrl_handler,
-					&flite_custom_ctrl[33], NULL);
-	flite->flite_ctrls.reset = v4l2_ctrl_new_custom(&flite->ctrl_handler,
-					&flite_custom_ctrl[34], NULL);
-#else
 	flite->flite_ctrls.flash_mode = v4l2_ctrl_new_custom(&flite->ctrl_handler,
 					&flite_custom_ctrl[25], NULL);
 	flite->flite_ctrls.single_af = v4l2_ctrl_new_custom(&flite->ctrl_handler,
 					&flite_custom_ctrl[26], NULL);
-#endif
 	flite->ctrls_rdy = flite->ctrl_handler.error == 0;
 
 	if (flite->ctrl_handler.error) {
@@ -1817,8 +1454,8 @@ static int flite_setup_enable_links(struct flite_dev *flite)
 
 static int flite_open(struct file *file)
 {
-        struct flite_dev *flite = video_drvdata(file);
-        int ret = v4l2_fh_open(file);
+	struct flite_dev *flite = video_drvdata(file);
+	int ret = v4l2_fh_open(file);
 
 	if (ret)
 		return ret;
@@ -1983,6 +1620,9 @@ int flite_pipeline_s_stream(struct flite_dev *flite, int on)
 		return -ENODEV;
 
 	if (on) {
+		/* overflow count init */
+		flite->ovf_cnt = 0;
+
 		if (flite->qos_lock_value == 0) {
 			flite_qos_lock(flite);
 		}
@@ -1992,14 +1632,7 @@ int flite_pipeline_s_stream(struct flite_dev *flite, int on)
 			flite_err("flite s_stream(%d) fail", 1);
 			goto err_flite_start;
 		}
-#ifdef CONFIG_VIDEO_SAMSUNG_EXT_CAMERA
-		ret = v4l2_subdev_call(p->sensor, video, s_stream,
-					STREAM_MODE_WAIT_OFF);
-		if (ret < 0 && ret != -ENOIOCTLCMD) {
-			flite_err("sensor s_stream(%d) fail", STREAM_MODE_WAIT_OFF);
-			goto err_ext_sesnor_start;
-		}
-#endif
+
 		ret = v4l2_subdev_call(p->csis, video, s_stream, 1);
 		if (ret < 0 && ret != -ENOIOCTLCMD) {
 			flite_err("csis s_stream(%d) fail", 1);
@@ -2041,9 +1674,6 @@ err_sensor_start:
 err_csis_start:
 	flite_hw_set_capture_stop(flite);
 	clear_bit(FLITE_ST_STREAM, &flite->state);
-#ifdef CONFIG_VIDEO_SAMSUNG_EXT_CAMERA
-err_ext_sesnor_start:
-#endif
 err_flite_start:
 err:
 	if (flite->qos_lock_value > 0) {
@@ -2218,8 +1848,7 @@ static void flite_buf_queue(struct vb2_buffer *vb)
 		!test_bit(FLITE_ST_STREAM, &flite->state)) {
 		if (!test_and_set_bit(FLITE_ST_PIPE_STREAM, &flite->state)) {
 			spin_unlock_irqrestore(&flite->slock, flags);
-			if (flite_pipeline_s_stream(flite, 1))
-				flite_err("pipeline stream on fail");
+			flite_pipeline_s_stream(flite, 1);
 			return;
 		}
 
@@ -3318,17 +2947,16 @@ static int flite_probe(struct platform_device *pdev)
 	/* Locking MIF bus clock */
 	if (!pm_qos_request_active(&flite->mif_qos)) {
 		pm_qos_add_request(&flite->mif_qos,
-				PM_QOS_BUS_THROUGHPUT,
-				0);
+				    PM_QOS_BUS_THROUGHPUT,
+				    0);
 	}
 	flite->qos_lock_value = 0;
 
 	platform_set_drvdata(flite->pdev, flite->sd_flite);
 	pm_runtime_enable(&pdev->dev);
 
-	exynos_create_iovmm(&pdev->dev, 1, 1);
+        exynos_create_iovmm(&pdev->dev, 1, 1);
 #ifdef CONFIG_SOC_EXYNOS4415
-	exynos_create_iovmm(&pdev->dev, 1, 1);
 	flite_config_clk_for_exynos4415(flite);
 #endif
 	flite_info("FIMC-LITE%d probe success", pdev->id);

@@ -3,7 +3,6 @@
 #
 menuconfig VIBETONZ
 	tristate "Vibetonz"
-	default n
 	help
 	  Say Y to enable Vibetonz support.
 
@@ -37,13 +36,6 @@ config MOTOR_DRV_ISA1400
 	help
 	  Say Y to enalbe the ISA1400 IC.
 
-config DC_MOTOR
-        tristate "DC motor"
-        default n
-        depends on ANDROID_TIMED_OUTPUT
-        help
-          Say Y to enalbe the DC motor.
-
 config HAPTIC_ISA1200
 	tristate "ISA1200 motor"
 	default n
@@ -63,4 +55,10 @@ config HAPTIC
 	default n
 	help
 	  Say Y to enable Immersion TouchSense.
+
+config DC_MOTOR
+	tristate "DC_Motor"
+	default n
+	help
+	  Say Y to enable DC Motor
 

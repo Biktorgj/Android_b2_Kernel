@@ -1,11 +1,15 @@
 /*
  * cyttsp5_debug.c
- * Cypress TrueTouch(TM) Standard Product V5 Debug Module.
+ * Cypress TrueTouch(TM) Standard Product V5 Core driver module.
  * For use with Cypress Txx5xx parts.
  * Supported parts include:
  * TMA5XX
  *
  * Copyright (C) 2012-2013 Cypress Semiconductor
+ * Copyright (C) 2011 Sony Ericsson Mobile Communications AB.
+ *
+ * Author: Aleksej Makarov <aleksej.makarov@sonyericsson.com>
+ * Modified by: Cypress Semiconductor to add device functions
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -21,12 +25,28 @@
  *
  */
 
+#include <linux/cyttsp5/cyttsp5_bus.h>
+#include <linux/cyttsp5/cyttsp5_core.h>
+
+#include <linux/delay.h>
+#include <linux/gpio.h>
+#include <linux/input.h>
+#include <linux/interrupt.h>
+#include <linux/irq.h>
+#include <linux/limits.h>
+#include <linux/module.h>
+#include <linux/pm_runtime.h>
+#include <linux/sched.h>
+#include <linux/slab.h>
+#include <linux/workqueue.h>
+
 #include "cyttsp5_regs.h"
 
 #define CYTTSP5_DEBUG_NAME "cyttsp5_debug"
 
 struct cyttsp5_debug_data {
-	struct device *dev;
+	struct cyttsp5_device *ttsp;
+	struct cyttsp5_debug_platform_data *pdata;
 	struct cyttsp5_sysinfo *si;
 	uint32_t interrupt_count;
 	uint32_t formated_output;
@@ -34,13 +54,9 @@ struct cyttsp5_debug_data {
 	u8 pr_buf[CY_MAX_PRBUF_SIZE];
 };
 
-static struct cyttsp5_core_commands *cmd;
-
-static inline struct cyttsp5_debug_data *cyttsp5_get_debug_data(
-		struct device *dev)
-{
-	return cyttsp5_get_dynamic_data(dev, CY_MODULE_DEBUG);
-}
+struct cyttsp5_debug_platform_data {
+	char const *debug_dev_name;
+};
 
 /*
  * This function provide output of combined xy_mode and xy_data.
@@ -156,7 +172,7 @@ static void cyttsp5_debug_formated(struct device *dev, u8 *pr_buf,
 /* read xy_data for all touches for debug */
 static int cyttsp5_xy_worker(struct cyttsp5_debug_data *dd)
 {
-	struct device *dev = dd->dev;
+	struct device *dev = &dd->ttsp->dev;
 	struct cyttsp5_sysinfo *si = dd->si;
 	u8 report_reg = si->xy_mode[TOUCH_COUNT_BYTE_OFFSET];
 	u8 num_cur_tch = GET_NUM_TOUCHES(report_reg);
@@ -181,9 +197,10 @@ static int cyttsp5_xy_worker(struct cyttsp5_debug_data *dd)
 	return 0;
 }
 
-static int cyttsp5_debug_attention(struct device *dev)
+static int cyttsp5_debug_attention(struct cyttsp5_device *ttsp)
 {
-	struct cyttsp5_debug_data *dd = cyttsp5_get_debug_data(dev);
+	struct device *dev = &ttsp->dev;
+	struct cyttsp5_debug_data *dd = dev_get_drvdata(dev);
 	struct cyttsp5_sysinfo *si = dd->si;
 	u8 report_id = si->xy_mode[2];
 	int rc = 0;
@@ -203,7 +220,7 @@ static int cyttsp5_debug_attention(struct device *dev)
 static ssize_t cyttsp5_interrupt_count_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	struct cyttsp5_debug_data *dd = cyttsp5_get_debug_data(dev);
+	struct cyttsp5_debug_data *dd = dev_get_drvdata(dev);
 	int val;
 
 	mutex_lock(&dd->sysfs_lock);
@@ -216,7 +233,7 @@ static ssize_t cyttsp5_interrupt_count_show(struct device *dev,
 static ssize_t cyttsp5_interrupt_count_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
-	struct cyttsp5_debug_data *dd = cyttsp5_get_debug_data(dev);
+	struct cyttsp5_debug_data *dd = dev_get_drvdata(dev);
 	mutex_lock(&dd->sysfs_lock);
 	dd->interrupt_count = 0;
 	mutex_unlock(&dd->sysfs_lock);
@@ -229,7 +246,7 @@ static DEVICE_ATTR(int_count, S_IRUSR | S_IWUSR,
 static ssize_t cyttsp5_formated_output_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	struct cyttsp5_debug_data *dd = cyttsp5_get_debug_data(dev);
+	struct cyttsp5_debug_data *dd = dev_get_drvdata(dev);
 	int val;
 
 	mutex_lock(&dd->sysfs_lock);
@@ -243,7 +260,7 @@ static ssize_t cyttsp5_formated_output_show(struct device *dev,
 static ssize_t cyttsp5_formated_output_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
-	struct cyttsp5_debug_data *dd = cyttsp5_get_debug_data(dev);
+	struct cyttsp5_debug_data *dd = dev_get_drvdata(dev);
 	unsigned long value;
 	int rc;
 
@@ -268,19 +285,16 @@ static ssize_t cyttsp5_formated_output_store(struct device *dev,
 static DEVICE_ATTR(formated_output, S_IRUSR | S_IWUSR,
 	cyttsp5_formated_output_show, cyttsp5_formated_output_store);
 
-int cyttsp5_debug_probe(struct device *dev)
+static int cyttsp5_debug_probe(struct cyttsp5_device *ttsp)
 {
-	struct cyttsp5_core_data *cd = dev_get_drvdata(dev);
+	struct device *dev = &ttsp->dev;
 	struct cyttsp5_debug_data *dd;
+	struct cyttsp5_debug_platform_data *pdata = dev_get_platdata(dev);
 	int rc;
-
-	cmd = cyttsp5_get_commands();
-	if (!cmd)
-		return -EINVAL;
 
 	/* get context and debug print buffers */
 	dd = kzalloc(sizeof(*dd), GFP_KERNEL);
-	if (!dd) {
+	if (dd == NULL) {
 		dev_err(dev, "%s: Error, kzalloc\n", __func__);
 		rc = -ENOMEM;
 		goto cyttsp5_debug_probe_alloc_failed;
@@ -301,29 +315,38 @@ int cyttsp5_debug_probe(struct device *dev)
 	}
 
 	mutex_init(&dd->sysfs_lock);
-	dd->dev = dev;
-	cd->cyttsp5_dynamic_data[CY_MODULE_DEBUG] = dd;
+	dd->ttsp = ttsp;
+	dd->pdata = pdata;
+	dev_set_drvdata(dev, dd);
 
-	dd->si = cmd->request_sysinfo(dev);
-	if (!dd->si) {
+	pm_runtime_enable(dev);
+
+	pm_runtime_get_sync(dev);
+	dd->si = cyttsp5_request_sysinfo(ttsp);
+	if (dd->si == NULL) {
 		dev_err(dev, "%s: Fail get sysinfo pointer from core\n",
 				__func__);
 		rc = -ENODEV;
 		goto cyttsp5_debug_probe_sysinfo_failed;
 	}
 
-	rc = cmd->subscribe_attention(dev, CY_ATTEN_IRQ, CY_MODULE_DEBUG,
+	rc = cyttsp5_subscribe_attention(ttsp, CY_ATTEN_IRQ,
 		cyttsp5_debug_attention, CY_MODE_OPERATIONAL);
 	if (rc < 0) {
 		dev_err(dev, "%s: Error, could not subscribe attention cb\n",
 				__func__);
 		goto cyttsp5_debug_probe_subscribe_failed;
 	}
+	pm_runtime_put(dev);
 
 	return 0;
 
 cyttsp5_debug_probe_subscribe_failed:
 cyttsp5_debug_probe_sysinfo_failed:
+	pm_runtime_put(dev);
+	pm_runtime_suspend(dev);
+	pm_runtime_disable(dev);
+	dev_set_drvdata(dev, NULL);
 	device_remove_file(dev, &dev_attr_formated_output);
 cyttsp5_debug_probe_create_formated_failed:
 	device_remove_file(dev, &dev_attr_int_count);
@@ -333,14 +356,20 @@ cyttsp5_debug_probe_alloc_failed:
 	dev_err(dev, "%s failed.\n", __func__);
 	return rc;
 }
-EXPORT_SYMBOL(cyttsp5_debug_probe);
 
-int cyttsp5_debug_release(struct device *dev)
+static int cyttsp5_debug_release(struct cyttsp5_device *ttsp)
 {
-	struct cyttsp5_debug_data *dd = cyttsp5_get_debug_data(dev);
-	int rc;
+	struct device *dev = &ttsp->dev;
+	struct cyttsp5_debug_data *dd = dev_get_drvdata(dev);
+	int rc = 0;
 
-	rc = cmd->unsubscribe_attention(dev, CY_ATTEN_IRQ, CY_MODULE_DEBUG,
+	if (dev_get_drvdata(&ttsp->core->dev) == NULL) {
+		dev_err(dev, "%s: Error, core driver does not exist\n",
+				__func__);
+		goto cyttsp5_debug_release_exit;
+	}
+
+	rc = cyttsp5_unsubscribe_attention(ttsp, CY_ATTEN_IRQ,
 		cyttsp5_debug_attention, CY_MODE_OPERATIONAL);
 	if (rc < 0) {
 		dev_err(dev, "%s: Error, could not un-subscribe attention\n",
@@ -349,9 +378,117 @@ int cyttsp5_debug_release(struct device *dev)
 	}
 
 cyttsp5_debug_release_exit:
-	device_remove_file(dev, &dev_attr_formated_output);
+	pm_runtime_suspend(dev);
+	pm_runtime_disable(dev);
 	device_remove_file(dev, &dev_attr_int_count);
+	dev_set_drvdata(dev, NULL);
 	kfree(dd);
+
 	return rc;
 }
-EXPORT_SYMBOL(cyttsp5_debug_release);
+
+static struct cyttsp5_driver cyttsp5_debug_driver = {
+	.probe = cyttsp5_debug_probe,
+	.remove = cyttsp5_debug_release,
+	.driver = {
+		.name = CYTTSP5_DEBUG_NAME,
+		.bus = &cyttsp5_bus_type,
+		.owner = THIS_MODULE,
+	},
+};
+
+static struct cyttsp5_debug_platform_data
+	_cyttsp5_debug_platform_data = {
+	.debug_dev_name = CYTTSP5_DEBUG_NAME,
+};
+
+static const char cyttsp5_debug_name[] = CYTTSP5_DEBUG_NAME;
+static struct cyttsp5_device_info
+	cyttsp5_debug_infos[CY_MAX_NUM_CORE_DEVS];
+
+static char *core_ids[CY_MAX_NUM_CORE_DEVS] = {
+	CY_DEFAULT_CORE_ID,
+	NULL,
+	NULL,
+	NULL,
+	NULL
+};
+
+static int num_core_ids = 1;
+
+module_param_array(core_ids, charp, &num_core_ids, 0);
+MODULE_PARM_DESC(core_ids,
+	"Core id list of cyttsp5 core devices for debug module");
+
+static int __init cyttsp5_debug_init(void)
+{
+	int rc = 0;
+	int i, j;
+
+	/* Check for invalid or duplicate core_ids */
+	for (i = 0; i < num_core_ids; i++) {
+		if (!strlen(core_ids[i])) {
+			pr_err("%s: core_id %d is empty\n",
+				__func__, i+1);
+			return -EINVAL;
+		}
+		for (j = i+1; j < num_core_ids; j++)
+			if (!strcmp(core_ids[i], core_ids[j])) {
+				pr_err("%s: core_ids %d and %d are same\n",
+					__func__, i+1, j+1);
+				return -EINVAL;
+			}
+	}
+
+	for (i = 0; i < num_core_ids; i++) {
+		cyttsp5_debug_infos[i].name = cyttsp5_debug_name;
+		cyttsp5_debug_infos[i].core_id = core_ids[i];
+		cyttsp5_debug_infos[i].platform_data =
+			&_cyttsp5_debug_platform_data;
+		pr_info("%s: Registering debug device for core_id: %s\n",
+			__func__, cyttsp5_debug_infos[i].core_id);
+		rc = cyttsp5_register_device(&cyttsp5_debug_infos[i]);
+		if (rc < 0) {
+			pr_err("%s: Error, failed registering device\n",
+				__func__);
+			goto fail_unregister_devices;
+		}
+	}
+	rc = cyttsp5_register_driver(&cyttsp5_debug_driver);
+	if (rc) {
+		pr_err("%s: Error, failed registering driver\n", __func__);
+		goto fail_unregister_devices;
+	}
+
+	pr_info("%s: Cypress TTSP Debug (Built %s) rc=%d\n",
+		 __func__, CY_DRIVER_DATE, rc);
+	return 0;
+
+fail_unregister_devices:
+	for (i--; i <= 0; i--) {
+		cyttsp5_unregister_device(cyttsp5_debug_infos[i].name,
+			cyttsp5_debug_infos[i].core_id);
+		pr_info("%s: Unregistering device access device for core_id: %s\n",
+			__func__, cyttsp5_debug_infos[i].core_id);
+	}
+	return rc;
+}
+module_init(cyttsp5_debug_init);
+
+static void __exit cyttsp5_debug_exit(void)
+{
+	int i;
+
+	cyttsp5_unregister_driver(&cyttsp5_debug_driver);
+	for (i = 0; i < num_core_ids; i++) {
+		cyttsp5_unregister_device(cyttsp5_debug_infos[i].name,
+			cyttsp5_debug_infos[i].core_id);
+		pr_info("%s: Unregistering debug device for core_id: %s\n",
+			__func__, cyttsp5_debug_infos[i].core_id);
+	}
+}
+module_exit(cyttsp5_debug_exit);
+
+MODULE_LICENSE("GPL");
+MODULE_DESCRIPTION("Cypress TrueTouch(R) Standard touchscreen debug driver");
+MODULE_AUTHOR("Cypress Semiconductor <ttdrivers@cypress.com>");

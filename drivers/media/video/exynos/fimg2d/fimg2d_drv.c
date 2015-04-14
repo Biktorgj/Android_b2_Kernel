@@ -601,7 +601,6 @@ static int fimg2d_probe(struct platform_device *pdev)
 	return 0;
 
 clk_release:
-	g2d_cci_snoop_remove(pdata->ip_ver);
 #ifdef CONFIG_PM_RUNTIME
 	pm_runtime_disable(ctrl->dev);
 #else

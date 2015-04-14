@@ -1376,6 +1376,9 @@ static int tsu6721_muic_reg_init(struct tsu6721_muic_data *muic_data)
 	else
 		mansw = ret;
 
+	/* Raw Data mode On */
+	ctrl &= ~CTRL_RAW_DATA_MASK;
+
 	/* Manual Switching Mode */
 	if (mansw > 0)
 		ctrl &= ~CTRL_MANUAL_SW_MASK;

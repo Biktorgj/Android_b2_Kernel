@@ -84,6 +84,7 @@ extern void exynos_l2_common_pwr_ctrl(void);
 #if defined(CONFIG_SOC_EXYNOS3250)
 extern void exynos_enable_idle_clock_down(void);
 extern void exynos_disable_idle_clock_down(void);
+extern void exynos_sys_powerdown_xusbxti_control(bool enable);
 #else
 extern void exynos_enable_idle_clock_down(unsigned int cluster);
 extern void exynos_disable_idle_clock_down(unsigned int cluster);

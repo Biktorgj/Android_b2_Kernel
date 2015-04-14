@@ -512,6 +512,10 @@ mali_bool set_mali_dvfs_current_step(unsigned int step)
 static mali_bool set_mali_dvfs_status(u32 step,mali_bool boostup)
 {
 	u32 validatedStep=step;
+#if MALI_DVFS_CLK_DEBUG
+	unsigned int *pRegMaliClkDiv;
+	unsigned int *pRegMaliMpll;
+#endif
 
 	if(boostup)	{
 #ifdef CONFIG_REGULATOR
@@ -536,6 +540,12 @@ static mali_bool set_mali_dvfs_status(u32 step,mali_bool boostup)
 			mali_gpu_clk, mali_gpu_vol/1000, 0, 0, 0);
 #endif
 	mali_clk_put(MALI_FALSE);
+
+#if MALI_DVFS_CLK_DEBUG
+	pRegMaliClkDiv = ioremap(0x1003c52c,32);
+	pRegMaliMpll = ioremap(0x1003c22c,32);
+	MALI_PRINT(("Mali MPLL reg:%d, CLK DIV: %d \n",*pRegMaliMpll, *pRegMaliClkDiv));
+#endif
 
 #ifdef EXYNOS4_ASV_ENABLED
 	if (samsung_rev() < EXYNOS4412_REV_2_0) {

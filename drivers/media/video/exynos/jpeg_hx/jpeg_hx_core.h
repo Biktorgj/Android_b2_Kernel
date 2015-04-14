@@ -33,6 +33,8 @@
 #include <media/videobuf2-cma-phys.h>
 #elif defined(CONFIG_VIDEOBUF2_ION)
 #include <media/videobuf2-ion.h>
+#elif defined(CONFIG_VIDEOBUF2_DMA_CMA)
+#include <media/videobuf2-dma-contig.h>
 #endif
 #include "jpeg_hx_mem.h"
 
@@ -221,7 +223,11 @@ struct jpeg_vb2 {
 	void *(*init)(struct jpeg_dev *dev);
 	void (*cleanup)(void *alloc_ctx);
 
+#if defined(CONFIG_VIDEOBUF2_DMA_CMA)
+	dma_addr_t (*plane_addr)(struct vb2_buffer *vb, u32 plane_no);
+#else
 	unsigned long (*plane_addr)(struct vb2_buffer *vb, u32 plane_no);
+#endif
 
 	int (*resume)(void *alloc_ctx);
 	void (*suspend)(void *alloc_ctx);

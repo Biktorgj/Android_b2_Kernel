@@ -108,10 +108,10 @@ DECLARE_MODEM_INIT(sprd8803);
 DECLARE_MODEM_INIT_DUMMY(sprd8803)
 #endif
 
-#ifdef CONFIG_UMTS_MODEM_SH222AP
+#if defined(CONFIG_SOC_EXYNOS4270) || defined(CONFIG_SOC_EXYNOS3470)
 DECLARE_MODEM_INIT(sh222ap);
 #else
-DECLARE_MODEM_INIT_DUMMY(sh222ap)
+DECLARE_MODEM_INIT_DUMMY(s5e4270)
 #endif
 
 /* link device support */
@@ -175,11 +175,13 @@ static modem_init_call modem_init_func[MAX_MODEM_TYPE] = {
 	[SEC_CMC220] = MODEM_INIT_CALL(cmc220),
 	[SEC_CMC221] = MODEM_INIT_CALL(cmc221),
 	[SEC_SS222] = MODEM_INIT_CALL(ss222),
-	[SEC_SH222AP] = MODEM_INIT_CALL(sh222ap),
 	[QC_MDM6600] = MODEM_INIT_CALL(mdm6600),
 	[QC_ESC6270] = MODEM_INIT_CALL(esc6270),
 	[QC_QSC6085] = MODEM_INIT_CALL(qsc6085),
 	[SPRD_SC8803] = MODEM_INIT_CALL(sprd8803),
+#if defined(CONFIG_SOC_EXYNOS4270) || defined(CONFIG_SOC_EXYNOS3470)
+	[LSI_SHANNON222AP] = MODEM_INIT_CALL(sh222ap),
+#endif
 	[DUMMY] = MODEM_INIT_CALL(dummy),
 };
 
@@ -212,5 +214,4 @@ static struct link_device *call_link_init_func(struct platform_device *pdev,
 	else
 		return NULL;
 }
-
 #endif

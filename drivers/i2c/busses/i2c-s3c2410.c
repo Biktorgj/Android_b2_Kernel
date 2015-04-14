@@ -43,6 +43,9 @@
 
 #include <plat/regs-iic.h>
 #include <plat/iic.h>
+#if defined(CONFIG_SYSTEM_LOAD_ANALYZER)
+#include <linux/load_analyzer.h>
+#endif
 
 /* i2c controller state */
 
@@ -458,6 +461,13 @@ static irqreturn_t s3c24xx_i2c_irq(int irqno, void *dev_id)
 	unsigned long status;
 	unsigned long tmp;
 
+#if defined(CONFIG_SLP_MINI_TRACER)
+	if ((kernel_mini_tracer_i2c_log_on == 1) && (i2c->irq == 145)) {
+		char str[64];
+		sprintf(str, "i2c_irq S %p\n", dev_id);
+		kernel_mini_tracer(str, TIME_ON | FLUSH_CACHE);
+	}
+#endif
 	spin_lock(&i2c->lock);
 
 	status = readl(i2c->regs + S3C2410_IICSTAT);
@@ -483,6 +493,14 @@ static irqreturn_t s3c24xx_i2c_irq(int irqno, void *dev_id)
 
  out:
 	spin_unlock(&i2c->lock);
+
+#if defined(CONFIG_SLP_MINI_TRACER)
+	if ((kernel_mini_tracer_i2c_log_on == 1) && (i2c->irq == 145)) {
+		char str[64];
+		sprintf(str, "i2c_irq E %lX %d\n", status, i2c->state);
+		kernel_mini_tracer(str, TIME_ON | FLUSH_CACHE);
+	}
+#endif
 
 	return IRQ_HANDLED;
 }
@@ -761,6 +779,13 @@ static int s3c24xx_i2c_cpufreq_transition(struct notifier_block *nb,
 	int delta_f;
 	int ret;
 
+#if defined(CONFIG_SLP_MINI_TRACER)
+	if ((kernel_mini_tracer_i2c_log_on == 1) && (i2c->irq ==145)) {
+		char str[64];
+		sprintf(str, "i2c cpuf S noti=%ld\n", val);
+		kernel_mini_tracer(str, TIME_ON | FLUSH_CACHE);
+	}
+#endif
 	delta_f = clk_get_rate(i2c->clk) - i2c->clkrate;
 
 	/* if we're post-change and the input clock has slowed down
@@ -779,6 +804,14 @@ static int s3c24xx_i2c_cpufreq_transition(struct notifier_block *nb,
 		else
 			dev_info(i2c->dev, "setting freq %d\n", i2c->freq);
 	}
+
+#if defined(CONFIG_SLP_MINI_TRACER)
+	if ((kernel_mini_tracer_i2c_log_on == 1) && (i2c->irq ==145)) {
+		char str[64];
+		sprintf(str, "i2c cpuf E noti=%ld\n", val);
+		kernel_mini_tracer(str, TIME_ON | FLUSH_CACHE);
+	}
+#endif
 
 	return 0;
 }
@@ -872,9 +905,6 @@ static int s3c24xx_i2c_init(struct s3c24xx_i2c *i2c)
 	else
 		if (s3c24xx_i2c_parse_dt_gpio(i2c))
 			return -EINVAL;
-
-	if (pdata->cfg_mux)
-		pdata->cfg_mux();
 
 	/* write slave address */
 
@@ -1160,9 +1190,6 @@ static int s3c24xx_i2c_resume_noirq(struct device *dev)
 	clk_disable(i2c->clk);
 
 	i2c->is_suspended = false;
-
-	if (i2c->pdata->cfg_mux)
-		i2c->pdata->cfg_mux();
 
 	i2c_unlock_adapter(&i2c->adap);
 

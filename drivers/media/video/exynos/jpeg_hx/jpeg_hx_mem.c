@@ -51,3 +51,30 @@ const struct jpeg_vb2 jpeg_hx_vb2_ion = {
 	.buf_finish	= vb2_ion_buf_finish,
 };
 #endif
+
+#if defined(CONFIG_VIDEOBUF2_DMA_CMA)
+int dummy_buf_prepare(struct vb2_buffer *vb)
+{
+	return 0;
+}
+int dummy_buf_finish(struct vb2_buffer *vb)
+{
+	return 0;
+}
+
+static void *jpeg_dma_contig_init(struct jpeg_dev *dev)
+{
+	return vb2_dma_contig_init_ctx(&dev->plat_dev->dev);
+}
+
+const struct jpeg_vb2 jpeg_hx_vb2_dma_contig = {
+	.ops		= &vb2_dma_contig_memops,
+	.init		= jpeg_dma_contig_init,
+	.cleanup	= vb2_dma_contig_cleanup_ctx,
+	.plane_addr	= vb2_dma_contig_plane_dma_addr,
+/*	.resume		= vb2_ion_attach_iommu,*/
+/*	.suspend	= vb2_ion_detach_iommu,*/
+	.buf_prepare	= dummy_buf_prepare,
+	.buf_finish	= dummy_buf_finish,
+};
+#endif

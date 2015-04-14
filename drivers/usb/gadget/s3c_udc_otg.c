@@ -28,9 +28,9 @@
 #include <plat/usb-phy.h>
 #include <plat/udc-hs.h>
 #include <plat/cpu.h>
+#include <linux/mutex.h>
 
 #include "s3c_udc.h"
-#include <linux/usb/composite.h>
 
 #undef DEBUG_S3C_UDC_SETUP
 #undef DEBUG_S3C_UDC_EP0
@@ -44,8 +44,6 @@
 #define EP2_IN		2
 #define EP3_IN		3
 #define EP_MASK		0xF
-
-#define POLL_TIMEOUT	1000
 
 #define BACK2BACK_SIZE	4
 
@@ -220,7 +218,7 @@ udc_proc_read(char *page, char **start, off_t off, int count,
  */
 static inline bool is_nonswitch(void)
 {
-#if defined(CONFIG_MUIC_SM5502)||defined(CONFIG_SAMSUNG_MUIC)
+#if defined(CONFIG_USB_GADGET_SWITCH) || defined(CONFIG_USB_EXYNOS_SWITCH)
 	return false;
 #else
 	return true;
@@ -255,9 +253,6 @@ static void udc_disable(struct s3c_udc *dev)
 	if (pdata && pdata->phy_exit)
 		pdata->phy_exit(pdev, S5P_USB_PHY_DEVICE);
 	clk_disable(dev->clk);
-#if defined(CONFIG_BATTERY_SAMSUNG)
-	s3c_udc_cable_disconnect(dev);
-#endif
 }
 
 /*
@@ -316,37 +311,30 @@ static int udc_enable(struct s3c_udc *dev)
 	return 0;
 }
 
+static DEFINE_MUTEX(vbus_lock);
 int s3c_vbus_enable(struct usb_gadget *gadget, int is_active)
 {
 	unsigned long flags;
 	struct s3c_udc *dev = container_of(gadget, struct s3c_udc, gadget);
-#if defined(CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE)
-	struct usb_composite_dev *cdev = get_gadget_data(gadget);
-#endif
-	mutex_lock(&dev->mutex);
 
+	mutex_lock(&vbus_lock);
 	if (dev->udc_enabled != is_active) {
 		dev->udc_enabled = is_active;
 
+		if (dev->udc_suspended) {
+			printk(KERN_INFO "Not yet udc resumed, just update state(%d)\n",
+				dev->udc_enabled);
+			goto vbus_enable_done;
+		}
+
 		if (!is_active) {
-			printk(KERN_DEBUG "usb: %s is_active=%d(udc_disable)\n",
-					__func__, is_active);
 			spin_lock_irqsave(&dev->lock, flags);
-#if defined(CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE)
-			if(cdev){
-				cdev->mute_switch = 0;
-				cdev->force_disconnect = 1;
-			}
-#endif
 			stop_activity(dev, dev->driver);
 			spin_unlock_irqrestore(&dev->lock, flags);
 			udc_disable(dev);
 			wake_lock_timeout(&dev->usbd_wake_lock, HZ * 5);
 			wake_lock_timeout(&dev->usb_cb_wake_lock, HZ * 5);
 		} else {
-			printk(KERN_DEBUG "usb: %s is_active=%d(udc_enable),"
-							"softconnect=%d\n",
-					__func__, is_active, pullup_state);
 			wake_lock(&dev->usb_cb_wake_lock);
 			udc_reinit(dev);
 			udc_enable(dev);
@@ -358,7 +346,9 @@ int s3c_vbus_enable(struct usb_gadget *gadget, int is_active)
 				__func__, dev->udc_enabled, is_active);
 	}
 
-	mutex_unlock(&dev->mutex);
+vbus_enable_done:
+	mutex_unlock(&vbus_lock);
+
 	return 0;
 }
 
@@ -388,7 +378,6 @@ static int s3c_udc_start(struct usb_gadget *gadget,
 	printk(KERN_INFO "bound driver '%s'\n",
 			driver->driver.name);
 	if (is_nonswitch()) {
-		printk(KERN_INFO "usb: udc_enable\n");
 		udc_enable(dev);
 		dev->udc_enabled = 1;
 	} else {
@@ -417,43 +406,15 @@ static int s3c_udc_stop(struct usb_gadget *gadget,
 	stop_activity(dev, driver);
 	spin_unlock_irqrestore(&dev->lock, flags);
 
-	if (is_nonswitch())
+	if (is_nonswitch()) {
 		udc_disable(dev);
+		dev->udc_enabled = 0;
+	}
 
 	printk(KERN_INFO "Unregistered gadget driver '%s'\n",
 			driver->driver.name);
 
 	return 0;
-}
-
-static int poll_bit_set(void __iomem *ptr, u32 val, int timeout)
-{
-	u32 reg;
-
-	do {
-		reg = __raw_readl(ptr);
-		if (reg & val)
-			return 0;
-
-		udelay(1);
-	} while (timeout-- > 0);
-
-	return -ETIME;
-}
-
-static int poll_bit_clear(void __iomem *ptr, u32 val, int timeout)
-{
-	u32 reg;
-
-	do {
-		reg = __raw_readl(ptr);
-		if (!(reg & val))
-			return 0;
-
-		udelay(1);
-	} while (timeout-- > 0);
-
-	return -ETIME;
 }
 
 /*
@@ -463,9 +424,6 @@ static void done(struct s3c_ep *ep, struct s3c_request *req, int status)
 {
 	unsigned int stopped = ep->stopped;
 	struct device *dev = &the_controller->dev->dev;
-	u32 ep_num = ep_index(ep);
-	struct s3c_udc *udc = ep->dev;
-	u32 ctrl, ret;
 
 	DEBUG("%s: %s %p, req = %p, stopped = %d\n",
 		__func__, ep->ep.name, ep, &req->req, stopped);
@@ -478,58 +436,6 @@ static void done(struct s3c_ep *ep, struct s3c_request *req, int status)
 		status = req->req.status;
 
 	if (req->mapped) {
-		if (ep_is_in(ep)) {
-			ctrl = __raw_readl(udc->regs + S3C_UDC_OTG_DIEPCTL(ep_num));
-			if (ctrl & DEPCTL_EPENA) {
-				__raw_writel(DEPCTL_EPDIS | DEPCTL_SNAK | ctrl,
-					udc->regs + S3C_UDC_OTG_DIEPCTL(ep_num));
-				ret = poll_bit_clear(udc->regs + S3C_UDC_OTG_DIEPCTL(ep_num),
-						DEPCTL_EPENA | DEPCTL_EPDIS, POLL_TIMEOUT);
-				if (ret) {
-					dev_err(dev, "faild Endpoint disable and Set NAK\n");
-					goto out;
-				}
-
-				__raw_writel(TxFIFONum(ep_num) | TxFFlush, udc->regs + S3C_UDC_OTG_GRSTCTL);
-				ret = poll_bit_clear(udc->regs + S3C_UDC_OTG_GRSTCTL,
-						TxFFlush, POLL_TIMEOUT);
-				if (ret) {
-					dev_err(dev, "faild TX FIFO Flush\n");
-					goto out;
-				}
-			}
-		} else {
-			ctrl =  __raw_readl(udc->regs + S3C_UDC_OTG_DOEPCTL(ep_num));
-			if (ctrl & DEPCTL_EPENA) {
-				__raw_writel(__raw_readl(udc->regs + S3C_UDC_OTG_DCTL) | SGOUTNak,
-						udc->regs + S3C_UDC_OTG_DCTL);
-				ret = poll_bit_set(udc->regs + S3C_UDC_OTG_GINTSTS,
-						INT_GOUTNakEff, POLL_TIMEOUT);
-				if (ret) {
-					dev_err(dev, "failed Set Global OUT NAK\n");
-					goto out;
-				}
-
-				__raw_writel(DEPCTL_EPDIS | DEPCTL_SNAK | ctrl,
-					udc->regs + S3C_UDC_OTG_DOEPCTL(ep_num));
-				ret = poll_bit_clear(udc->regs + S3C_UDC_OTG_DOEPCTL(ep_num),
-						DEPCTL_EPENA | DEPCTL_EPDIS, POLL_TIMEOUT);
-				if (ret) {
-					dev_err(dev, "faild Endpoint disable and Set NAK\n");
-					goto out;
-				}
-
-				__raw_writel(__raw_readl(udc->regs + S3C_UDC_OTG_DCTL) | CGOUTNak,
-						udc->regs + S3C_UDC_OTG_DCTL);
-				ret = poll_bit_clear(udc->regs + S3C_UDC_OTG_GINTSTS,
-						INT_GOUTNakEff, POLL_TIMEOUT);
-				if (ret) {
-					dev_err(dev, "failed Clear Global OUT NAK\n");
-					goto out;
-				}
-			}
-		}
-out:
 		dma_unmap_single(dev, req->req.dma, req->req.length,
 			(ep->bEndpointAddress & USB_DIR_IN) ?
 				DMA_TO_DEVICE : DMA_FROM_DEVICE);
@@ -984,14 +890,13 @@ static void s3c_udc_soft_disconnect(void)
 	unsigned long flags;
 
 	DEBUG("[%s]\n", __func__);
+	uTemp = __raw_readl(dev->regs + S3C_UDC_OTG_DCTL);
+	uTemp |= SOFT_DISCONNECT;
+	__raw_writel(uTemp, dev->regs + S3C_UDC_OTG_DCTL);
 
 	spin_lock_irqsave(&dev->lock, flags);
 	stop_activity(dev, dev->driver);
 	spin_unlock_irqrestore(&dev->lock, flags);
-
-	uTemp = __raw_readl(dev->regs + S3C_UDC_OTG_DCTL);
-	uTemp |= SOFT_DISCONNECT;
-	__raw_writel(uTemp, dev->regs + S3C_UDC_OTG_DCTL);	
 }
 
 static int s3c_udc_pullup(struct usb_gadget *gadget, int is_on)
@@ -1321,8 +1226,7 @@ static int s3c_udc_probe(struct platform_device *pdev)
 	dev->clk = clk_get(&pdev->dev, "otg");
 	if (IS_ERR(dev->clk)) {
 		dev_err(&pdev->dev, "Failed to get clock\n");
-        retval = -ENXIO;
-        goto clk_dev_error;
+		return -ENXIO;
 	}
 
 	dev->usb_ctrl = dma_alloc_coherent(&pdev->dev,
@@ -1381,7 +1285,6 @@ static int s3c_udc_probe(struct platform_device *pdev)
 	}
 
 	create_proc_files();
-	mutex_init(&dev->mutex);
 
 	return retval;
 
@@ -1399,10 +1302,6 @@ err_get_data_buf:
 			dev->usb_ctrl, dev->usb_ctrl_dma);
 err_get_ctrl_buf:
 	clk_put(dev->clk);
-clk_dev_error:
-    wake_lock_destroy(&dev->usbd_wake_lock);
-    wake_lock_destroy(&dev->usb_cb_wake_lock);
-
 	return retval;
 }
 
@@ -1433,7 +1332,6 @@ static int s3c_udc_remove(struct platform_device *pdev)
 	the_controller = 0;
 	wake_lock_destroy(&dev->usbd_wake_lock);
 	wake_lock_destroy(&dev->usb_cb_wake_lock);
-	mutex_destroy(&dev->mutex);
 
 	return 0;
 }
@@ -1462,8 +1360,16 @@ static int s3c_udc_suspend(struct platform_device *pdev, pm_message_t state)
 		if (dev->driver->disconnect)
 			dev->driver->disconnect(&dev->gadget);
 
+#ifdef CONFIG_USB_GADGET_SWITCH
+		mutex_lock(&vbus_lock);
+		if (dev->udc_enabled)
+			udc_disable(dev);
+		dev->udc_suspended = true;
+		mutex_unlock(&vbus_lock);
+#else
 		if (is_nonswitch())
 			udc_disable(dev);
+#endif
 	}
 
 	return 0;
@@ -1474,10 +1380,23 @@ static int s3c_udc_resume(struct platform_device *pdev)
 	struct s3c_udc *dev = the_controller;
 
 	if (dev->driver) {
+#ifdef CONFIG_USB_GADGET_SWITCH
+		mutex_lock(&vbus_lock);
+		dev->udc_suspended = false;
+		if (dev->udc_enabled) {
+			udc_reinit(dev);
+			udc_enable(dev);
+
+			if (pullup_state)
+				s3c_udc_soft_connect();
+		}
+		mutex_unlock(&vbus_lock);
+#else
 		udc_reinit(dev);
 		if (is_nonswitch())
 			udc_enable(dev);
 		s3c_udc_soft_connect();
+#endif
 
 		if (dev->driver->resume)
 			dev->driver->resume(&dev->gadget);

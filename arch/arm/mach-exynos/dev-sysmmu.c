@@ -24,6 +24,10 @@
 #include <mach/irqs.h>
 #include <mach/sysmmu.h>
 
+#ifdef CONFIG_ARM_DMA_USE_IOMMU
+#include <asm/dma-iommu.h>
+#endif
+
 static u64 exynos_sysmmu_dma_mask = DMA_BIT_MASK(32);
 
 #define SYSMMU_PLATFORM_DEVICE(ipname, devid)				\
@@ -225,6 +229,7 @@ SYSMMU_RESOURCE_DEFINE(EXYNOS4, fimd0,	FIMD0,	LCD0_M0);
 SYSMMU_RESOURCE_DEFINE(EXYNOS4, fimd1,	FIMD1,	LCD1_M1);
 SYSMMU_RESOURCE_DEFINE(EXYNOS4, flite0,	FIMC_LITE0, FIMC_LITE0);
 SYSMMU_RESOURCE_DEFINE(EXYNOS4, flite1,	FIMC_LITE1, FIMC_LITE1);
+SYSMMU_RESOURCE_DEFINE(EXYNOS4, flite2, FIMC_LITE2, FIMC_LITE2);
 SYSMMU_RESOURCE(EXYNOS4, mfc_lr) {
 	DEFINE_SYSMMU_RESOURCE(EXYNOS4, MFC_L, MFC_M0),
 	DEFINE_SYSMMU_RESOURCE(EXYNOS4, MFC_R, MFC_M1),
@@ -270,13 +275,12 @@ static struct sysmmu_resource_map sysmmu_resmap3470[] __initdata = {
 	SYSMMU_RESOURCE_MAPPING(4,	2d,	2d_acp),
 	SYSMMU_RESOURCE_MAPPING(4,	camif0, flite0),
 	SYSMMU_RESOURCE_MAPPING(4,	camif1, flite1),
+	SYSMMU_RESOURCE_MAPPING(4,	camif2, flite2),
 	SYSMMU_RESOURCE_MAPPING(4,	isp0,	isp0),
 	SYSMMU_RESOURCE_MAPPING(4,	isp1,	isp1c),
 };
 
 #ifdef CONFIG_SOC_EXYNOS4415
-SYSMMU_RESOURCE_DEFINE(EXYNOS4, flite2, FIMC_LITE2, FIMC_LITE2);
-
 SYSMMU_RESOURCE(EXYNOS4, isp0_h) {
 	DEFINE_SYSMMU_RESOURCE(EXYNOS4, ISP, FIMC_ISP),
 	DEFINE_SYSMMU_RESOURCE(EXYNOS4, DRC, FIMC_DRC),
@@ -748,13 +752,13 @@ static void __init exynos3_sysmmu_init(void)
 #ifdef CONFIG_S5P_DEV_MFC
 	platform_set_sysmmu(&SYSMMU_PLATDEV(mfc_lr).dev, &s5p_device_mfc.dev);
 #endif
-#ifdef CONFIG_EXYNOS_DEV_GSC
+#if defined CONFIG_EXYNOS_DEV_GSC || defined CONFIG_DRM_EXYNOS_GSC
 	platform_set_sysmmu(&SYSMMU_PLATDEV(gsc0).dev,
 						&exynos3_device_gsc0.dev);
 	platform_set_sysmmu(&SYSMMU_PLATDEV(gsc1).dev,
 						&exynos3_device_gsc1.dev);
 #endif
-#ifdef CONFIG_EXYNOS5_DEV_SCALER
+#if defined CONFIG_EXYNOS5_DEV_SCALER || defined CONFIG_DRM_EXYNOS_SC
 	platform_set_sysmmu(&SYSMMU_PLATDEV(scaler).dev,
 				&exynos5_device_scaler0.dev);
 #endif
@@ -776,8 +780,6 @@ static void __init exynos3_sysmmu_init(void)
 	platform_set_sysmmu(&SYSMMU_PLATDEV(isp1).dev,
 						&exynos3_device_fimc_is.dev);
 	platform_set_sysmmu(&SYSMMU_PLATDEV(camif0).dev,
-						&exynos3_device_fimc_is_sensor0.dev);
-	platform_set_sysmmu(&SYSMMU_PLATDEV(camif1).dev,
 						&exynos3_device_fimc_is_sensor0.dev);
 	platform_set_sysmmu(&SYSMMU_PLATDEV(camif1).dev,
 						&exynos3_device_fimc_is_sensor1.dev);
@@ -827,17 +829,10 @@ static void __init exynos4_sysmmu_init(void)
 						&exynos_device_flite0.dev);
 	platform_set_sysmmu(&SYSMMU_PLATDEV(camif1).dev,
 						&exynos_device_flite1.dev);
-	if (!soc_is_exynos3470())
-		platform_set_sysmmu(&SYSMMU_PLATDEV(camif2).dev,
-				&exynos_device_flite2.dev);
+	platform_set_sysmmu(&SYSMMU_PLATDEV(camif2).dev,
+						&exynos_device_flite2.dev);
 #endif
-#if defined(CONFIG_VIDEO_EXYNOS_FIMC_IS)
-	platform_set_sysmmu(&SYSMMU_PLATDEV(camif0).dev,
-					&exynos_device_fimc_is_sensor0.dev);
-	platform_set_sysmmu(&SYSMMU_PLATDEV(camif1).dev,
-					&exynos_device_fimc_is_sensor1.dev);
-#endif
-#if defined(CONFIG_EXYNOS_DEV_FIMC_IS) || defined(CONFIG_EXYNOS4_DEV_FIMC_IS)
+#ifdef CONFIG_EXYNOS_DEV_FIMC_IS
 	platform_set_sysmmu(&SYSMMU_PLATDEV(isp0).dev,
 						&exynos4_device_fimc_is.dev);
 	if (soc_is_exynos4415()) {
@@ -849,6 +844,12 @@ static void __init exynos4_sysmmu_init(void)
 		platform_set_sysmmu(&SYSMMU_PLATDEV(isp1).dev,
 						&exynos4_device_fimc_is.dev);
 	}
+#if defined(CONFIG_VIDEO_EXYNOS_FIMC_IS)
+	platform_set_sysmmu(&SYSMMU_PLATDEV(camif0).dev,
+						&exynos_device_fimc_is_sensor0.dev);
+	platform_set_sysmmu(&SYSMMU_PLATDEV(camif1).dev,
+						&exynos_device_fimc_is_sensor1.dev);
+#endif
 #endif
 }
 
@@ -900,7 +901,7 @@ static void __init exynos5_sysmmu_init(void)
 #ifdef CONFIG_S5P_DEV_TV
 	platform_set_sysmmu(&SYSMMU_PLATDEV(tv).dev, &s5p_device_mixer.dev);
 #endif
-#ifdef CONFIG_EXYNOS_DEV_GSC
+#if defined CONFIG_EXYNOS_DEV_GSC || defined CONFIG_DRM_EXYNOS_GSC
 	platform_set_sysmmu(&SYSMMU_PLATDEV(gsc0).dev,
 						&exynos5_device_gsc0.dev);
 	platform_set_sysmmu(&SYSMMU_PLATDEV(gsc1).dev,
@@ -1191,6 +1192,98 @@ static int __init init_sysmmu_platform_device(void)
 	return 0;
 }
 postcore_initcall(init_sysmmu_platform_device);
+
+#ifdef CONFIG_ARM_DMA_USE_IOMMU
+/* exynos_create_iommu_mapping - create an IO address spece for the given device
+ *
+ * @client: device that need an IO address space
+ * @base: base address of the address space
+ * @size: size of the address space
+ *
+ * This function create an IO address space for the given device, @client with
+ * the size @size from @base. This includes preparing the page table of the
+ * device and enabling System MMU.
+ *
+ * It must be ensured that this function is called after System MMU driver
+ * (drivers/iommu/exynos-iommu.c) is probe()ed.
+ */
+static int __init exynos_create_iommu_mapping(struct device *client,
+					dma_addr_t base, unsigned int size)
+{
+	struct dma_iommu_mapping *mapping;
+	int ret;
+
+	if (!client)
+		return 0;
+
+	mapping = arm_iommu_create_mapping(&platform_bus_type, base, size, 4);
+	if (IS_ERR(mapping))
+		return PTR_ERR(mapping);
+
+	client->dma_parms = kzalloc(sizeof(*client->dma_parms), GFP_KERNEL);
+	if (!client->dma_parms) {
+		ret = -ENOMEM;
+		goto err_kzalloc;
+	}
+
+	dma_set_max_seg_size(client, 0xffffffffu);
+
+	ret = arm_iommu_attach_device(client, mapping);
+	if (ret)
+		goto err_attach;
+
+	return 0;
+err_attach:
+	kfree(client->dma_parms);
+	client->dma_parms = NULL;
+err_kzalloc:
+	arm_iommu_release_mapping(mapping);
+	return ret;
+}
+
+static int __init exynos4_create_iommu_mapping(void)
+{
+#ifdef CONFIG_S5P_DEV_FIMC1
+	exynos_create_iommu_mapping(&s5p_device_fimc1.dev, 0x20000000, SZ_128M);
+#endif
+#ifdef CONFIG_S5P_DEV_FIMC0
+	exynos_create_iommu_mapping(&s5p_device_fimc0.dev, 0x20000000, SZ_128M);
+#endif
+#ifdef CONFIG_S5P_DEV_MFC
+	exynos_create_iommu_mapping(&s5p_device_mfc.dev, 0x20000000, SZ_128M);
+#endif
+#if defined(CONFIG_EXYNOS4_DEV_JPEG) || defined(CONFIG_S5P_DEV_JPEG)
+	exynos_create_iommu_mapping(&s5p_device_jpeg.dev, 0x20000000, SZ_64M);
+#endif
+	return 0;
+}
+
+static int __init exynos3_create_iommu_mapping(void)
+{
+#ifdef CONFIG_S5P_DEV_MFC
+	exynos_create_iommu_mapping(&s5p_device_mfc.dev, 0x20000000, SZ_128M);
+#endif
+#ifdef CONFIG_EXYNOS_DEV_FIMC_IS
+	exynos_create_iommu_mapping(&exynos3_device_fimc_is.dev, 0x20000000, SZ_128M);
+#endif
+#ifdef CONFIG_VIDEO_EXYNOS_JPEG_HX
+		exynos_create_iommu_mapping(&exynos5_device_jpeg_hx.dev, 0x20000000, SZ_64M);
+#endif
+
+	return 0;
+}
+
+static int __init setup_create_iommu_mapping(void)
+{
+	if (soc_is_exynos4412() || soc_is_exynos4212())
+		exynos4_create_iommu_mapping();
+	else if (soc_is_exynos3250())
+		exynos3_create_iommu_mapping();
+
+	return 0;
+}
+subsys_initcall_sync(setup_create_iommu_mapping);
+#endif /* CONFIG_ARM_DMA_USE_IOMMU */
 
 /**
  * setup_sysmmu_owner

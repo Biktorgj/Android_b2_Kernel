@@ -1,9 +1,9 @@
 /*
  * Copyright (C) 2011-2012 ARM Limited. All rights reserved.
- * 
+ *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
@@ -25,9 +25,6 @@
 #endif
 #endif
 #include "mali_dlbu.h"
-#if defined(CONFIG_DMA_SHARED_BUFFER) && !defined(CONFIG_MALI_DMA_BUF_MAP_ON_ATTACH)
-#include "linux/mali_dma_buf.h"
-#endif
 
 /**
  * The structure represents a PP job, including all sub-jobs
@@ -50,12 +47,6 @@ struct mali_pp_job
 	u32 pid;                                           /**< Process ID of submitting process */
 	u32 tid;                                           /**< Thread ID of submitting thread */
 	_mali_osk_notification_t *finished_notification;   /**< Notification sent back to userspace on job complete */
-	u32 num_memory_cookies;                            /**< Number of memory cookies attached to job */
-	u32 *memory_cookies;                               /**< Memory cookies attached to job */
-#if defined(CONFIG_DMA_SHARED_BUFFER) && !defined(CONFIG_MALI_DMA_BUF_MAP_ON_ATTACH)
-	struct mali_dma_buf_attachment **dma_bufs;         /**< Array of DMA-bufs used by job */
-	u32 num_dma_bufs;                                  /**< Number of DMA-bufs used by job */
-#endif
 #ifdef CONFIG_SYNC
 /* MALI_SEC */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,4,0)

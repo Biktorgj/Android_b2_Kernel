@@ -1,12 +1,13 @@
 /*
  * cyttsp5_device_access.c
- * Cypress TrueTouch(TM) Standard Product V5 Device Access Module.
+ * Cypress TrueTouch(TM) Standard Product V5 Device Access module.
  * Configuration and Test command/status user interface.
  * For use with Cypress Txx5xx parts.
  * Supported parts include:
  * TMA5XX
  *
  * Copyright (C) 2012-2013 Cypress Semiconductor
+ * Copyright (C) 2011 Sony Ericsson Mobile Communications AB.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -22,25 +23,23 @@
  *
  */
 
+#include <linux/cyttsp5/cyttsp5_bus.h>
+#include <linux/cyttsp5/cyttsp5_core.h>
+
+#include <linux/debugfs.h>
+#include <linux/fs.h>
+#include <linux/slab.h>
+#include <linux/pm_runtime.h>
+#include <linux/uaccess.h>
+#include "cyttsp5_device_access.h"
 #include "cyttsp5_regs.h"
-
-#define CYTTSP5_DEVICE_ACCESS_NAME "cyttsp5_device_access"
-#define CYTTSP5_INPUT_ELEM_SZ (sizeof("0xHH") + 1)
-
-#ifdef TTHE_TUNER_SUPPORT
-struct heatmap_param {
-	bool scan_start;
-	enum scan_data_type_list data_type; /* raw, base, diff */
-	int num_element;
-};
-#endif
 
 #define CY_MAX_CONFIG_BYTES    256
 #define CYTTSP5_TTHE_TUNER_GET_PANEL_DATA_FILE_NAME "get_panel_data"
-#define TTHE_TUNER_MAX_BUF	(CY_MAX_PRBUF_SIZE * 3)
 
 struct cyttsp5_device_access_data {
-	struct device *dev;
+	struct cyttsp5_device *ttsp;
+	struct cyttsp5_device_access_platform_data *pdata;
 	struct cyttsp5_sysinfo *si;
 	struct mutex sysfs_lock;
 	u8 status;
@@ -50,7 +49,7 @@ struct cyttsp5_device_access_data {
 	struct heatmap_param heatmap;
 	struct dentry *tthe_get_panel_data_debugfs;
 	struct mutex debugfs_lock;
-	u8 tthe_get_panel_data_buf[TTHE_TUNER_MAX_BUF];
+	u8 tthe_get_panel_data_buf[CY_MAX_PRBUF_SIZE];
 	u8 tthe_get_panel_data_is_open;
 #endif
 #ifdef VERBOSE_DEBUG
@@ -60,19 +59,10 @@ struct cyttsp5_device_access_data {
 	u8 response_buf[CY_MAX_PRBUF_SIZE];
 };
 
-static struct cyttsp5_core_commands *cmd;
-
-static inline struct cyttsp5_device_access_data *cyttsp5_get_device_access_data(
-		struct device *dev)
-{
-	return cyttsp5_get_dynamic_data(dev, CY_MODULE_DEVICE_ACCESS);
-}
-
 static ssize_t cyttsp5_status_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	struct cyttsp5_device_access_data *dad
-		= cyttsp5_get_device_access_data(dev);
+	struct cyttsp5_device_access_data *dad = dev_get_drvdata(dev);
 	u8 val;
 
 	mutex_lock(&dad->sysfs_lock);
@@ -88,8 +78,7 @@ static DEVICE_ATTR(status, S_IRUSR | S_IWUSR,
 static ssize_t cyttsp5_response_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	struct cyttsp5_device_access_data *dad
-		= cyttsp5_get_device_access_data(dev);
+	struct cyttsp5_device_access_data *dad = dev_get_drvdata(dev);
 	int i;
 	ssize_t num_read;
 	int index;
@@ -190,8 +179,7 @@ static int cyttsp5_ic_parse_input(struct device *dev, const char *buf,
 static ssize_t cyttsp5_command_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
-	struct cyttsp5_device_access_data *dad
-		= cyttsp5_get_device_access_data(dev);
+	struct cyttsp5_device_access_data *dad = dev_get_drvdata(dev);
 	ssize_t length;
 	int rc;
 
@@ -209,11 +197,12 @@ static ssize_t cyttsp5_command_store(struct device *dev,
 	/* write ic_buf to log */
 	cyttsp5_pr_buf(dev, dad->pr_buf, dad->ic_buf, length, "ic_buf");
 
-	/*pm_runtime_get_sync(dev);*/
-	rc = cmd->cmd->user_cmd(dev, 1, CY_MAX_PRBUF_SIZE,
+	pm_runtime_get_sync(dev);
+
+	rc = cyttsp5_request_nonhid_user_cmd(dad->ttsp, 1, CY_MAX_PRBUF_SIZE,
 			dad->response_buf, length, dad->ic_buf,
 			&dad->response_length);
-	/*pm_runtime_put(dev);*/
+	pm_runtime_put(dev);
 	if (rc) {
 		dad->response_length = 0;
 		dev_err(dev, "%s: Failed to store command\n", __func__);
@@ -234,13 +223,13 @@ static DEVICE_ATTR(command, S_IRUSR | S_IWUSR,
 /*
  * Execute scan command
  */
-static int cyttsp5_exec_scan_cmd_(struct device *dev)
+static int cyttsp5_exec_scan_cmd_(struct cyttsp5_device *ttsp)
 {
 	int rc;
 
-	rc = cmd->cmd->exec_panel_scan(dev, 0);
+	rc =  cyttsp5_request_nonhid_exec_panel_scan(ttsp, 0);
 	if (rc < 0)
-		dev_err(dev, "%s: Heatmap start scan failed r=%d\n",
+		dev_err(&ttsp->dev, "%s: Heatmap start scan failed r=%d\n",
 			__func__, rc);
 	return rc;
 }
@@ -248,17 +237,17 @@ static int cyttsp5_exec_scan_cmd_(struct device *dev)
 /*
  * Retrieve panel data command
  */
-static int cyttsp5_ret_scan_data_cmd_(struct device *dev, u16 read_offset,
-		u16 read_count, u8 data_id, u8 *response, u8 *config,
-		u16 *actual_read_len, u8 *return_buf)
+static int cyttsp5_ret_scan_data_cmd_(struct cyttsp5_device *ttsp,
+		u16 read_offset, u16 read_count, u8 data_id, u8 *response,
+		u8 *config, u16 *actual_read_len, u8 *return_buf)
 {
 	int rc;
 
-	rc = cmd->cmd->retrieve_panel_scan(dev, 0, read_offset,
+	rc = cyttsp5_request_nonhid_retrieve_panel_scan(ttsp, 0, read_offset,
 			read_count, data_id, response, config, actual_read_len,
 			return_buf);
 	if (rc < 0)
-		dev_err(dev, "%s: Retrieve scan data failed r=%d\n",
+		dev_err(&ttsp->dev, "%s: Retrieve scan data failed r=%d\n",
 				__func__, rc);
 	return rc;
 }
@@ -267,10 +256,11 @@ static ssize_t tthe_get_panel_data_debugfs_read(struct file *filp,
 		char __user *buf, size_t count, loff_t *ppos)
 {
 	struct cyttsp5_device_access_data *dad = filp->private_data;
+	struct cyttsp5_device *ttsp;
 	struct device *dev;
 	u8 config;
 	u16 actual_read_len;
-	u16 length = 0;
+	u16 length = 0; /* modified by YKJ */
 	u8 element_size = 0;
 	u8 *buf_offset;
 	u8 *buf_out;
@@ -282,26 +272,27 @@ static ssize_t tthe_get_panel_data_debugfs_read(struct file *filp,
 	int i;
 
 	mutex_lock(&dad->debugfs_lock);
-	dev = dad->dev;
+	ttsp = dad->ttsp;
+	dev = &ttsp->dev;
 	buf_out = dad->tthe_get_panel_data_buf;
 	if (!buf_out)
 		goto release_mutex;
 
-	/*pm_runtime_get_sync(dev);*/
+	pm_runtime_get_sync(dev);
 
-	rc = cmd->request_exclusive(dev, CY_REQUEST_EXCLUSIVE_TIMEOUT);
+	rc = cyttsp5_request_exclusive(ttsp, CY_REQUEST_EXCLUSIVE_TIMEOUT);
 	if (rc < 0)
 		goto put_runtime;
 
 	if (dad->heatmap.scan_start) {
 		/* Start scan */
-		rc = cyttsp5_exec_scan_cmd_(dev);
+		rc = cyttsp5_exec_scan_cmd_(ttsp);
 		if (rc < 0)
 			goto release_exclusive;
 	}
 
 	elem = dad->heatmap.num_element;
-	rc = cyttsp5_ret_scan_data_cmd_(dev, elem_offset, elem,
+	rc = cyttsp5_ret_scan_data_cmd_(ttsp, elem_offset, elem,
 			dad->heatmap.data_type, dad->ic_buf, &config,
 			&actual_read_len, NULL);
 	if (rc < 0)
@@ -315,7 +306,7 @@ static ssize_t tthe_get_panel_data_debugfs_read(struct file *filp,
 	elem -= actual_read_len;
 	elem_offset = actual_read_len;
 	while (elem > 0) {
-		rc = cyttsp5_ret_scan_data_cmd_(dev, elem_offset, elem,
+		rc = cyttsp5_ret_scan_data_cmd_(ttsp, elem_offset, elem,
 				dad->heatmap.data_type, NULL, &config,
 				&actual_read_len, buf_offset);
 		if (rc < 0)
@@ -335,20 +326,20 @@ static ssize_t tthe_get_panel_data_debugfs_read(struct file *filp,
 	put_unaligned_le16(elem_offset, &dad->ic_buf[7]);
 
 release_exclusive:
-	rc1 = cmd->release_exclusive(dev);
+	rc1 = cyttsp5_release_exclusive(ttsp);
 put_runtime:
-	/*pm_runtime_put(dev);*/
+	pm_runtime_put(dev);
 
 	if (rc < 0)
 		goto release_mutex;
 
-	print_idx += scnprintf(buf_out, TTHE_TUNER_MAX_BUF, "CY_DATA:");
+	print_idx += scnprintf(buf_out, CY_MAX_PRBUF_SIZE, "CY_DATA:");
 	for (i = 0; i < length; i++)
 		print_idx += scnprintf(buf_out + print_idx,
-				TTHE_TUNER_MAX_BUF - print_idx,
+				CY_MAX_PRBUF_SIZE - print_idx,
 				"%02X ", dad->ic_buf[i]);
 	print_idx += scnprintf(buf_out + print_idx,
-			TTHE_TUNER_MAX_BUF - print_idx,
+			CY_MAX_PRBUF_SIZE - print_idx,
 			":(%d bytes)\n", length);
 	rc = simple_read_from_buffer(buf, count, ppos, buf_out, print_idx);
 	print_idx = rc;
@@ -362,7 +353,7 @@ static ssize_t tthe_get_panel_data_debugfs_write(struct file *filp,
 		const char __user *buf, size_t count, loff_t *ppos)
 {
 	struct cyttsp5_device_access_data *dad = filp->private_data;
-	struct device *dev = dad->dev;
+	struct device *dev = &dad->ttsp->dev;
 	ssize_t length;
 	int max_read;
 	u8 *buf_in = dad->tthe_get_panel_data_buf;
@@ -372,7 +363,6 @@ static ssize_t tthe_get_panel_data_debugfs_write(struct file *filp,
 	ret = copy_from_user(buf_in + (*ppos), buf, count);
 	if (ret)
 		goto exit;
-	buf_in[count] = 0;
 
 	length = cyttsp5_ic_parse_input(dev, buf_in, count, dad->ic_buf,
 			CY_MAX_PRBUF_SIZE);
@@ -449,11 +439,34 @@ static const struct file_operations tthe_get_panel_data_fops = {
 };
 #endif
 
-static int cyttsp5_setup_sysfs(struct device *dev)
+#ifdef CONFIG_PM_SLEEP
+static int cyttsp5_device_access_suspend(struct device *dev)
 {
-	struct cyttsp5_device_access_data *dad
-		= cyttsp5_get_device_access_data(dev);
-	int rc;
+	struct cyttsp5_device_access_data *dad = dev_get_drvdata(dev);
+
+	if (!mutex_trylock(&dad->sysfs_lock))
+		return -EBUSY;
+
+	mutex_unlock(&dad->sysfs_lock);
+	return 0;
+}
+
+static int cyttsp5_device_access_resume(struct device *dev)
+{
+	return 0;
+}
+#endif
+
+static const struct dev_pm_ops cyttsp5_device_access_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(cyttsp5_device_access_suspend,
+			cyttsp5_device_access_resume)
+};
+
+static int cyttsp5_setup_sysfs(struct cyttsp5_device *ttsp)
+{
+	struct device *dev = &ttsp->dev;
+	struct cyttsp5_device_access_data *dad = dev_get_drvdata(dev);
+	int rc = 0;
 
 	rc = device_create_file(dev, &dev_attr_command);
 	if (rc) {
@@ -503,78 +516,85 @@ exit:
 	return rc;
 }
 
-static int cyttsp5_setup_sysfs_attention(struct device *dev)
+static int cyttsp5_setup_sysfs_attention(struct cyttsp5_device *ttsp)
 {
-	struct cyttsp5_device_access_data *dad
-		= cyttsp5_get_device_access_data(dev);
+	struct device *dev = &ttsp->dev;
+	struct cyttsp5_device_access_data *dad = dev_get_drvdata(dev);
 	int rc = 0;
 
-	dad->si = cmd->request_sysinfo(dev);
+	dad->si = cyttsp5_request_sysinfo(ttsp);
 	if (!dad->si)
-		return -EINVAL;
+		return -1;
 
-	rc = cyttsp5_setup_sysfs(dev);
+	rc = cyttsp5_setup_sysfs(ttsp);
 
-	cmd->unsubscribe_attention(dev, CY_ATTEN_STARTUP,
-		CY_MODULE_DEVICE_ACCESS, cyttsp5_setup_sysfs_attention,
-		0);
+	cyttsp5_unsubscribe_attention(ttsp, CY_ATTEN_STARTUP,
+		cyttsp5_setup_sysfs_attention, 0);
 
 	return rc;
+
 }
 
-int cyttsp5_device_access_probe(struct device *dev)
+static int cyttsp5_device_access_probe(struct cyttsp5_device *ttsp)
 {
-	struct cyttsp5_core_data *cd = dev_get_drvdata(dev);
+	struct device *dev = &ttsp->dev;
 	struct cyttsp5_device_access_data *dad;
-	int rc;
-
-	cmd = cyttsp5_get_commands();
-	if (!cmd)
-		return -EINVAL;
+	struct cyttsp5_device_access_platform_data *pdata =
+			dev_get_platdata(dev);
+	int rc = 0;
 
 	dad = kzalloc(sizeof(*dad), GFP_KERNEL);
-	if (!dad) {
+	if (dad == NULL) {
 		dev_err(dev, "%s: Error, kzalloc\n", __func__);
 		rc = -ENOMEM;
 		goto cyttsp5_device_access_probe_data_failed;
 	}
 
 	mutex_init(&dad->sysfs_lock);
-	dad->dev = dev;
+	dad->ttsp = ttsp;
+	dad->pdata = pdata;
+	dev_set_drvdata(dev, dad);
 #ifdef TTHE_TUNER_SUPPORT
 	mutex_init(&dad->debugfs_lock);
 	dad->heatmap.num_element = 200;
 #endif
-	cd->cyttsp5_dynamic_data[CY_MODULE_DEVICE_ACCESS] = dad;
+
+	pm_runtime_enable(dev);
+	pm_runtime_get_sync(dev);
 
 	/* get sysinfo */
-	dad->si = cmd->request_sysinfo(dev);
+	dad->si = cyttsp5_request_sysinfo(ttsp);
+	pm_runtime_put(dev);
 	if (dad->si) {
-		rc = cyttsp5_setup_sysfs(dev);
+		rc = cyttsp5_setup_sysfs(ttsp);
 		if (rc)
 			goto cyttsp5_device_access_setup_sysfs_failed;
 	} else {
 		dev_err(dev, "%s: Fail get sysinfo pointer from core p=%p\n",
 				__func__, dad->si);
-		cmd->subscribe_attention(dev, CY_ATTEN_STARTUP,
-			CY_MODULE_DEVICE_ACCESS, cyttsp5_setup_sysfs_attention,
-			0);
+		cyttsp5_subscribe_attention(ttsp, CY_ATTEN_STARTUP,
+			cyttsp5_setup_sysfs_attention, 0);
 	}
 
 	return 0;
 
  cyttsp5_device_access_setup_sysfs_failed:
+	pm_runtime_suspend(dev);
+	pm_runtime_disable(dev);
+	dev_set_drvdata(dev, NULL);
 	kfree(dad);
  cyttsp5_device_access_probe_data_failed:
 	dev_err(dev, "%s failed.\n", __func__);
 	return rc;
 }
-EXPORT_SYMBOL(cyttsp5_device_access_probe);
 
-int cyttsp5_device_access_release(struct device *dev)
+static int cyttsp5_device_access_release(struct cyttsp5_device *ttsp)
 {
-	struct cyttsp5_device_access_data *dad
-		= cyttsp5_get_device_access_data(dev);
+	struct device *dev = &ttsp->dev;
+	struct cyttsp5_device_access_data *dad = dev_get_drvdata(dev);
+
+	pm_runtime_suspend(dev);
+	pm_runtime_disable(dev);
 
 	if (dad->sysfs_nodes_created) {
 		device_remove_file(dev, &dev_attr_command);
@@ -584,12 +604,119 @@ int cyttsp5_device_access_release(struct device *dev)
 		debugfs_remove(dad->tthe_get_panel_data_debugfs);
 #endif
 	} else {
-		cmd->unsubscribe_attention(dev, CY_ATTEN_STARTUP,
-			CY_MODULE_DEVICE_ACCESS, cyttsp5_setup_sysfs_attention,
-			0);
+		cyttsp5_unsubscribe_attention(ttsp, CY_ATTEN_STARTUP,
+			cyttsp5_setup_sysfs_attention, 0);
 	}
 
+	dev_set_drvdata(dev, NULL);
 	kfree(dad);
 	return 0;
 }
-EXPORT_SYMBOL(cyttsp5_device_access_release);
+
+static struct cyttsp5_driver cyttsp5_device_access_driver = {
+	.probe = cyttsp5_device_access_probe,
+	.remove = cyttsp5_device_access_release,
+	.driver = {
+		.name = CYTTSP5_DEVICE_ACCESS_NAME,
+		.bus = &cyttsp5_bus_type,
+		.owner = THIS_MODULE,
+		.pm = &cyttsp5_device_access_pm_ops,
+	},
+};
+
+static struct cyttsp5_device_access_platform_data
+	_cyttsp5_device_access_platform_data = {
+	.device_access_dev_name = CYTTSP5_DEVICE_ACCESS_NAME,
+};
+
+static const char cyttsp5_device_access_name[] = CYTTSP5_DEVICE_ACCESS_NAME;
+static struct cyttsp5_device_info
+	cyttsp5_device_access_infos[CY_MAX_NUM_CORE_DEVS];
+
+static char *core_ids[CY_MAX_NUM_CORE_DEVS] = {
+	CY_DEFAULT_CORE_ID,
+	NULL,
+	NULL,
+	NULL,
+	NULL
+};
+
+static int num_core_ids = 1;
+
+module_param_array(core_ids, charp, &num_core_ids, 0);
+MODULE_PARM_DESC(core_ids,
+	"Core id list of cyttsp5 core devices for device access module");
+
+static int __init cyttsp5_device_access_init(void)
+{
+	int rc = 0;
+	int i, j;
+
+	/* Check for invalid or duplicate core_ids */
+	for (i = 0; i < num_core_ids; i++) {
+		if (!strlen(core_ids[i])) {
+			pr_err("%s: core_id %d is empty\n",
+				__func__, i+1);
+			return -EINVAL;
+		}
+		for (j = i+1; j < num_core_ids; j++)
+			if (!strcmp(core_ids[i], core_ids[j])) {
+				pr_err("%s: core_ids %d and %d are same\n",
+					__func__, i+1, j+1);
+				return -EINVAL;
+			}
+	}
+
+	for (i = 0; i < num_core_ids; i++) {
+		cyttsp5_device_access_infos[i].name =
+			cyttsp5_device_access_name;
+		cyttsp5_device_access_infos[i].core_id = core_ids[i];
+		cyttsp5_device_access_infos[i].platform_data =
+			&_cyttsp5_device_access_platform_data;
+		pr_info("%s: Registering device access device for core_id: %s\n",
+			__func__, cyttsp5_device_access_infos[i].core_id);
+		rc = cyttsp5_register_device(&cyttsp5_device_access_infos[i]);
+		if (rc < 0) {
+			pr_err("%s: Error, failed registering device\n",
+				__func__);
+			goto fail_unregister_devices;
+		}
+	}
+	rc = cyttsp5_register_driver(&cyttsp5_device_access_driver);
+	if (rc) {
+		pr_err("%s: Error, failed registering driver\n", __func__);
+		goto fail_unregister_devices;
+	}
+
+	pr_info("%s: Cypress TTSP Device Access (Built %s) rc=%d\n",
+		 __func__, CY_DRIVER_DATE, rc);
+	return 0;
+
+fail_unregister_devices:
+	for (i--; i <= 0; i--) {
+		cyttsp5_unregister_device(cyttsp5_device_access_infos[i].name,
+			cyttsp5_device_access_infos[i].core_id);
+		pr_info("%s: Unregistering device access device for core_id: %s\n",
+			__func__, cyttsp5_device_access_infos[i].core_id);
+	}
+	return rc;
+}
+module_init(cyttsp5_device_access_init);
+
+static void __exit cyttsp5_device_access_exit(void)
+{
+	int i;
+
+	cyttsp5_unregister_driver(&cyttsp5_device_access_driver);
+	for (i = 0; i < num_core_ids; i++) {
+		cyttsp5_unregister_device(cyttsp5_device_access_infos[i].name,
+			cyttsp5_device_access_infos[i].core_id);
+		pr_info("%s: Unregistering device access device for core_id: %s\n",
+			__func__, cyttsp5_device_access_infos[i].core_id);
+	}
+}
+module_exit(cyttsp5_device_access_exit);
+
+MODULE_LICENSE("GPL");
+MODULE_DESCRIPTION("Cypress TrueTouch(R) Standard Product Device Access Driver");
+MODULE_AUTHOR("Cypress Semiconductor");

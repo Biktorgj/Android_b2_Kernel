@@ -1358,7 +1358,7 @@ static const struct MCDRV_PATH_INFO	stPresetPathInfo[PRESET_PATH_N] = {
 		{{0x00000000} },		/* asHifiOut	*/
 		{{MCDRV_D1SRC_AE1_ON},
 		 {MCDRV_D1SRC_AE1_ON},
-		 {0x00000000}, {0x00000000} },	/* asVboxMixIn	*/
+		 {MCDRV_D1SRC_AE0_ON}, {MCDRV_D1SRC_AE0_ON} },	/* asVboxMixIn	*/
 		{{MCDRV_D1SRC_MUSICIN_ON},
 		 {MCDRV_D1SRC_MUSICIN_ON} },	/* asAe0	*/
 		{{MCDRV_D1SRC_ADIF1_ON},
@@ -1376,7 +1376,7 @@ static const struct MCDRV_PATH_INFO	stPresetPathInfo[PRESET_PATH_N] = {
 		{{0x00000000}, {0x00000000} },	/* asAdif0	*/
 		{{MCDRV_D2SRC_ADC0_L_ON},
 		 {MCDRV_D2SRC_ADC0_R_ON} },	/* asAdif1	*/
-		{{0x00000000}, {0x00000000} },	/* asAdif2	*/
+		{{MCDRV_D2SRC_DAC1REF_ON}, {MCDRV_D2SRC_DAC1REF_ON} },	/* asAdif2	*/
 		{{MCDRV_ASRC_MIC1_ON
 		|MCDRV_ASRC_MIC2_ON
 		|MCDRV_ASRC_MIC3_ON

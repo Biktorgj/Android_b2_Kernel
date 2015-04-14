@@ -1,9 +1,9 @@
 /*
- * Copyright (C) 2010-2012 ARM Limited. All rights reserved.
- * 
+ * Copyright (C) 2011-2012 ARM Limited. All rights reserved.
+ *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
@@ -129,7 +129,10 @@ static mali_physical_memory_allocation_result os_allocator_allocate(void* ctx, m
 		allocation->offset_start = *offset;
 		allocation->num_pages = ((left + _MALI_OSK_CPU_PAGE_SIZE - 1) & ~(_MALI_OSK_CPU_PAGE_SIZE - 1)) >> _MALI_OSK_CPU_PAGE_ORDER;
 		MALI_DEBUG_PRINT(6, ("Allocating page array of size %d bytes\n", allocation->num_pages * sizeof(struct page*)));
-		/* MALI_SEC */
+/* MALI_SEC */
+/*
+while (left > 0 && ((info->num_pages_allocated + pages_allocated) < info->num_pages_max) && _mali_osk_mem_check_allocated(os_mem_max_usage))
+*/
 		while (left > 0)
 		{
 			err = mali_allocation_engine_map_physical(engine, descriptor, *offset, MALI_MEMORY_ALLOCATION_OS_ALLOCATED_PHYSADDR_MAGIC, info->cpu_usage_adjust, _MALI_OSK_CPU_PAGE_SIZE);
@@ -241,7 +244,7 @@ static void os_allocator_release(void * ctx, void * handle)
 
 static mali_physical_memory_allocation_result os_allocator_allocate_page_table_block(void * ctx, mali_page_table_block * block)
 {
-/* MALI_SEC 6->10 */
+/* MALI_SEC  6->10 */
 #ifndef CONFIG_FORCE_MAX_ZONEORDER
 	int allocation_order = 10;
 #else

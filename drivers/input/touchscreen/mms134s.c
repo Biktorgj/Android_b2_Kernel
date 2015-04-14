@@ -121,7 +121,7 @@ int touch_is_pressed;
 
 #define BOOT_VERSION 0x2
 #define CORE_VERSION 0x32
-#define FW_VERSION 0x20
+#define FW_VERSION 0x5
 
 #define MAX_FW_PATH 255
 #define TSP_FW_FILENAME "melfas_fw.bin"
@@ -1868,7 +1868,7 @@ static void get_config_ver(void *device_data)
 
 	set_default_result(info);
 
-	snprintf(buff, sizeof(buff), "T399_Me_0806");
+	snprintf(buff, sizeof(buff), "T399_Me_0528");
 
 	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
 	info->cmd_state = 2;

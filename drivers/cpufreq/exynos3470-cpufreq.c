@@ -20,13 +20,11 @@
 #include <mach/asv-exynos.h>
 #include <mach/regs-clock.h>
 #include <mach/cpufreq.h>
-#include <mach/sec_debug.h>
 
 #define	CPUFREQ_LEVEL_END	(L13 + 1)
 
 int arm_lock;
 static int max_support_idx;
-static int min_support_idx;
 
 static struct clk *cpu_clk;
 static struct clk *moutcore;
@@ -354,23 +352,6 @@ static unsigned int exynos3470_apll_pms_table_rev2[CPUFREQ_LEVEL_END] = {
 
 };
 
-static int exynos3470_bus_table[CPUFREQ_LEVEL_END] = {
-	400000,         /* 1.5GHz */
-	400000,         /* 1.4GHz */
-	267000,         /* 1.3GHz */
-	267000,         /* 1.2GHz */
-	267000,         /* 1.1GHz */
-	267000,         /* 1.0GHz */
-	200000,         /* 900MHz */
-	200000,         /* 800MHz */
-	200000,         /* 700MHz */
-	200000,         /* 600MHz */
-	200000,         /* 500MHz */
-	200000,         /* 400MHz */
-	200000,         /* 300MHz */
-	200000,         /* 200MHz */
-};
-
 static void exynos3470_set_clkdiv(unsigned int div_index)
 {
 	unsigned int tmp;
@@ -441,34 +422,10 @@ bool exynos3470_pms_change(unsigned int old_index, unsigned int new_index)
 	return (old_pm == new_pm) ? 0 : 1;
 }
 
-static void exynos3470_set_ema(unsigned int target_volt)
-{
-	unsigned int tmp;
-
-	if (target_volt > EMA_VOLT) {
-		tmp = __raw_readl(EXYNOS3470_ARM_EMA_CTRL);
-		tmp &= ~((EMA_MASK << EMA_HD_SHIFT) | (EMA_MASK << EMA_SHIFT));
-		tmp |= ((EMA_UP_VALUE << EMA_HD_SHIFT) | (EMA_UP_VALUE << EMA_SHIFT));
-		__raw_writel(tmp, EXYNOS3470_ARM_EMA_CTRL);
-	} else {
-		tmp = __raw_readl(EXYNOS3470_ARM_EMA_CTRL);
-		tmp &= ~((EMA_MASK << EMA_HD_SHIFT) | (EMA_MASK << EMA_SHIFT));
-		tmp |= ((EMA_DOWN_VALUE << EMA_HD_SHIFT) | (EMA_DOWN_VALUE << EMA_SHIFT));
-		__raw_writel(tmp, EXYNOS3470_ARM_EMA_CTRL);
-	}
-}
-
 static void exynos3470_set_frequency(unsigned int old_index,
 				  unsigned int new_index)
 {
 	unsigned int tmp;
-
-#ifdef CONFIG_SEC_DEBUG_AUXILIARY_LOG
-	sec_debug_aux_log(SEC_DEBUG_AUXLOG_CPU_BUS_CLOCK_CHANGE,
-			"old:%7d new:%7d (Freq)",
-			exynos3470_freq_table[old_index].frequency,
-			exynos3470_freq_table[new_index].frequency);
-#endif
 
 	if (old_index > new_index) {
 		if (!exynos3470_pms_change(old_index, new_index)) {
@@ -505,13 +462,6 @@ static void exynos3470_set_frequency(unsigned int old_index,
 	}
 
 	clk_set_rate(fout_apll, exynos3470_freq_table[new_index].frequency*1000);
-
-#ifdef CONFIG_SEC_DEBUG_AUXILIARY_LOG
-	sec_debug_aux_log(SEC_DEBUG_AUXLOG_CPU_CLOCK_SWITCH_CHANGE,
-			"[ARM] %ld [APLL] 0x%08x",
-			exynos3470_freq_table[new_index].frequency,
-			__raw_readl(EXYNOS4_APLL_CON0));
-#endif
 }
 
 static int __init set_volt_table(void)
@@ -521,7 +471,7 @@ static int __init set_volt_table(void)
 	for (i = 0; i < CPUFREQ_LEVEL_END; i++) {
 		exynos3470_volt_table[i] = get_match_volt(ID_ARM, exynos3470_freq_table[i].frequency);
 
-		if (samsung_rev() >= EXYNOS3470_REV_2_0) {
+		if (samsung_rev() == EXYNOS3470_REV_2_0) {
 			if (arm_lock == 4) {
 				if (i >= L8) exynos3470_volt_table[i] = get_match_volt(ID_ARM, exynos3470_freq_table[L8].frequency);
 			} else if (arm_lock == 5) {
@@ -555,29 +505,16 @@ static int __init set_volt_table(void)
 					exynos3470_cpu_asv_abb[i]);
 	}
 
-	if (samsung_rev() >= EXYNOS3470_REV_2_0) {
-		max_support_idx = L1;
-		min_support_idx = L11;
-		exynos3470_freq_table[L12].frequency = CPUFREQ_ENTRY_INVALID;
-		exynos3470_freq_table[L13].frequency = CPUFREQ_ENTRY_INVALID;
-		exynos3470_freq_table[L0].frequency = CPUFREQ_ENTRY_INVALID;
-	} else {
-		max_support_idx = L0;
-		min_support_idx = L10;
-		exynos3470_freq_table[L11].frequency = CPUFREQ_ENTRY_INVALID;
-		exynos3470_freq_table[L12].frequency = CPUFREQ_ENTRY_INVALID;
-	}
-
 	return 0;
 }
 
-int __init exynos3470_cpufreq_init(struct exynos_dvfs_info *info)
+int exynos3470_cpufreq_init(struct exynos_dvfs_info *info)
 {
 	int i;
 	unsigned int tmp;
 	unsigned long rate;
 
-	if (samsung_rev() >= EXYNOS3470_REV_2_0) {
+	if (samsung_rev() == EXYNOS3470_REV_2_0) {
 		exynos3470_freq_table = exynos3470_freq_table_rev2;
 		clkdiv_cpu0_3470 = clkdiv_cpu0_3470_rev2;
 		clkdiv_cpu1_3470 = clkdiv_cpu1_3470_rev2;
@@ -642,37 +579,31 @@ int __init exynos3470_cpufreq_init(struct exynos_dvfs_info *info)
 		exynos3470_clkdiv_table[i].clkdiv1 = tmp;
 	}
 
-	if (samsung_rev() >=  EXYNOS3470_REV_2_0) {
-		info->mpll_freq_khz = rate;
-		info->pm_lock_idx = L7;
-		info->pll_safe_idx = L7;
-		info->max_support_idx = max_support_idx;
-		info->min_support_idx = min_support_idx;
-		info->cpu_clk = cpu_clk;
-		info->volt_table = exynos3470_volt_table;
-		info->abb_table = exynos3470_cpu_asv_abb;
-		info->freq_table = exynos3470_freq_table;
-		info->set_freq = exynos3470_set_frequency;
-		info->need_apll_change = exynos3470_pms_change;
-		info->set_ema = exynos3470_set_ema;
-                info->bus_table = exynos3470_bus_table;
-		info->boot_cpu_min_qos = exynos3470_freq_table[max_support_idx].frequency;
-		info->boot_cpu_max_qos = exynos3470_freq_table[max_support_idx].frequency;
-	} else {
+	if (samsung_rev() <  EXYNOS3470_REV_2_0) {
 		info->mpll_freq_khz = rate;
 		info->pm_lock_idx = L6;
 		info->pll_safe_idx = L6;
 		info->max_support_idx = max_support_idx;
-		info->min_support_idx = min_support_idx;
+		info->min_support_idx = L10;
 		info->cpu_clk = cpu_clk;
 		info->volt_table = exynos3470_volt_table;
 		info->abb_table = exynos3470_cpu_asv_abb;
 		info->freq_table = exynos3470_freq_table;
 		info->set_freq = exynos3470_set_frequency;
 		info->need_apll_change = exynos3470_pms_change;
-		info->bus_table = exynos3470_bus_table;
+	} else {
+		info->mpll_freq_khz = rate;
+		info->pm_lock_idx = L7;
+		info->pll_safe_idx = L7;
+		info->max_support_idx = max_support_idx;
+		info->min_support_idx = L11;
+		info->cpu_clk = cpu_clk;
+		info->volt_table = exynos3470_volt_table;
+		info->abb_table = exynos3470_cpu_asv_abb;
+		info->freq_table = exynos3470_freq_table;
+		info->set_freq = exynos3470_set_frequency;
+		info->need_apll_change = exynos3470_pms_change;
 	}
-
 return 0;
 
 err_mout_apll:

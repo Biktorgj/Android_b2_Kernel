@@ -194,7 +194,6 @@ extern void dw_mci_remove(struct dw_mci *host);
 #ifdef CONFIG_PM
 extern int dw_mci_suspend(struct dw_mci *host);
 extern int dw_mci_resume(struct dw_mci *host);
-extern void dw_mci_shutdown(struct dw_mci *host);
 #endif
 
 #endif /* _DW_MMC_H_ */

@@ -36,7 +36,7 @@ module_param(debug, int, 0644);
 MODULE_PARM_DESC(debug, "Debug level (0-1)");
 
 #define MODULE_NAME			"s5p-mipi-csis"
-#if defined(CONFIG_VIDEO_S5K4ECGX) || defined(CONFIG_VIDEO_SR300PC30) || defined(CONFIG_VIDEO_SR130PC20)
+#if defined(CONFIG_VIDEO_S5K4ECGX)
 #define DEFAULT_CSIS_SINK_WIDTH		640
 #define DEFAULT_CSIS_SINK_HEIGHT	480
 #else
@@ -171,9 +171,6 @@ struct csis_state {
 	struct v4l2_mbus_framefmt format;
 	enum csis_input_entity		input;
 	enum csis_output_entity		output;
-#ifdef CONFIG_VIDEO_EXYNOS_MIPI_CSIS_IRQ_DEBUG
-	int error_irq_cnt;
-#endif
 };
 
 /**
@@ -389,10 +386,6 @@ static void s5pcsis_start_stream(struct csis_state *state)
 	s5pcsis_reset(state);
 	s5pcsis_set_params(state);
 	s5pcsis_system_enable(state, true);
-
-#ifdef CONFIG_VIDEO_EXYNOS_MIPI_CSIS_IRQ_DEBUG
-	state->error_irq_cnt = 0;
-#endif
 	s5pcsis_enable_interrupts(state, true);
 }
 
@@ -627,18 +620,7 @@ static irqreturn_t s5pcsis_irq_handler(int irq, void *dev_id)
 	val = s5pcsis_read(state, S5PCSIS_INTSRC);
 	s5pcsis_write(state, S5PCSIS_INTSRC, val);
 
-#ifdef CONFIG_VIDEO_EXYNOS_MIPI_CSIS_IRQ_DEBUG
-	if (state->error_irq_cnt < 100) {
-		if ((state->error_irq_cnt < 20) || !(state->error_irq_cnt % 10)) {
-			v4l2_info(&state->sd, "%s : error : [%d] 0x%x\n", 
-				__func__, state->error_irq_cnt, val);
-		}
-		
-		state->error_irq_cnt++;
-	}
-#else
 	v4l2_info(&state->sd, "%s : error : 0x%x\n", __func__, val);
-#endif
 
 	return IRQ_HANDLED;
 }

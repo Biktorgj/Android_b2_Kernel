@@ -17,7 +17,7 @@
 #include <mach/setup-disp-clock.h>
 
 #ifdef CONFIG_SOC_EXYNOS5260
-int s3c_fb_clock_init(void)
+int s3c_fb_clock_reinit(void)
 {
 	struct clk *mout_mediatop_bpll, *mout_cpll;
 	struct clk *aclk_disp_333, *aclk_disp_222;
@@ -117,7 +117,7 @@ int s3c_fb_clock_init(void)
 	return 0;
 }
 
-int mipi_dsi_clock_init(void)
+int mipi_dsi_clock_reinit(void)
 {
 	struct clk *phyclk_dsim1_rxclkesc0, *phyclk_mipi_rxclkesc0;
 	struct clk *sclk_mipi_txclkescclk, *sclk_dsim1_txclkescclk;
@@ -222,7 +222,7 @@ int mipi_dsi_clock_init(void)
 	return 0;
 }
 
-int s5p_dp_clock_init(void)
+int s5p_dp_clock_reinit(void)
 {
 	struct clk *phyclk_dptx_clk_div2, *phyclk_dptx_phy_div2;
 	struct clk *phyclk_dptx_ch0, *phyclk_dptx_phy_ch0;
@@ -314,17 +314,17 @@ int s5p_dp_clock_init(void)
 	return 0;
 }
 #else
-int s3c_fb_clock_init(void)
+int s3c_fb_clock_reinit(void)
 {
 	return 0;
 }
 
-int mipi_dsi_clock_init(void)
+int mipi_dsi_clock_reinit(void)
 {
 	return 0;
 }
 
-int s5p_dp_clock_init(void)
+int s5p_dp_clock_reinit(void)
 {
 	return 0;
 }

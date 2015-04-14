@@ -97,6 +97,49 @@ void s5p_mfc_mem_cleanup_multi(void **alloc_ctxes, unsigned int ctx_num)
 
 	kfree(alloc_ctxes);
 }
+#elif defined(CONFIG_VIDEOBUF2_DMA_CMA)
+struct vb2_mem_ops *s5p_mfc_mem_ops(void)
+{
+	return (struct vb2_mem_ops *)&vb2_dma_contig_memops;
+}
+
+void **s5p_mfc_mem_init_multi(struct device *dev, unsigned int ctx_num)
+{
+	void **alloc_ctxes;
+	unsigned int i;
+
+	/* MFCv5 uses 2 alloc ctxes, otherwise 1 alloc ctx is used */
+	alloc_ctxes = kzalloc((sizeof *alloc_ctxes) * (ctx_num - 1),
+					GFP_KERNEL);
+	if (!alloc_ctxes)
+		return NULL;
+
+	for (i = 0; i < ctx_num - 1; i++) {
+		alloc_ctxes[i] = vb2_dma_contig_init_ctx(dev);
+		if (IS_ERR(alloc_ctxes[i]))
+			break;
+	}
+
+	if (i < ctx_num - 1) {
+		while (i-- > 0)
+			vb2_dma_contig_cleanup_ctx(alloc_ctxes[i]);
+
+		kfree(alloc_ctxes);
+		alloc_ctxes = NULL;
+	}
+
+	return alloc_ctxes;
+}
+
+void s5p_mfc_mem_cleanup_multi(void **alloc_ctxes, unsigned int ctx_num)
+{
+	/* 2 alloc ctxes are needed */
+	--ctx_num;
+	while (ctx_num-- > 0)
+			vb2_dma_contig_cleanup_ctx(alloc_ctxes[ctx_num]);
+
+	kfree(alloc_ctxes);
+}
 #endif
 
 #if defined(CONFIG_VIDEOBUF2_CMA_PHYS)
@@ -175,6 +218,18 @@ void s5p_mfc_mem_set_cacheable(void *alloc_ctx, bool cacheable)
 	vb2_ion_set_cached(alloc_ctx, cacheable);
 }
 
+void s5p_mfc_mem_clean_priv(void *vb_priv, void *start, off_t offset,
+							size_t size)
+{
+	vb2_ion_sync_for_device(vb_priv, offset, size, DMA_TO_DEVICE);
+}
+
+void s5p_mfc_mem_inv_priv(void *vb_priv, void *start, off_t offset,
+							size_t size)
+{
+	vb2_ion_sync_for_device(vb_priv, offset, size, DMA_FROM_DEVICE);
+}
+
 int s5p_mfc_mem_clean_vb(struct vb2_buffer *vb, u32 num_planes)
 {
 	struct vb2_ion_cookie *cookie;
@@ -241,5 +296,45 @@ void s5p_mfc_mem_suspend(void *alloc_ctx)
 int s5p_mfc_mem_resume(void *alloc_ctx)
 {
 	return vb2_ion_attach_iommu(alloc_ctx);
+}
+
+#elif defined(CONFIG_VIDEOBUF2_DMA_CMA)
+void s5p_mfc_mem_suspend(void *alloc_ctx)
+{
+	/* NOP */
+}
+
+int s5p_mfc_mem_resume(void *alloc_ctx)
+{
+	/* NOP */
+	return 0;
+}
+
+void s5p_mfc_mem_set_cacheable(void *alloc_ctx, bool cacheable)
+{
+	/* NOP */
+}
+
+void s5p_mfc_mem_get_cacheable(void *alloc_ctx)
+{
+	/* NOP */
+}
+
+int s5p_mfc_mem_cache_flush(struct vb2_buffer *vb, u32 plane_no)
+{
+	/* NOP */
+	return 0;
+}
+
+int s5p_mfc_mem_inv_vb(struct vb2_buffer *vb, u32 num_planes)
+{
+	/* NOP */
+	return 0;
+}
+
+int s5p_mfc_mem_clean_vb(struct vb2_buffer *vb, u32 num_planes)
+{
+	/* NOP */
+	return 0;
 }
 #endif

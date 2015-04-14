@@ -1,9 +1,9 @@
 /*
- * Copyright (C) 2010-2012 ARM Limited. All rights reserved.
- * 
+ * Copyright (C) 2011-2012 ARM Limited. All rights reserved.
+ *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
@@ -58,6 +58,9 @@ struct _mali_osk_lock_t_struct
 				  /* id of the thread currently holding this lock, 0 if no
 				   * threads hold it. */
 				  u32 owner;
+				  /* number of owners this lock currently has (can be > 1 if
+				   * taken in R/O mode. */
+				  u32 nOwners;
 				  /* what mode the lock was taken in */
 				  _mali_osk_lock_mode_t mode;
 	); /* MALI_DEBUG_CODE */
@@ -131,6 +134,7 @@ _mali_osk_lock_t *_mali_osk_lock_init( _mali_osk_lock_flags_t flags, u32 initial
 
 	/* Debug tracking of lock owner */
 	lock->owner = 0;
+	lock->nOwners = 0;
 #endif /* DEBUG */
 
     return lock;
@@ -140,6 +144,11 @@ _mali_osk_lock_t *_mali_osk_lock_init( _mali_osk_lock_flags_t flags, u32 initial
 u32 _mali_osk_lock_get_owner( _mali_osk_lock_t *lock )
 {
 	return lock->owner;
+}
+
+u32 _mali_osk_lock_get_number_owners( _mali_osk_lock_t *lock )
+{
+	return lock->nOwners;
 }
 
 u32 _mali_osk_lock_get_mode( _mali_osk_lock_t *lock )
@@ -213,6 +222,7 @@ _mali_osk_errcode_t _mali_osk_lock_wait( _mali_osk_lock_t *lock, _mali_osk_lock_
 	{
 		if (mode == _MALI_OSK_LOCKMODE_RW)
 		{
+			/*MALI_DEBUG_ASSERT(0 == lock->owner);*/
 			if (0 != lock->owner)
 			{
 				printk(KERN_ERR "%d: ERROR: Lock %p already has owner %d\n", _mali_osk_get_tid(), lock, lock->owner);
@@ -220,10 +230,13 @@ _mali_osk_errcode_t _mali_osk_lock_wait( _mali_osk_lock_t *lock, _mali_osk_lock_
 			}
 			lock->owner = _mali_osk_get_tid();
 			lock->mode = mode;
+			++lock->nOwners;
 		}
 		else /* mode == _MALI_OSK_LOCKMODE_RO */
 		{
+			lock->owner |= _mali_osk_get_tid();
 			lock->mode = mode;
+			++lock->nOwners;
 		}
 	}
 #endif
@@ -249,6 +262,7 @@ void _mali_osk_lock_signal( _mali_osk_lock_t *lock, _mali_osk_lock_mode_t mode )
 	/* make sure the thread releasing the lock actually was the owner */
 	if (mode == _MALI_OSK_LOCKMODE_RW)
 	{
+		/*MALI_DEBUG_ASSERT(_mali_osk_get_tid() == lock->owner);*/
 		if (_mali_osk_get_tid() != lock->owner)
 		{
 			printk(KERN_ERR "%d: ERROR: Lock %p owner was %d\n", _mali_osk_get_tid(), lock, lock->owner);
@@ -256,7 +270,23 @@ void _mali_osk_lock_signal( _mali_osk_lock_t *lock, _mali_osk_lock_mode_t mode )
 		}
 		/* This lock now has no owner */
 		lock->owner = 0;
-	} /* else if (mode == _MALI_OSK_LOCKMODE_RO) Nothing to check */
+		--lock->nOwners;
+	}
+	else /* mode == _MALI_OSK_LOCKMODE_RO */
+	{
+		if ((_mali_osk_get_tid() & lock->owner) != _mali_osk_get_tid())
+		{
+			printk(KERN_ERR "%d: ERROR: Not an owner of %p lock.\n", _mali_osk_get_tid(), lock);
+			dump_stack();
+		}
+
+		/* if this is the last thread holding this lock in R/O mode, set owner
+		 * back to 0 */
+		if (0 == --lock->nOwners)
+		{
+			lock->owner = 0;
+		}
+	}
 #endif /* DEBUG */
 
 	switch ( lock->type )

@@ -41,13 +41,6 @@
 #include <mach/pm-core.h>
 #include <mach/pmu.h>
 #include <mach/smc.h>
-#ifdef CONFIG_SEC_PM
-#include <mach/gpio-exynos.h>
-#endif
-
-#ifdef CONFIG_SEC_GPIO_DVS
-#include <linux/secgpio_dvs.h>
-#endif
 
 #ifdef CONFIG_ARM_TRUSTZONE
 #define REG_INFORM0            (S5P_VA_SYSRAM_NS + 0x8)
@@ -173,9 +166,7 @@ static int exynos_cpu_suspend(unsigned long arg)
 {
 	unsigned int tmp;
 	unsigned int i;
-#if 0
 	int loops;
-#endif
 
 	if (soc_is_exynos3470()) {
 		/* Set clock source for PWI */
@@ -208,7 +199,6 @@ static int exynos_cpu_suspend(unsigned long arg)
 	for (i = 0; i < ARRAY_SIZE(exynos3470_rgton_before); i++)
 		pr_info("0x%08x : 0x%08x", (unsigned int)exynos3470_rgton_before[i].reg, __raw_readl(exynos3470_rgton_before[i].reg));
 
-#if 0
 	/* For W/A code for prevent A7hotplug in fail */
 	if (soc_is_exynos3470()) {
 		exynos_smc(SMC_CMD_REG, SMC_REG_ID_SFR_W(0x02020004), 0, 0);
@@ -233,7 +223,6 @@ static int exynos_cpu_suspend(unsigned long arg)
 			} while ((tmp & 0x3) != 0x3);
 		}
 	}
-#endif
 #ifdef CONFIG_ARM_TRUSTZONE
 	exynos_smc(SMC_CMD_SLEEP, 0, 0, 0);
 #else
@@ -245,33 +234,9 @@ static int exynos_cpu_suspend(unsigned long arg)
 	return 1; /* abort suspend */
 }
 
-
-void (*exynos_config_sleep_gpio)(void);
-
 static void exynos_pm_prepare(void)
 {
 	unsigned int tmp;
-
-        if (exynos_config_sleep_gpio)
-                exynos_config_sleep_gpio();
-
-#ifdef CONFIG_SEC_GPIO_DVS
-	/************************ Caution !!! ****************************/
-	/* This function must be located in appropriate SLEEP position
-	 * in accordance with the specification of each BB vendor.
-	 */
-	/************************ Caution !!! ****************************/
-	gpio_dvs_check_sleepgpio();
-#ifdef SECGPIO_SLEEP_DEBUGGING
-	/************************ Caution !!! ****************************/
-	/* This func. must be located in an appropriate position for GPIO SLEEP debugging
-     * in accordance with the specification of each BB vendor, and
-     * the func. must be called after calling the function "gpio_dvs_check_sleepgpio"
-     */
-	/************************ Caution !!! ****************************/
-	gpio_dvs_set_sleepgpio();
-#endif
-#endif
 
 	if (soc_is_exynos5250()) {
 		/* Decides whether to use retention capability */

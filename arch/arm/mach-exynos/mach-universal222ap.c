@@ -18,9 +18,8 @@
 #include <linux/gpio.h>
 #include <plat/gpio-cfg.h>
 #include <linux/delay.h>
-#ifdef CONFIG_EXYNOS_DEV_SHARED_MEMORY
-#include <mach/shdmem.h>
-#endif
+#include <linux/platform_data/modemif.h>
+
 #include <asm/mach/arch.h>
 #include <asm/hardware/gic.h>
 #include <asm/mach-types.h>
@@ -39,34 +38,8 @@
 #include <mach/gpio.h>
 #include <mach/regs-pmu.h>
 
-
 #include "common.h"
 #include "board-universal222ap.h"
-#if defined(CONFIG_MACH_KMINI)
-#include "board-kmini.h"
-#include "board-kmini-wlan.h"
-#endif
-
-#ifdef CONFIG_SEC_DEBUG
-#include <mach/sec_debug.h>
-#endif
-#ifdef CONFIG_DC_MOTOR
-#include <linux/regulator/consumer.h>
-#include <linux/dc_motor.h>
-#endif
-
-#include <mach/board-bluetooth-bcm.h>
-#if defined(CONFIG_MACH_GARDA)
-#include "board-garda.h"
-#include "board-garda-wlan.h"
-#elif defined(CONFIG_MACH_DEGAS)
-#include "board-degas.h"
-#include "board-degas-wlan.h"
-#endif
-
-#ifdef CONFIG_SEC_GPIO_DVS
-#include <linux/secgpio_dvs.h>
-#endif
 
 static struct platform_device ramconsole_device = {
 	.name	= "ram_console",
@@ -94,9 +67,6 @@ static struct s3c2410_uartcfg smdk4270_uartcfgs[] __initdata = {
 		.ucon		= SMDK4270_UCON_DEFAULT,
 		.ulcon		= SMDK4270_ULCON_DEFAULT,
 		.ufcon		= SMDK4270_UFCON_DEFAULT,
-#if defined(CONFIG_BT_BCM4334) || defined(CONFIG_BT_BCM4335)
-		.wake_peer	= bcm_bt_lpm_exit_lpm_locked,
-#endif
 	},
 	[1] = {
 		.hwport		= 1,
@@ -127,112 +97,6 @@ static struct s3c_watchdog_platdata smdk4270_watchdog_platform_data = {
 	PMU_WDT_RESET_TYPE0,
 };
 
-#ifdef CONFIG_DC_MOTOR
-#if defined(CONFIG_MACH_DEGAS)
-static void dc_motor_power_gpio(bool on)
-{
-	gpio_direction_output(GPIO_MOTOR_EN, on);
-}
-#elif defined(CONFIG_MACH_KMINI)
-extern unsigned int system_rev;
-int vibrator_on;
-static void dc_motor_power_regulator(bool on)
-{
-	struct regulator *regulator;
-	regulator = regulator_get(NULL, "vdd_mot_3v0");
-
-	if (on) {
-		vibrator_on = 1;
-		regulator_enable(regulator);
-	} else {
-		if (regulator_is_enabled(regulator))
-			regulator_disable(regulator);
-		else
-			regulator_force_disable(regulator);
-		if (vibrator_on == 1)
-			msleep(120);
-		vibrator_on = 0;
-	}
-	regulator_put(regulator);
-}
-
-static void dc_motor_power_gpio(bool on)
-{
-	gpio_direction_output(GPIO_MOTOR_EN, on);
-}
-#else
-int vibrator_on;
-static void dc_motor_power_regulator(bool on)
-{
-	struct regulator *regulator;
-	regulator = regulator_get(NULL, "vdd_motor_3v0");
-
-	if (on) {
-		vibrator_on = 1;
-		regulator_enable(regulator);
-	} else {
-		if (regulator_is_enabled(regulator))
-			regulator_disable(regulator);
-		else
-			regulator_force_disable(regulator);
-		if (vibrator_on == 1)
-			msleep(120);
-		vibrator_on = 0;
-	}
-	regulator_put(regulator);
-}
-#endif
-
-static struct dc_motor_platform_data dc_motor_pdata = {
-#if defined(CONFIG_MACH_KMINI) || defined(CONFIG_MACH_DEGAS)
-	.power = dc_motor_power_gpio,
-#else
-	.power = dc_motor_power_regulator,
-#endif
-	.max_timeout = 10000,
-};
-
-static struct platform_device dc_motor_device = {
-	.name = "sec-vibrator",
-	.id = -1,
-	.dev = {
-		.platform_data = &dc_motor_pdata,
-	},
-};
-
-#if defined(CONFIG_MACH_DEGAS)
-void __init dc_motor_init(void)
-{
-	int ret;
-	int gpio;
-
-	gpio = GPIO_MOTOR_EN;
-
-	ret = gpio_request(gpio, "MOTOR_EN");
-	if (ret)
-		pr_err("failed to request gpio(MOTOR_EN)(%d)\n", ret);
-	gpio_direction_output(GPIO_MOTOR_EN, 0);
-}
-#elif defined(CONFIG_MACH_KMINI)
-void __init dc_motor_init(void)
-{
-	int ret;
-	int gpio;
-
-	if (system_rev == 1) {
-		dc_motor_pdata.power = dc_motor_power_regulator;
-	} else {
-		gpio = GPIO_MOTOR_EN;
-
-		ret = gpio_request(gpio, "MOTOR_EN");
-		if (ret)
-			pr_err("failed to request gpio(MOTOR_EN)(%d)\n", ret);
-		gpio_direction_output(GPIO_MOTOR_EN, 0);
-	}
-}
-#endif
-#endif
-
 #ifdef CONFIG_S3C_ADC
 /* ADC */
 static struct s3c_adc_platdata smdk4270_adc_data __initdata = {
@@ -241,39 +105,8 @@ static struct s3c_adc_platdata smdk4270_adc_data __initdata = {
 };
 #endif
 
-/*rfkill device registeration*/
-#ifdef CONFIG_BT_BCM4334
-static struct platform_device bcm4334_bluetooth_device = {
-	.name = "bcm4334_bluetooth",
-	.id = -1,
-};
-#else
-#ifdef CONFIG_BT_BCM4335
-static struct platform_device bcm4335_bluetooth_device = {
-	.name = "bcm4335_bluetooth",
-	.id = -1,
-};
-#endif
-#endif
-
-#ifdef CONFIG_EXYNOS_PERSISTENT_CLOCK
-static struct resource persistent_clock_resource[] = {
-	[0] = DEFINE_RES_MEM(S3C_PA_RTC, SZ_256),
-};
-
-static struct platform_device persistent_clock = {
-	.name           = "persistent_clock",
-	.id             = -1,
-	.num_resources	= ARRAY_SIZE(persistent_clock_resource),
-	.resource	= persistent_clock_resource,
-};
-#endif /*CONFIG_EXYNOS_PERSISTENT_CLOCK*/
-
 static struct platform_device *smdk4270_devices[] __initdata = {
 	&ramconsole_device,
-#ifdef CONFIG_EXYNOS_PERSISTENT_CLOCK
-	&persistent_clock,
-#endif
 	&s3c_device_wdt,
 #ifdef CONFIG_S3C_ADC
 	&s3c_device_adc,
@@ -281,18 +114,8 @@ static struct platform_device *smdk4270_devices[] __initdata = {
 #ifdef CONFIG_S5P_DEV_ACE
 	&s5p_device_sss,
 #endif
-#ifdef CONFIG_DC_MOTOR
-	&dc_motor_device,
-#endif
 #ifdef CONFIG_MALI400
 	&exynos4_device_g3d,
-#endif
-#ifdef CONFIG_BT_BCM4334
-	&bcm4334_bluetooth_device,
-#else
-#ifdef CONFIG_BT_BCM4335
-    &bcm4335_bluetooth_device,
-#endif
 #endif
 };
 
@@ -316,11 +139,7 @@ static struct notifier_block exynos4_reboot_notifier = {
 
 #if defined(CONFIG_CMA)
 #include "reserve-mem.h"
-#if (CONFIG_EXYNOS_MEM_BASE == 0x80000000)
-#define SHDMEM_BASE 0xA0000000
-#else
 #define SHDMEM_BASE 0x60000000
-#endif
 void __init universal222_cma_region_reserve(struct cma_region *regions,
 					const char *map, phys_addr_t paddr,
 					phys_addr_t max_addr)
@@ -387,25 +206,20 @@ __attribute__ ((unused))
 phys_addr_t __init universal222_cma_secure_region_reserve(struct cma_region *regions_secure,
 						const char *map, dma_addr_t alignment)
 {
-	size_t size_req = 0;
-	size_t size_secure;
+	size_t size_secure = 0;
 	struct cma_region *reg_sec;
 	phys_addr_t paddr_start, paddr_last;
 	int ret;
-	unsigned int order;
 
 	for (reg_sec = regions_secure; reg_sec && reg_sec->size; reg_sec++) {
 		reg_sec->size = PAGE_ALIGN(reg_sec->size);
-		size_req += reg_sec->size;
+		size_secure += reg_sec->size;
 	}
 
 	reg_sec--;
 
-	order = get_order(size_req);
-	alignment = 1 << (order + PAGE_SHIFT);
-	size_secure = ALIGN(size_req, alignment / 8);
 	if (size_secure) {
-		paddr_last = __memblock_alloc_base(size_secure, alignment,
+		paddr_last = __memblock_alloc_base(reg_sec->size, alignment,
 						MEMBLOCK_ALLOC_ANYWHERE);
 		if (paddr_last == 0) {
 			pr_err("CMA: Failed to reserve secure region\n");
@@ -413,17 +227,9 @@ phys_addr_t __init universal222_cma_secure_region_reserve(struct cma_region *reg
 		} else {
 			paddr_start = paddr_last;
 		}
-		pr_info("CMA: memblock allocated %#zx@%#x#%#x\n",
-			size_secure, paddr_start, alignment);
 	} else {
 		pr_err("No secure region is required");
 		return 0;
-	}
-
-	if ((size_secure - size_req) > 0) {
-		regions_secure->size += size_secure - size_req;
-		pr_info("CMA: augmenting size of '%s' to %#zx\n",
-					regions_secure->name, regions_secure->size);
 	}
 
 	do {
@@ -438,18 +244,14 @@ phys_addr_t __init universal222_cma_secure_region_reserve(struct cma_region *reg
 	} while (reg_sec-- != regions_secure);
 
 	memblock_free(paddr_last, alignment - size_secure);
-	pr_info("CMA: returned %#zx@%#x to memblock\n",
-				alignment - size_secure, paddr_last);
 
 	return paddr_start;
 }
 
 static void __init exynos_reserve_mem(void)
 {
-#ifdef CONFIG_EXYNOS_DEV_SHARED_MEMORY
 	size_t reserve_size = shm_get_phys_size();
 	phys_addr_t reserve_base = shm_get_phys_base();
-#endif
 	phys_addr_t reg_start;
 
 	static struct cma_region regions[] = {
@@ -460,13 +262,12 @@ static void __init exynos_reserve_mem(void)
 			.size = CONFIG_ION_EXYNOS_CONTIGHEAP_SIZE * SZ_1K,
 		},
 #endif
-#ifndef CONFIG_EXYNOS_HW_DRM
+#ifndef CONFIG_MACH_KMINI
 #if defined(CONFIG_ION_EXYNOS_MFC_WFD_SIZE) \
 		&& CONFIG_ION_EXYNOS_MFC_WFD_SIZE
 		{
 			.name = "wfd_mfc",
-			.size = CONFIG_ION_EXYNOS_MFC_WFD_SIZE * SZ_1K +
-                    SZ_8K,
+			.size = CONFIG_ION_EXYNOS_MFC_WFD_SIZE * SZ_1K,
 		},
 #endif
 #else
@@ -490,7 +291,7 @@ static void __init exynos_reserve_mem(void)
 		},
 	};
 
-#if defined(CONFIG_EXYNOS_HW_DRM)
+#if defined(CONFIG_MACH_KMINI)
 	static struct cma_region regions_secure[] = {
 #if defined(CONFIG_ION_EXYNOS_DRM_VIDEO) \
 	&& CONFIG_ION_EXYNOS_DRM_VIDEO
@@ -533,51 +334,39 @@ static void __init exynos_reserve_mem(void)
 			}
 		},
 #endif
-#ifdef CONFIG_ION_EXYNOS_MEMSIZE_SECDMA
-		{
-			.name = "drm_secdma",
-			.size = CONFIG_ION_EXYNOS_MEMSIZE_SECDMA * SZ_1K,
-			{
-				.alignment = SZ_1M,
-			}
-		},
-#endif
 		{
 			.size = 0
 		},
 	};
-#endif /* CONFIG_EXYNOS_HW_DRM */
+#endif /* CONFIG_MACH_KMINIi */
 	static const char map[] __initconst =
-#ifdef CONFIG_EXYNOS_HW_DRM
+#ifdef CONFIG_MACH_KMINI
 		"ion-exynos/mfc_sh=drm_mfc_sh;"
 		"ion-exynos/g2d_wfd=drm_g2d_wfd;"
 		"ion-exynos/video=drm_video;"
 		"ion-exynos/mfc_input=drm_mfc_input;"
 		"ion-exynos/mfc_fw=drm_mfc_fw;"
 		"ion-exynos/sectbl=drm_sectbl;"
-		"ion-exynos/secdma=drm_secdma;"
 		"s5p-smem/mfc_sh=drm_mfc_sh;"
 		"s5p-smem/g2d_wfd=drm_g2d_wfd;"
 		"s5p-smem/video=drm_video;"
 		"s5p-smem/mfc_input=drm_mfc_input;"
 		"s5p-smem/mfc_fw=drm_mfc_fw;"
 		"s5p-smem/sectbl=drm_sectbl;"
-		"s5p-smem/secdma=drm_secdma;"
 #else
 		"ion-exynos/mfc_sh=drm_mfc_sh;"
 		"ion-exynos/wfd_mfc=wfd_mfc;"
+		"s5p-smem/mfc_sh=drm_mfc_sh;"
 #endif
 		"ion-exynos=ion;"
 		"ion-exynos=cp_shdmem;";
 
-#ifdef CONFIG_EXYNOS_DEV_SHARED_MEMORY
 	if (memblock_is_region_reserved(reserve_base, reserve_size) ||
 			memblock_reserve(reserve_base, reserve_size))
 		pr_err("Failed to reserve %#x@%#x\n", reserve_size,
 			reserve_base);
-#endif
 
-#if defined(CONFIG_EXYNOS_HW_DRM)
+#if defined(CONFIG_MACH_KMINI)
 	reg_start = universal222_cma_secure_region_reserve(regions_secure, map, SZ_128M);
 #else
 	reg_start = reserve_base + reserve_size;
@@ -599,9 +388,6 @@ static void __init smdk4270_map_io(void)
 	exynos_init_io(NULL, 0);
 	s3c24xx_init_clocks(clk_xusbxti.rate);
 	s3c24xx_init_uarts(smdk4270_uartcfgs, ARRAY_SIZE(smdk4270_uartcfgs));
-#ifdef CONFIG_SEC_DEBUG
-	sec_debug_init();
-#endif
 }
 
 static struct persistent_ram_descriptor smdk3470_prd[] __initdata = {
@@ -630,9 +416,6 @@ static struct persistent_ram smdk3470_pr __initdata = {
 
 static void __init smdk3470_init_early(void)
 {
-#ifdef CONFIG_SEC_DEBUG
-	sec_debug_magic_init();
-#endif
         persistent_ram_early_init(&smdk3470_pr);
 }
 
@@ -656,65 +439,27 @@ static void __init universal222ap_machine_init(void)
 
 	pm_power_off = exynos4270_power_off;
 
-	exynos4_smdk4270_power_init();
-	exynos4_smdk4270_mmc0_init();
-#if defined(CONFIG_MACH_KMINI) || defined(CONFIG_MACH_GARDA) ||\
-	defined(CONFIG_MACH_DEGAS)
-	brcm_wlan_init();
-#else
-	exynos4_smdk4270_mmc1_init();
-#endif
-	exynos4_smdk4270_mmc2_init();
-	exynos4_smdk4270_usb_init();
-	exynos4_smdk4270_media_init();
-	exynos4_smdk4270_audio_init();
-#if defined(CONFIG_BATTERY_SAMSUNG)
-	exynos4_smdk4270_charger_init();
-#endif
-#if defined(CONFIG_MACH_KMINI)
-	exynos4_smdk4270_mfd_init();
-#endif
-#if defined(CONFIG_SEC_THERMISTOR)
-        board_sec_thermistor_init();
-#endif
-	board_universal_ss222ap_init_gpio();
-#if defined(CONFIG_SAMSUNG_MUIC)
-	exynos4_smdk4270_muic_init();
-#endif
 	exynos4_universal222ap_clock_init();
+	exynos4_smdk4270_mmc0_init();
+	exynos4_smdk4270_mmc1_init();
+	exynos4_smdk4270_mmc2_init();
+	exynos4_smdk4270_modemif_init();
+	exynos4_smdk4270_modem_init();
+	exynos4_smdk4270_power_init();
+	exynos4_smdk4270_usb_init();
+	board_universal_ss222ap_init_gpio();
+	exynos4_smdk4270_muic_init();
 	exynos4_smdk4270_display_init();
 	exynos4_smdk4270_input_init();
+	exynos4_smdk4270_media_init();
+	exynos4_smdk4270_audio_init();
+	exynos4_smdk4270_mfd_init();
 	exynos4_universal222ap_camera_init();
-	board_universal_ss222ap_init_sensor();
-	#if defined(CONFIG_LEDS_KTD2026)
-	exynos4_smdk4270_led_init();
-	#endif
-        board_universal_ss222ap_init_fpga();
-	board_universal_ss222ap_init_gpio_i2c();
-
-#ifdef CONFIG_DC_MOTOR
-#if defined(CONFIG_MACH_KMINI) || defined(CONFIG_MACH_DEGAS)
-        dc_motor_init();
-#endif
-#endif
-
-#ifdef CONFIG_W1
-	exynos4_universal222ap_cover_id_init();
-#endif
-
-#ifdef CONFIG_SEC_GPIO_DVS
-	/************************ Caution !!! ****************************/
-	/* This function must be located in appropriate INIT position
-	 * in accordance with the specification of each BB vendor.
-	 */
-	/************************ Caution !!! ****************************/
-	gpio_dvs_check_initgpio();
-#endif
 
 	register_reboot_notifier(&exynos4_reboot_notifier);
 }
 
-MACHINE_START(UNIVERSAL3470, "UNIVERSAL3470")
+MACHINE_START(UNIVERSAL_KMINI, "UNIVERSAL_KMINI")
 	.atag_offset	= 0x100,
 	.init_early	= smdk3470_init_early,
 	.init_irq	= exynos5_init_irq,
@@ -725,4 +470,3 @@ MACHINE_START(UNIVERSAL3470, "UNIVERSAL3470")
 	.restart	= exynos4_restart,
 	.reserve	= exynos_reserve_mem,
 MACHINE_END
-

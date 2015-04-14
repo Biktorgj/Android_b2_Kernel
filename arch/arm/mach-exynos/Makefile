@@ -13,16 +13,19 @@ obj-				:=
 # Core
 
 obj-$(CONFIG_ARCH_EXYNOS)	+= common.o
+ifneq ($(CONFIG_SOC_EXYNOS4415),y)
 ifneq ($(CONFIG_SOC_EXYNOS4270),y)
 obj-$(CONFIG_ARCH_EXYNOS4)	+= asv.o asv-4x12.o
 else
 obj-$(CONFIG_ARCH_EXYNOS4)	+= clock-exynos4.o asv.o asv-4x12.o
 endif
+endif
 obj-$(CONFIG_ARM_TRUSTZONE)	+= irq-sgi.o
+obj-$(CONFIG_SOC_EXYNOS3250)	+= clock-exynos3250.o asv-exynos.o asv-exynos3250.o
 obj-$(CONFIG_CPU_EXYNOS4210)	+= clock-exynos4210.o
 obj-$(CONFIG_SOC_EXYNOS3470)	+= clock-exynos3470.o asv-exynos.o asv-exynos3470.o
 obj-$(CONFIG_SOC_EXYNOS4212)	+= clock-exynos4212.o
-obj-$(CONFIG_SOC_EXYNOS4415)	+= clock-exynos4415.o
+obj-$(CONFIG_SOC_EXYNOS4415)	+= clock-exynos4415.o asv-exynos.o asv-exynos4415.o
 obj-$(CONFIG_SOC_EXYNOS5250)	+= clock-exynos5250.o
 obj-$(CONFIG_SOC_EXYNOS5260)	+= clock-exynos5260.o asv-exynos.o asv-exynos5260.o
 obj-$(CONFIG_SOC_EXYNOS5410)	+= clock-exynos5410.o asv-exynos.o asv-exynos5410.o cci.o exynos-power-mode.o
@@ -42,6 +45,8 @@ obj-$(CONFIG_EXYNOS5260_BTS)		+= bts-exynos5260.o
 # SOC EXYNOS 3470
 ifeq ($(CONFIG_SOC_EXYNOS3470),y)
 obj-$(CONFIG_PM)			+= pm-exynos3470.o
+else ifeq ($(CONFIG_SOC_EXYNOS3250),y)
+obj-$(CONFIG_PM)			+= pm-exynos3250.o
 
 # SOC EXYNOS 4415
 else ifeq ($(CONFIG_SOC_EXYNOS4415),y)
@@ -56,6 +61,8 @@ ifeq ($(CONFIG_SOC_EXYNOS5260),y)
 obj-$(CONFIG_PM_GENERIC_DOMAINS)	+= pm_domains_v2.o pm_domains-exynos5260.o
 else ifeq ($(CONFIG_SOC_EXYNOS3470),y)
 obj-$(CONFIG_PM_GENERIC_DOMAINS)	+= pm_domains3470.o pm_domains4.o
+else ifeq ($(CONFIG_SOC_EXYNOS3250),y)
+obj-$(CONFIG_PM_GENERIC_DOMAINS)	+= pm_domains.o pm_domains-exynos3250.o pm_interrupt_domains.o
 else
 ifeq ($(CONFIG_SOC_EXYNOS4415),y)
 obj-$(CONFIG_PM_GENERIC_DOMAINS)	+= pm_domains_v2.o pm_domains-exynos4415.o
@@ -69,6 +76,8 @@ ifeq ($(CONFIG_SOC_EXYNOS5250),y)
 obj-$(CONFIG_CPU_IDLE)         += cpuidle-exynos5250.o
 else ifeq ($(CONFIG_SOC_EXYNOS3470),y)
 obj-$(CONFIG_CPU_IDLE)         += exynos3470-cpuidle.o
+else ifeq ($(CONFIG_SOC_EXYNOS3250),y)
+obj-$(CONFIG_CPU_IDLE)         += cpuidle-exynos3250.o
 else ifeq ($(CONFIG_SOC_EXYNOS4415),y)
 obj-$(CONFIG_CPU_IDLE)         += cpuidle-exynos4415.o
 else
@@ -80,6 +89,8 @@ obj-$(CONFIG_SOC_EXYNOS5250)	+= ori-asv-exynos.o ori-abb-exynos.o ori-asv-exynos
 
 ifeq ($(CONFIG_SOC_EXYNOS3470),y)
 obj-$(CONFIG_ARCH_EXYNOS)	+= pmu-exynos3470.o
+else ifeq ($(CONFIG_SOC_EXYNOS3250),y)
+obj-$(CONFIG_ARCH_EXYNOS)	+= pmu-exynos3250.o
 else
 obj-$(CONFIG_ARCH_EXYNOS)	+= pmu.o
 endif
@@ -102,7 +113,6 @@ obj-$(CONFIG_EXYNOS_BUSFREQ_OPP)     += ppmu.o busfreq_opp_exynos4.o busfreq_opp
 
 obj-$(CONFIG_EXYNOS5_CORESIGHT)		+= coresight-exynos5.o
 obj-$(CONFIG_EXYNOS_PERSISTENT_CLOCK)	+= persistent_clock.o
-obj-$(CONFIG_EXYNOS_CORESIGHT_DEBUG)	+= coresight-debug.o
 
 obj-$(CONFIG_EXYNOS54XX_DEBUG)		+= debug_exynos54XX.o
 
@@ -118,6 +128,45 @@ obj-$(CONFIG_MACH_ARMLEX4210)		+= mach-armlex4210.o
 obj-$(CONFIG_MACH_UNIVERSAL_C210)	+= mach-universal_c210.o
 obj-$(CONFIG_MACH_NURI)			+= mach-nuri.o
 obj-$(CONFIG_MACH_ORIGEN)		+= mach-origen.o
+
+obj-$(CONFIG_MACH_ESPRESSO3250)		+= mach-espresso3250.o
+obj-$(CONFIG_MACH_ESPRESSO3250)		+= board-espresso3250-clock.o
+obj-$(CONFIG_MACH_ESPRESSO3250)		+= board-espresso3250-mmc.o
+obj-$(CONFIG_MACH_ESPRESSO3250)		+= board-espresso3250-power.o
+obj-$(CONFIG_MACH_ESPRESSO3250)		+= board-espresso3250-input.o
+obj-$(CONFIG_MACH_ESPRESSO3250)		+= board-espresso3250-display.o
+obj-$(CONFIG_MACH_ESPRESSO3250)		+= board-espresso3250-usb.o
+obj-$(CONFIG_MACH_ESPRESSO3250)		+= board-espresso3250-media.o
+obj-$(CONFIG_MACH_ESPRESSO3250)		+= board-espresso3250-audio.o
+obj-$(CONFIG_MACH_ESPRESSO3250)		+= board-espresso3250-camera.o
+
+obj-$(CONFIG_MACH_UNIVERSAL3250)	+= mach-universal3250.o
+obj-$(CONFIG_MACH_UNIVERSAL3250)	+= board-universal3250-clock.o
+obj-$(CONFIG_MACH_UNIVERSAL3250)	+= board-universal3250-gpio.o
+obj-$(CONFIG_MACH_UNIVERSAL3250)	+= board-universal3250-mmc.o
+obj-$(CONFIG_MACH_UNIVERSAL3250)	+= board-universal3250-power.o
+obj-$(CONFIG_MACH_UNIVERSAL3250)	+= board-universal3250-input.o
+obj-$(CONFIG_MACH_UNIVERSAL3250)	+= board-universal3250-display.o
+obj-$(CONFIG_MACH_UNIVERSAL3250)	+= board-universal3250-usb.o
+obj-$(CONFIG_MACH_UNIVERSAL3250)	+= board-universal3250-media.o
+
+obj-$(CONFIG_MACH_B2)	+= mach-universal3250.o
+obj-$(CONFIG_MACH_B2)	+= board-universal3250-clock.o
+obj-$(CONFIG_MACH_B2)	+= board-universal3250-mmc.o
+obj-$(CONFIG_MACH_B2)	+= board-b2-power.o
+obj-$(CONFIG_MACH_B2)	+= board-b2-input.o
+obj-$(CONFIG_MACH_B2)	+= board-b2-vibrator.o
+obj-$(CONFIG_MACH_B2)	+= board-universal3250-display.o
+obj-$(CONFIG_MACH_B2)	+= board-b2-usb.o
+obj-$(CONFIG_MACH_B2)	+= board-b2-mfd.o
+obj-$(CONFIG_MACH_B2)	+= board-b2-audio.o
+obj-$(CONFIG_MACH_B2)	+= board-b2-sensor.o
+obj-$(CONFIG_MACH_B2)	+= board-universal3250-media.o
+obj-$(CONFIG_MACH_B2)	+= board-b2-camera.o
+obj-$(CONFIG_MACH_B2)	+= board-b2-thermistor.o
+obj-$(CONFIG_MACH_B2)	+= board-b2-fpga.o
+obj-$(CONFIG_MACH_B2)	+= sec_reboot.o
+obj-$(CONFIG_MACH_B2)	+= board-universal3250-gpio.o
 
 obj-$(CONFIG_MACH_SMDK4212)		+= mach-smdk4x12.o
 obj-$(CONFIG_MACH_SMDK4412)		+= mach-smdk4x12.o
@@ -137,7 +186,6 @@ obj-$(CONFIG_MACH_XYREF4415)		+= board-xyref4415-display.o
 obj-$(CONFIG_MACH_XYREF4415)		+= board-xyref4415-input.o
 obj-$(CONFIG_MACH_XYREF4415)		+= board-xyref4415-media.o
 obj-$(CONFIG_MACH_XYREF4415)		+= board-xyref4415-audio.o
-obj-$(CONFIG_MACH_XYREF4415)		+= board-xyref4415-camera.o
 
 obj-$(CONFIG_MACH_UNIVERSAL4415)	+= mach-universal4415.o
 obj-$(CONFIG_MACH_UNIVERSAL4415)	+= board-universal4415-clock.o
@@ -148,6 +196,8 @@ obj-$(CONFIG_MACH_UNIVERSAL4415)	+= board-universal4415-display.o
 obj-$(CONFIG_MACH_UNIVERSAL4415)	+= board-universal4415-media.o
 obj-$(CONFIG_MACH_UNIVERSAL4415)	+= board-universal4415-audio.o
 obj-$(CONFIG_MACH_UNIVERSAL4415)	+= board-universal4415-usb.o
+
+obj-$(CONFIG_MACH_KMINI)		+= mach-universal222ap.o
 
 obj-$(CONFIG_MACH_SMDK5410)		+= mach-smdk5410.o
 obj-$(CONFIG_MACH_SMDK5410)		+= board-smdk5410-mmc.o
@@ -171,70 +221,20 @@ obj-$(CONFIG_MACH_SMDK5420)		+= board-smdk5420-display.o
 obj-$(CONFIG_MACH_SMDK5420)		+= board-smdk5420-media.o
 
 obj-$(CONFIG_MACH_KMINI)		+= mach-universal222ap.o
-obj-$(CONFIG_MACH_KMINI)		+= board-kmini-battery.o
 obj-$(CONFIG_MACH_KMINI)		+= board-kmini-power.o
 obj-$(CONFIG_MACH_KMINI)		+= board-kmini-mmc.o
 obj-$(CONFIG_MACH_KMINI)		+= board-kmini-display.o
 obj-$(CONFIG_MACH_KMINI)		+= board-kmini-input.o
-obj-$(CONFIG_MACH_KMINI)		+= board-kmini-fpga.o
 obj-$(CONFIG_MACH_KMINI)		+= board-kmini-gpio.o
-obj-$(CONFIG_MACH_KMINI)		+= board-kmini-gpio-i2c.o
 obj-$(CONFIG_MACH_KMINI)		+= board-kmini-clock.o
 obj-$(CONFIG_MACH_KMINI)		+= board-kmini-usb.o
 obj-$(CONFIG_MACH_KMINI)		+= board-kmini-muic.o
 obj-$(CONFIG_MACH_KMINI)		+= board-kmini-modems.o
+obj-$(CONFIG_MACH_KMINI)		+= board-kmini-modemif.o
 obj-$(CONFIG_MACH_KMINI)		+= board-kmini-media.o
 obj-$(CONFIG_MACH_KMINI)		+= board-kmini-audio.o
 obj-$(CONFIG_MACH_KMINI)		+= board-kmini-mfd.o
 obj-$(CONFIG_MACH_KMINI)		+= board-kmini-camera.o
-obj-$(CONFIG_MACH_KMINI)		+= board-kmini-sensor.o
-obj-$(CONFIG_MACH_KMINI)		+= board-kmini-thermistor.o
-obj-$(CONFIG_MACH_KMINI)        	+= board-kmini-led.o
-obj-$(CONFIG_MACH_KMINI)		+= sec-reboot.o
-obj-$(CONFIG_MACH_KMINI)		+= board-kmini-wlan.o
-
-obj-$(CONFIG_MACH_GARDA)                += mach-universal222ap.o
-obj-$(CONFIG_MACH_GARDA)                += board-garda-power.o
-obj-$(CONFIG_MACH_GARDA)                += board-garda-mmc.o
-obj-$(CONFIG_MACH_GARDA)                += board-garda-usb.o
-obj-$(CONFIG_MACH_GARDA)                += board-garda-display.o
-obj-$(CONFIG_MACH_GARDA)                += board-garda-input.o
-obj-$(CONFIG_MACH_GARDA)                += board-garda-media.o
-obj-$(CONFIG_MACH_GARDA)                += board-garda-gpio.o
-obj-$(CONFIG_MACH_GARDA)                += board-garda-gpio-i2c.o
-obj-$(CONFIG_MACH_GARDA)                += board-garda-clock.o
-obj-$(CONFIG_MACH_GARDA)                += board-garda-audio.o
-obj-$(CONFIG_MACH_GARDA)                += board-garda-camera.o
-obj-$(CONFIG_MACH_GARDA)                += board-garda-muic.o
-obj-$(CONFIG_MACH_GARDA)		+= board-garda-modems.o
-obj-$(CONFIG_MACH_GARDA)                += board-garda-battery.o
-obj-$(CONFIG_MACH_GARDA)                += board-garda-sensor.o
-obj-$(CONFIG_MACH_GARDA)                += sec-reboot.o
-obj-$(CONFIG_MACH_GARDA)                += board-garda-wlan.o
-obj-$(CONFIG_MACH_GARDA)                += board-garda-thermistor.o
-obj-$(CONFIG_MACH_GARDA)		+= board-garda-fpga.o
-
-obj-$(CONFIG_MACH_DEGAS)		+= mach-universal222ap.o
-obj-$(CONFIG_MACH_DEGAS)		+= board-degas-audio.o
-obj-$(CONFIG_MACH_DEGAS)		+= board-degas-battery.o
-obj-$(CONFIG_MACH_DEGAS)		+= board-degas-camera.o
-obj-$(CONFIG_MACH_DEGAS)		+= board-degas-clock.o
-obj-$(CONFIG_MACH_DEGAS)		+= board-degas-display.o
-obj-$(CONFIG_MACH_DEGAS)		+= board-degas-fpga.o
-obj-$(CONFIG_MACH_DEGAS)		+= board-degas-gpio.o
-obj-$(CONFIG_MACH_DEGAS)		+= board-degas-gpio-i2c.o
-obj-$(CONFIG_MACH_DEGAS)		+= board-degas-input.o
-obj-$(CONFIG_MACH_DEGAS)		+= board-degas-led.o
-obj-$(CONFIG_MACH_DEGAS)		+= board-degas-media.o
-obj-$(CONFIG_MACH_DEGAS)		+= board-degas-mmc.o
-obj-$(CONFIG_MACH_DEGAS)		+= board-degas-modems.o
-obj-$(CONFIG_MACH_DEGAS)		+= board-degas-muic.o
-obj-$(CONFIG_MACH_DEGAS)		+= board-degas-power.o
-obj-$(CONFIG_MACH_DEGAS)		+= board-degas-sensor.o
-obj-$(CONFIG_MACH_DEGAS)		+= board-degas-thermistor.o
-obj-$(CONFIG_MACH_DEGAS)		+= board-degas-usb.o
-obj-$(CONFIG_MACH_DEGAS)		+= board-degas-wlan.o
-obj-$(CONFIG_MACH_DEGAS)		+= sec-reboot.o
 
 obj-$(CONFIG_MACH_EXYNOS4_DT)		+= mach-exynos4-dt.o
 obj-$(CONFIG_MACH_EXYNOS5_DT)		+= mach-exynos5-dt.o
@@ -276,25 +276,24 @@ obj-$(CONFIG_MACH_UNIVERSAL5260)	+= board-universal5260-input.o
 obj-$(CONFIG_MACH_UNIVERSAL5260)	+= board-universal5260-media.o
 obj-$(CONFIG_MACH_UNIVERSAL5260)	+= board-universal5260-camera.o
 obj-$(CONFIG_MACH_UNIVERSAL5260)	+= board-universal5260-vibrator.o
-obj-$(CONFIG_BT_BCM4330)			+= board-bluetooth-bcm4330.o
-obj-$(CONFIG_BT_BCM4334)			+= board-bluetooth-bcm4334.o
-obj-$(CONFIG_BT_BCM43241)			+= board-bluetooth-bcm43241.o
-obj-$(CONFIG_BT_BCM4335)			+= board-bluetooth-bcm4335.o
 obj-$(CONFIG_BT_BCM4339)			+= board-bluetooth-bcm4339.o
+obj-$(CONFIG_BT_BCM4334W)			+= board-bluetooth-bcm4334w.o
 obj-$(CONFIG_MACH_UNIVERSAL5260)	+= board-universal5260-sensor.o
 obj-$(CONFIG_MACH_UNIVERSAL5260)	+= board-universal5260-nfc.o
 
-obj-$(CONFIG_W1)	+= board-universal222ap-cover_id.o
-
 ifeq ($(CONFIG_MACH_KMINI),y)
 obj-$(CONFIG_SAMSUNG_MUIC)    += sec-switch-kmini.o
+else ifeq ($(CONFIG_MACH_B2),y)
+obj-$(CONFIG_SAMSUNG_MUIC)    += sec-switch.o
+obj-$(CONFIG_MUIC_MAX14577)	  += sec-switch-b2.o
+obj-$(CONFIG_MACH_B2)	+= board-universal3250-battery.o
 else
 obj-$(CONFIG_SAMSUNG_MUIC)    += board-universal5260-mfd.o
 obj-$(CONFIG_SAMSUNG_MUIC)    += sec-switch.o
 endif
 
 obj-$(CONFIG_SND_SOC_ADONISUNIV_YMU831)	+= board-universal5260-audio-y.o
-obj-$(CONFIG_SND_SOC_SAMSUNG)		+= mach-exynos5-audio.o
+obj-$(CONFIG_SND_SOC_ADONISUNIV_YMU831)	+= mach-exynos5-audio.o
 obj-$(CONFIG_MACH_HLLTE)			+= board-hllte-gpio.o
 obj-$(CONFIG_MACH_HL3G)			+= board-hl3g-gpio.o
 obj-$(CONFIG_MACH_HLLTE)			+= board-hl-thermistor.o
@@ -313,13 +312,10 @@ obj-$(CONFIG_SND_SOC_SAMSUNG)		+= dev-audio.o
 obj-$(CONFIG_EXYNOS4_DEV_AHCI)		+= dev-ahci.o
 obj-$(CONFIG_EXYNOS_DEV_DWMCI)		+= dev-dwmci.o
 obj-$(CONFIG_EXYNOS4_DEV_MCU_IPC)	+= dev-mcu_ipc.o
-obj-$(CONFIG_EXYNOS_DEV_SHARED_MEMORY)	+= dev-shdmem.o
-obj-$(CONFIG_EXYNOS_DEV_MODEM_SS222)	+= dev-modem-ss222.o
 obj-$(CONFIG_EXYNOS3_DEV_FIMC_IS)	+= dev-fimc-is.o
-obj-$(CONFIG_EXYNOS4_DEV_FIMC_IS)	+= dev-exynos4-fimc-is.o
-obj-$(CONFIG_EXYNOS5_DEV_FIMC_IS)	+= dev-exynos5-fimc-is.o
+obj-$(CONFIG_EXYNOS4_DEV_FIMC_IS)	+= dev-fimc-is.o
+obj-$(CONFIG_EXYNOS5_DEV_FIMC_IS)	+= dev-fimc-is.o
 obj-$(CONFIG_EXYNOS_DEV_FIMC_IS)	+= dev-fimc-is.o
-
 obj-$(CONFIG_EXYNOS4_DEV_FIMC_LITE)	+= dev-fimc-lite.o
 obj-$(CONFIG_EXYNOS_DEV_GSC)		+= dev-gsc.o setup-gsc.o
 obj-$(CONFIG_EXYNOS5_DEV_SCALER)	+= dev-scaler.o
@@ -363,7 +359,6 @@ obj-$(CONFIG_EXYNOS4_SETUP_FIMC_IS)	+= setup-exynos-fimc-is.o
 obj-$(CONFIG_EXYNOS5_SETUP_FIMC_IS)	+= setup-exynos-fimc-is.o
 obj-$(CONFIG_EXYNOS_SETUP_FIMC_IS)	+= setup-fimc-is.o
 obj-$(CONFIG_EXYNOS_SETUP_FIMC_IS)	+= setup-fimc-is-sensor.o
-obj-$(CONFIG_EXYNOS_SETUP_FIMC_IS)	+= setup-fimc-is-companion.o
 obj-$(CONFIG_VISION_MODE)		+= setup-fimc-is-vision.o
 obj-$(CONFIG_EXYNOS4_SETUP_I2C1)	+= setup-i2c1.o
 obj-$(CONFIG_EXYNOS4_SETUP_I2C2)	+= setup-i2c2.o
@@ -394,9 +389,7 @@ obj-$(CONFIG_ARCH_EXYNOS5)		+= resetreason.o
 obj-$(CONFIG_EXYNOS_TMU)		+= tmu-exynos.o
 obj-$(CONFIG_EXYNOS_SETUP_MIPIPHY)	+= setup-exynos-mipiphy.o
 obj-$(CONFIG_BL_SWITCHER)		+= bL_control.o bL_setup.o
-obj-$(CONFIG_GPS_BCM47531)		+= sec_gps_bcm47531.o
 obj-$(CONFIG_GPS_BCM47521)		+= sec_gps_bcm47521.o
-obj-$(CONFIG_GPS_BCM4752)		+= sec_gps_bcm4752.o
 
 # Samsung sec sysfs Feature
 obj-$(CONFIG_SEC_SYSFS)			+= sec_sysfs.o
@@ -407,8 +400,10 @@ obj-$(CONFIG_MACH_UNIVERSAL5260)	+= sec_reboot.o
 # Samsung Debug Feature
 obj-$(CONFIG_SEC_DEBUG)			+= sec_debug.o sec_getlog.o sec_gaf.o
 obj-$(CONFIG_SEC_LOG)			+= sec_log.o
-
-obj-$(CONFIG_SEC_MODEM_XMM6360)		+= board-xmm6360-modems.o
-obj-$(CONFIG_SEC_MODEM_XMM6262)		+= board-xmm626x-modems.o
+obj-$(CONFIG_SEC_MODEM_XMM6360)	+= board-xmm6360-modems.o
+obj-$(CONFIG_SEC_MODEM_XMM6262)	+= board-xmm626x-modems.o
 
 obj-$(CONFIG_SEC_THERMISTOR)		+= sec_thermistor.o
+
+obj-$(CONFIG_SEC_GPIO_DVS)            += board-universal3250-gpiodvs.o
+

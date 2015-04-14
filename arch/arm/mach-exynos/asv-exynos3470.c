@@ -17,7 +17,6 @@
 #include <linux/clk.h>
 #include <linux/io.h>
 #include <linux/slab.h>
-#include <linux/syscore_ops.h>
 
 #include <mach/asv-exynos.h>
 #include <mach/asv-exynos3470.h>
@@ -25,7 +24,6 @@
 #include <mach/regs-pmu.h>
 
 #include <plat/cpu.h>
-#include <plat/pm.h>
 
 #define PRO_ID_REG		(S5P_VA_CHIPID)
 #define CHIP_ID_REG		(S5P_VA_CHIPID + 0x04)
@@ -73,41 +71,6 @@ unsigned int special_lot_group;
 bool is_speedgroup;
 bool is_special_lot;
 enum volt_offset asv_volt_offset[5][1];
-
-static int set_arm_volt = 0;
-static int set_int_volt = 0;
-static int set_mif_volt = 0;
-static int set_g3d_volt = 0;
-
-#ifdef CONFIG_ASV_MARGIN_TEST
-static int __init get_arm_volt(char *str)
-{
-	get_option(&str, &set_arm_volt);
-	return 0;
-}
-early_param("arm", get_arm_volt);
-
-static int __init get_int_volt(char *str)
-{
-	get_option(&str, &set_int_volt);
-	return 0;
-}
-early_param("int", get_int_volt);
-
-static int __init get_mif_volt(char *str)
-{
-	get_option(&str, &set_mif_volt);
-	return 0;
-}
-early_param("mif", get_mif_volt);
-
-static int __init get_g3d_volt(char *str)
-{
-	get_option(&str, &set_g3d_volt);
-	return 0;
-}
-early_param("g3d", get_g3d_volt);
-#endif
 
 unsigned int exynos3470_add_volt_offset(unsigned int voltage, enum volt_offset offset)
 {
@@ -163,7 +126,7 @@ unsigned int exynos_set_abb(enum asv_type_id type, unsigned int target_val)
 
 	tmp = __raw_readl(target_reg);
 
-	if (target_val == ABB_BYPASS) {
+	if (target_val == ABB_X100) {
 		/* Disable PMOS */
 		tmp &= ~ABB_ENABLE_PMOS_MASK;
 		__raw_writel(tmp, target_reg);
@@ -174,6 +137,7 @@ unsigned int exynos_set_abb(enum asv_type_id type, unsigned int target_val)
 
 		/* Setting Bypass */
 		tmp &= ~ABB_CODE_PMOS_MASK;
+		tmp |= (ABB_X100 << ABB_CODE_PMOS_OFFSET);
 		__raw_writel(tmp, target_reg);
 	} else {
 		/* Enable SEL */
@@ -192,23 +156,6 @@ unsigned int exynos_set_abb(enum asv_type_id type, unsigned int target_val)
 
 	return 0;
 }
-
-#ifdef CONFIG_PM
-static void exynos3470_set_abb_bypass(struct asv_info *asv_inform)
-{
-	switch (asv_inform->asv_type) {
-	case ID_ARM:
-	case ID_INT:
-	case ID_MIF:
-	case ID_G3D:
-		break;
-	default:
-		return;
-	}
-
-	exynos_set_abb(asv_inform->asv_type, ABB_BYPASS);
-}
-#endif
 
 static unsigned int exynos3470_get_asv_group_arm(struct asv_common *asv_comm)
 {
@@ -232,6 +179,7 @@ static unsigned int exynos3470_get_asv_group_arm(struct asv_common *asv_comm)
 static void exynos3470_set_asv_info_arm(struct asv_info *asv_inform, bool show_value)
 {
 	unsigned int i;
+	unsigned int tmp;
 	unsigned int target_asv_grp_nr = asv_inform->result_asv_grp;
 	unsigned int *arm_volt_info;
 	unsigned int *arm_abb_info;
@@ -250,9 +198,15 @@ static void exynos3470_set_asv_info_arm(struct asv_info *asv_inform, bool show_v
 
 		asv_inform->asv_volt[i].asv_freq = arm_volt_info[0];
 		asv_inform->asv_volt[i].asv_value =
-			exynos3470_apply_volt_offset(arm_volt_info[target_asv_grp_nr + 1], ID_ARM) + set_arm_volt;
+			exynos3470_apply_volt_offset(arm_volt_info[target_asv_grp_nr + 1], ID_ARM);
 		asv_inform->asv_abb[i].asv_freq = arm_abb_info[0];
-		asv_inform->asv_abb[i].asv_value = arm_abb_info[target_asv_grp_nr + 1];
+
+		if (arm_abb_info[target_asv_grp_nr + 1] == ABB_BYPASS)
+			tmp = ABB_X100;
+		else
+			tmp = arm_abb_info[target_asv_grp_nr + 1];
+
+		asv_inform->asv_abb[i].asv_value = tmp;
 	}
 
 	if (show_value) {
@@ -292,6 +246,7 @@ static unsigned int exynos3470_get_asv_group_int(struct asv_common *asv_comm)
 static void exynos3470_set_asv_info_int(struct asv_info *asv_inform, bool show_value)
 {
 	unsigned int i;
+	unsigned int tmp;
 	unsigned int target_asv_grp_nr = asv_inform->result_asv_grp;
 	unsigned int *int_volt_info;
 	unsigned int *int_abb_info;
@@ -309,9 +264,15 @@ static void exynos3470_set_asv_info_int(struct asv_info *asv_inform, bool show_v
 		}
 		asv_inform->asv_volt[i].asv_freq = int_volt_info[0];
 		asv_inform->asv_volt[i].asv_value =
-			exynos3470_apply_volt_offset(int_volt_info[target_asv_grp_nr + 1], ID_INT) + set_int_volt;
+			exynos3470_apply_volt_offset(int_volt_info[target_asv_grp_nr + 1], ID_INT);
 		asv_inform->asv_abb[i].asv_freq = int_abb_info[0];
-		asv_inform->asv_abb[i].asv_value = int_abb_info[target_asv_grp_nr + 1];
+
+		if (int_abb_info[target_asv_grp_nr + 1] == ABB_BYPASS)
+			tmp = ABB_X100;
+		else
+			tmp = int_abb_info[target_asv_grp_nr + 1];
+
+		asv_inform->asv_abb[i].asv_value = tmp;
 	}
 
 	if (show_value) {
@@ -351,6 +312,7 @@ static unsigned int exynos3470_get_asv_group_mif(struct asv_common *asv_comm)
 static void exynos3470_set_asv_info_mif(struct asv_info *asv_inform, bool show_value)
 {
 	unsigned int i;
+	unsigned int tmp;
 	unsigned int target_asv_grp_nr = asv_inform->result_asv_grp;
 	unsigned int *mif_volt_info;
 	unsigned int *mif_abb_info;
@@ -368,16 +330,22 @@ static void exynos3470_set_asv_info_mif(struct asv_info *asv_inform, bool show_v
 		}
 		asv_inform->asv_volt[i].asv_freq = mif_volt_info[0];
 		if (mif_lock == 2) {
-			if (i < 2) asv_inform->asv_volt[i].asv_value = mif_volt_info[target_asv_grp_nr + 1] + set_int_volt + set_mif_volt;
+			if (i < 2) asv_inform->asv_volt[i].asv_value = mif_volt_info[target_asv_grp_nr + 1];
 			else if (i >= 2) {
 				asv_inform->asv_volt[i].asv_value =
-						exynos3470_apply_volt_offset(mif_volt_info[target_asv_grp_nr + 1], ID_MIF) + set_mif_volt;
+						exynos3470_apply_volt_offset(mif_volt_info[target_asv_grp_nr + 1], ID_MIF);
 			}
 		} else {
-			asv_inform->asv_volt[i].asv_value = exynos3470_apply_volt_offset(mif_volt_info[target_asv_grp_nr + 1], ID_MIF) + set_mif_volt;
+			asv_inform->asv_volt[i].asv_value = exynos3470_apply_volt_offset(mif_volt_info[target_asv_grp_nr + 1], ID_MIF);
 		}
 		asv_inform->asv_abb[i].asv_freq = mif_abb_info[0];
-		asv_inform->asv_abb[i].asv_value = mif_abb_info[target_asv_grp_nr + 1];
+
+		if (mif_abb_info[target_asv_grp_nr + 1] == ABB_BYPASS)
+			tmp = ABB_X100;
+		else
+			tmp = mif_abb_info[target_asv_grp_nr + 1];
+
+		asv_inform->asv_abb[i].asv_value = tmp;
 	}
 
 	if (show_value) {
@@ -417,6 +385,7 @@ static unsigned int exynos3470_get_asv_group_g3d(struct asv_common *asv_comm)
 static void exynos3470_set_asv_info_g3d(struct asv_info *asv_inform, bool show_value)
 {
 	unsigned int i;
+	unsigned int tmp;
 	unsigned int target_asv_grp_nr = asv_inform->result_asv_grp;
 	unsigned int *g3d_volt_info;
 	unsigned int *g3d_abb_info;
@@ -433,9 +402,15 @@ static void exynos3470_set_asv_info_g3d(struct asv_info *asv_inform, bool show_v
 			g3d_abb_info = g3d_asv_abb_info[i];
 		}
 		asv_inform->asv_volt[i].asv_freq = g3d_volt_info[0];
-		asv_inform->asv_volt[i].asv_value = g3d_volt_info[target_asv_grp_nr + 1] + set_g3d_volt;
+		asv_inform->asv_volt[i].asv_value = g3d_volt_info[target_asv_grp_nr + 1];
 		asv_inform->asv_abb[i].asv_freq = g3d_abb_info[0];
-		asv_inform->asv_abb[i].asv_value = g3d_abb_info[target_asv_grp_nr + 1];
+
+		if (g3d_abb_info[target_asv_grp_nr + 1] == ABB_BYPASS)
+			tmp = ABB_X100;
+		else
+			tmp = g3d_abb_info[target_asv_grp_nr + 1];
+
+		asv_inform->asv_abb[i].asv_value = tmp;
 	}
 
 	if (show_value) {
@@ -496,45 +471,6 @@ unsigned int exynos3470_regist_asv_member(void)
 	return 0;
 }
 
-#ifdef CONFIG_PM
-static struct sleep_save exynos3470_abb_save[] = {
-	SAVE_ITEM(EXYNOS4270_ABB_ARM),
-	SAVE_ITEM(EXYNOS4270_ABB_INT),
-	SAVE_ITEM(EXYNOS4270_ABB_MIF),
-	SAVE_ITEM(EXYNOS4270_ABB_G3D),
-};
-
-static int exynos3470_asv_suspend(void)
-{
-	struct asv_info *exynos_asv_info;
-	int i;
-
-	s3c_pm_do_save(exynos3470_abb_save,
-			ARRAY_SIZE(exynos3470_abb_save));
-
-	for (i = 0; i < ARRAY_SIZE(exynos3470_asv_member); i++) {
-		exynos_asv_info = &exynos3470_asv_member[i];
-		exynos3470_set_abb_bypass(exynos_asv_info);
-	}
-
-	return 0;
-}
-
-static void exynos3470_asv_resume(void)
-{
-	s3c_pm_do_restore_core(exynos3470_abb_save,
-			ARRAY_SIZE(exynos3470_abb_save));
-}
-#else
-#define exynos3470_asv_suspend NULL
-#define exynos3470_asv_resume NULL
-#endif
-
-static struct syscore_ops exynos3470_asv_syscore_ops = {
-	.suspend	= exynos3470_asv_suspend,
-	.resume		= exynos3470_asv_resume,
-};
-
 static void exynos3470_get_lot_id(struct asv_common *asv_info)
 {
 	unsigned int lid_reg = 0;
@@ -564,12 +500,12 @@ int exynos3470_init_asv(struct asv_common *asv_info)
 	unsigned int chip_id = __raw_readl(CHIP_ID_REG);
 	unsigned int operation = __raw_readl(CHIP_OPERATION_REG);
 
-	pop_type = (chip_id >> POP_TYPE_SHIFT) & POP_TYPE_MASK;
-
 	revision_id = __raw_readl(PRO_ID_REG);
 	revision_id = ((revision_id >> 4) & 0x7);
 
-	printk("EXYNOS3470 chip revision : EVT%d \n", revision_id);
+	pop_type = (chip_id >> POP_TYPE_SHIFT) & POP_TYPE_MASK;
+
+	printk("EXYNOS3470 Board revision : %d \n", revision_id);
 
 	special_lot_group = 0;
 	is_special_lot = false;
@@ -604,17 +540,8 @@ int exynos3470_init_asv(struct asv_common *asv_info)
 		asv_volt_offset[ID_G3D][0] = ((chip_id >> G3D_LOCK_BIT) & G3D_LOCK_MASK);
 	}
 
-	/* If it is not revision 2, ignore ids & hpm in asv group 1 */
-	if (samsung_rev() >= EXYNOS3470_REV_2_0)
-			refer_table_get_asv = refer_table_get_asv_rev2;
-	else
-			refer_table_get_asv = refer_table_get_asv_rev;
-
 set_asv_info:
 	asv_info->regist_asv_member = exynos3470_regist_asv_member;
-
-	if (samsung_rev() >= EXYNOS3470_REV_2_0)
-		register_syscore_ops(&exynos3470_asv_syscore_ops);
 
 	return 0;
 }

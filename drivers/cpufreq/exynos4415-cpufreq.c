@@ -19,10 +19,11 @@
 
 #include <mach/regs-clock-exynos4415.h>
 #include <mach/cpufreq.h>
+#include <mach/asv-exynos.h>
 
 #define CPUFREQ_LEVEL_END	(L15 + 1)
 
-static int max_support_idx;
+static int max_support_idx = L0;
 static int min_support_idx = (CPUFREQ_LEVEL_END - 1);
 
 static struct clk *cpu_clk;
@@ -31,6 +32,7 @@ static struct clk *mout_mpll;
 static struct clk *mout_apll;
 
 static unsigned int exynos4415_volt_table[CPUFREQ_LEVEL_END];
+static unsigned int exynos4415_arm_abb_table[CPUFREQ_LEVEL_END];
 
 static struct cpufreq_frequency_table exynos4415_freq_table[] = {
 	{L0, 1600 * 1000},
@@ -213,11 +215,6 @@ static unsigned int exynos4415_apll_pms_table[CPUFREQ_LEVEL_END] = {
 
 };
 
-static const unsigned int asv_voltage_s[CPUFREQ_LEVEL_END] = {
-	1350000, 1300000, 1250000, 1200000, 1150000, 1100000, 1050000, 1000000,
-	975000, 925000, 925000, 900000, 900000,  900000,  900000, 900000
-};
-
 static void exynos4415_set_clkdiv(unsigned int div_index)
 {
 	unsigned int tmp;
@@ -335,12 +332,16 @@ static void __init set_volt_table(void)
 {
 	unsigned int i;
 
-	max_support_idx = L5;
 	for (i = L0; i < max_support_idx; i++)
 		exynos4415_freq_table[i].frequency = CPUFREQ_ENTRY_INVALID;
 
-	for (i = 0; i < CPUFREQ_LEVEL_END; i++)
-		exynos4415_volt_table[i] = asv_voltage_s[i];
+	for (i = 0; i < CPUFREQ_LEVEL_END; i++) {
+		if (exynos4415_freq_table[i].frequency == CPUFREQ_ENTRY_INVALID)
+			continue;
+
+		exynos4415_volt_table[i] = get_match_volt(ID_ARM, exynos4415_freq_table[i].frequency);
+		exynos4415_arm_abb_table[i] = get_match_abb(ID_ARM, exynos4415_freq_table[i].frequency);
+	}
 }
 
 int exynos4415_cpufreq_init(struct exynos_dvfs_info *info)
@@ -411,6 +412,7 @@ int exynos4415_cpufreq_init(struct exynos_dvfs_info *info)
 	info->min_support_idx = min_support_idx;
 	info->cpu_clk = cpu_clk;
 	info->volt_table = exynos4415_volt_table;
+	info->abb_table = exynos4415_arm_abb_table;
 	info->freq_table = exynos4415_freq_table;
 	info->set_freq = exynos4415_set_frequency;
 	info->need_apll_change = exynos4415_pms_change;

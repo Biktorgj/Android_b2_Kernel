@@ -31,11 +31,6 @@
 #ifdef CONFIG_FB_MIPI_DSIM
 #include <plat/dsim.h>
 #include <plat/mipi_dsi.h>
-#include <plat/regs-mipidsim.h>
-#endif
-
-#ifdef CONFIG_FB_S5P_MDNIE
-#include <linux/mdnie.h>
 #endif
 
 #include <mach/map.h>
@@ -43,46 +38,11 @@
 
 #include <video/platform_lcd.h>
 
-unsigned int lcdtype;
-EXPORT_SYMBOL(lcdtype);
-static int __init lcdtype_setup(char *str)
-{
-	get_option(&str, &lcdtype);
-	return 1;
-}
-__setup("lcdtype=", lcdtype_setup);
-
-phys_addr_t bootloaderfb_start = 0;
-phys_addr_t bootloaderfb_size = 0;
-EXPORT_SYMBOL(bootloaderfb_start);
-EXPORT_SYMBOL(bootloaderfb_size);
-static int __init bootloaderfb_start_setup(char *str)
-{
-	get_option(&str, &bootloaderfb_start);
-#if defined(CONFIG_LCD_MIPI_S6E8AA4) || defined(CONFIG_LCD_MIPI_EA8061V)
-	bootloaderfb_size = 720 * 1280 * 4;
-#else
-	bootloaderfb_start = 0; // disable for copying bootloaderfb
-	bootloaderfb_size = 0;
-#endif
-	return 1;
-}
-
-__setup("s3cfb.bootloaderfb=", bootloaderfb_start_setup);
-
-#if defined(CONFIG_LCD_MIPI_S6E8AA4)
-#define SMDK4270_HBP		5
-#define SMDK4270_HFP		5
-#define SMDK4270_VBP		1
-#define SMDK4270_VFP		13
-#define SMDK4270_HSP		5
-#else
-#define SMDK4270_HBP		5
-#define SMDK4270_HFP		5
+#define SMDK4270_HBP		18
+#define SMDK4270_HFP		20
 #define SMDK4270_VBP		8
 #define SMDK4270_VFP		14
-#define SMDK4270_HSP		5
-#endif
+#define SMDK4270_HSP		4
 #define SMDK4270_VSW		2
 #define SMDK4270_XRES		720
 #define SMDK4270_YRES		1280
@@ -191,14 +151,42 @@ static struct s3c_fb_pd_win smdk4270_fb_win4 = {
 static int mipi_lcd_power_control(struct mipi_dsim_device *dsim,
 		unsigned int power)
 {
-	return 0;
+	/* reset */
+	gpio_request_one(EXYNOS4_GPX2(4), GPIOF_OUT_INIT_HIGH, "GPX2");
+	usleep_range(20000, 21000);
+	if (power) {
+		gpio_set_value(EXYNOS4_GPX2(4), 0);
+		usleep_range(20000, 21000);
+		gpio_set_value(EXYNOS4_GPX2(4), 1);
+		msleep(50);
+		gpio_free(EXYNOS4_GPX2(4));
+	} else {
+		gpio_set_value(EXYNOS4_GPX2(4), 0);
+		usleep_range(20000, 21000);
+		gpio_set_value(EXYNOS4_GPX2(4), 1);
+		usleep_range(20000, 21000);
+		gpio_free(EXYNOS4_GPX2(4));
+	}
+	usleep_range(20000, 21000);
+	return 1;
 }
 
 static void s5p_mipi_dsi_bl_on_off(unsigned int power)
 {
 }
 
-static int lcd_power_on(struct lcd_device *ld, int enable)
+static void s5p_mipi_dsi_lcd_reset(void)
+{
+	gpio_request_one(EXYNOS4_GPX2(4), GPIOF_OUT_INIT_HIGH, "GPX2");
+	usleep_range(5000, 5000);
+	gpio_set_value(EXYNOS4_GPX2(4), 0);
+	usleep_range(5000, 5000);
+	gpio_set_value(EXYNOS4_GPX2(4), 1);
+	msleep(100);
+	gpio_free(EXYNOS4_GPX2(4));
+}
+
+static void s5p_mipi_dsi_lcd_power_on_off(unsigned int power)
 {
 	struct regulator *regulator_vlcd_1v8;
 	struct regulator *regulator_vlcd_3v0;
@@ -206,39 +194,27 @@ static int lcd_power_on(struct lcd_device *ld, int enable)
 	regulator_vlcd_1v8 = regulator_get(NULL, "vlcd_1v8");
 	if (IS_ERR(regulator_vlcd_1v8)) {
 		pr_info("%s: failed to get %s\n", __func__, "vlcd_1v8");
-		return PTR_ERR(regulator_vlcd_1v8);
+		return;
 	}
 	regulator_vlcd_3v0 = regulator_get(NULL, "vlcd_3v0");
 	if (IS_ERR(regulator_vlcd_3v0)) {
 		pr_info("%s: failed to get %s\n", __func__, "vlcd_3v0");
-		return PTR_ERR(regulator_vlcd_3v0);
+		return;
 	}
-	if (enable){
+	if (power){
 		regulator_enable(regulator_vlcd_1v8);
 		msleep(10);
 		regulator_enable(regulator_vlcd_3v0);
 	}else {
 		regulator_disable(regulator_vlcd_3v0);
 		regulator_disable(regulator_vlcd_1v8);
-		/*LCD RESET low at SLEEP*/
+		/*LCD RESET low*/
 		gpio_request_one(EXYNOS4_GPX2(4),GPIOF_OUT_INIT_LOW, "GPX2");
 		gpio_free(EXYNOS4_GPX2(4));
 	}
 	regulator_put(regulator_vlcd_3v0);
 	regulator_put(regulator_vlcd_1v8);
-
-	return 0;
-}
-
-static int reset_lcd(struct lcd_device *ld)
-{
-	gpio_request_one(EXYNOS4_GPX2(4), GPIOF_OUT_INIT_HIGH, "GPX2");
-	usleep_range(5000, 5000);
-	gpio_set_value(EXYNOS4_GPX2(4), 0);
-	usleep_range(5000, 5000);
-	gpio_set_value(EXYNOS4_GPX2(4), 1);
-	gpio_free(EXYNOS4_GPX2(4));
-	return 0;
+	msleep(1);
 }
 
 static void mipi_lcd_set_power(struct plat_lcd_data *pd,
@@ -255,31 +231,6 @@ static struct platform_device smdk4270_mipi_lcd = {
 	.dev.platform_data	= &smdk4270_mipi_lcd_data,
 };
 
-#ifdef CONFIG_FB_S5P_MDNIE
-static struct platform_mdnie_data mdnie_data = {
-	.display_type	= -1,
-};
-
-struct platform_device mdnie_device = {
-	.name		 = "mdnie",
-	.id	 = -1,
-	.dev		 = {
-		.parent		= &s5p_device_fimd0.dev,
-		.platform_data = &mdnie_data,
-	},
-};
-
-static void __init mdnie_device_register(void)
-{
-	int ret;
-
-	ret = platform_device_register(&mdnie_device);
-	if (ret)
-		printk(KERN_ERR "failed to register mdnie device: %d\n",
-				ret);
-}
-#endif
-
 static void exynos_fimd_gpio_setup_24bpp(void)
 {
 	unsigned int reg = 0;
@@ -290,21 +241,11 @@ static void exynos_fimd_gpio_setup_24bpp(void)
 	 *  1 | FIMD : selected
 	 */
 	reg = __raw_readl(S3C_VA_SYS + 0x0210);
-#ifdef CONFIG_FB_S5P_MDNIE
-	reg &= ~(1 << 23); /*FIFO software Reset*/
-	__raw_writel(reg, S3C_VA_SYS + 0x0210);
-	reg &= ~(7 << 29);	/*sync*/
-	reg &= ~(0x3 << 10); /*LCD0 RGB select*/
-	reg &= ~(1 << 1); /*MDNIE path*/
-	reg |= (1 << 0); /*MDNIE*/
-#else
 	reg &= ~(1 << 1);
 	reg |= (1 << 1);
-#endif
 	__raw_writel(reg, S3C_VA_SYS + 0x0210);
 }
 
-static struct s5p_platform_mipi_dsim dsim_platform_data;
 static struct s3c_fb_platdata smdk4270_lcd0_pdata __initdata = {
 	.win[0]		= &smdk4270_fb_win0,
 	.win[1]		= &smdk4270_fb_win1,
@@ -320,15 +261,7 @@ static struct s3c_fb_platdata smdk4270_lcd0_pdata __initdata = {
 	.dsim_off       = s5p_mipi_dsi_disable_by_fimd,
 	.dsim_displayon	= s5p_mipi_dsi_displayon_by_fimd,
 	.dsim0_device   = &s5p_device_mipi_dsim0.dev,
-	.dsim_pd		= &dsim_platform_data,
 	.bootlogo = false,
-};
-
-static struct lcd_platform_data panel_pdata = {
-	.reset = reset_lcd,
-	.power_on = lcd_power_on,
-	.reset_delay = 10000,
-	.power_on_delay = 1000,
 };
 
 #ifdef CONFIG_FB_MIPI_DSIM
@@ -346,7 +279,7 @@ static struct mipi_dsim_config dsim_info = {
 	.e_pixel_format		= DSIM_24BPP_888,
 	/* main frame fifo auto flush at VSYNC pulse */
 	.auto_flush		= false,
-	.eot_disable		= true,
+	.eot_disable		= false,
 	.auto_vertical_cnt	= false,
 
 	.hse = false,
@@ -358,22 +291,20 @@ static struct mipi_dsim_config dsim_info = {
 	.e_byte_clk	= DSIM_PLL_OUT_DIV8,
 	.e_burst_mode	= DSIM_BURST,
 
-	.p = 3,
-	.m = 120,
+	/* bit clock 480Hz */
+	.p = 4,
+	.m = 163,
 	.s = 1,
 
 	.esc_clk	= 20 * 1000000, /* escape clk : 20MHz */
 
 	/* stop state holding counter after bta change count 0 ~ 0xfff */
-	.stop_holding_cnt	= 0x1,
+	.stop_holding_cnt	= 0xfff,
 	.bta_timeout		= 0xff,		/* bta timeout 0 ~ 0xff */
 	.rx_timeout		= 0xffff,	/* lp rx timeout 0 ~ 0xffff */
-	.pll_stable_time	= DPHY_PLL_STABLE_TIME,
-#if defined(CONFIG_LCD_MIPI_S6E8AA4)
-	.dsim_ddi_pd = &s6e8aa4_mipi_lcd_driver,
-#else
+	.pll_stable_time	= 0xffffff,
+
 	.dsim_ddi_pd = &ea8061v_mipi_lcd_driver,
-#endif
 };
 
 static struct mipi_dsim_lcd_config dsim_lcd_info = {
@@ -383,15 +314,14 @@ static struct mipi_dsim_lcd_config dsim_lcd_info = {
 	.rgb_timing.lower_margin	= DSIM_LOW_MARGIN,
 	.rgb_timing.hsync_len		= DSIM_HSYNC_LEN,
 	.rgb_timing.vsync_len		= DSIM_VSYNC_LEN,
-	.rgb_timing.stable_vfp		= 2,
-	.rgb_timing.cmd_allow		= 4,
+	.rgb_timing.stable_vfp		= 1,
+	.rgb_timing.cmd_allow		= 0,
 	.cpu_timing.cs_setup		= 0,
 	.cpu_timing.wr_setup		= 1,
 	.cpu_timing.wr_act		= 0,
 	.cpu_timing.wr_hold		= 0,
 	.lcd_size.width			= DSIM_WIDTH,
 	.lcd_size.height		= DSIM_HEIGHT,
-	.mipi_ddi_pd			= &panel_pdata,
 };
 
 static struct s5p_platform_mipi_dsim dsim_platform_data = {
@@ -399,14 +329,17 @@ static struct s5p_platform_mipi_dsim dsim_platform_data = {
 	.dsim_config		= &dsim_info,
 	.dsim_lcd_config	= &dsim_lcd_info,
 	.mipi_power   = mipi_lcd_power_control,
-	.init_d_phy	= s5p_dsim_init_d_phy,
+	.part_reset		= s5p_dsim_part_reset,
+	.init_d_phy     	= s5p_dsim_init_d_phy,
 	.get_fb_frame_done	= NULL,
 	.trigger		= NULL,
 
 	.backlight_on_off	= s5p_mipi_dsi_bl_on_off,
+	.lcd_reset		= s5p_mipi_dsi_lcd_reset,
+	.lcd_power_on_off	= s5p_mipi_dsi_lcd_power_on_off,
 
+	.delay_for_stabilization = 600,
 	.bootlogo = false,
-	.lcd_connected = false,
 };
 #endif
 
@@ -418,18 +351,6 @@ static struct platform_device *smdk4270_display_devices[] __initdata = {
 	&s5p_device_fimd0,
 };
 
-void __init exynos5_keep_disp_clock(struct device *dev)
-{
-	struct clk *clk = clk_get(dev, "lcd");
-
-	if (IS_ERR(clk)) {
-		pr_err("failed to get lcd clock\n");
-		return;
-	}
-
-	clk_enable(clk);
-}
-
 static int __init setup_early_bootlogo(char *str)
 {
 	dsim_platform_data.bootlogo = false;
@@ -438,25 +359,8 @@ static int __init setup_early_bootlogo(char *str)
 }
 early_param("bootlogo", setup_early_bootlogo);
 
-static int __init setup_early_bootsleepcheck(char *str)
-{
-	dsim_platform_data.lcd_connected= true;
-	return 0;
-}
-early_param("tspconnect", setup_early_bootsleepcheck);
-
 void __init exynos4_smdk4270_display_init(void)
 {
-	struct resource *res;
-	unsigned int lcd_id = lcdtype & 0xF;
-
-	/* REV.E change MIPI SPEED 500Mbps to 480Mbps for RF */
-	if (lcd_id < 7 ) {
-		dsim_info.p = 3;
-		dsim_info.m = 125;
-		dsim_info.s = 1;
-	}
-
 	s5p_dsim0_set_platdata(&dsim_platform_data);
 
 	s5p_fimd0_set_platdata(&smdk4270_lcd0_pdata);
@@ -465,22 +369,5 @@ void __init exynos4_smdk4270_display_init(void)
 			ARRAY_SIZE(smdk4270_display_devices));
 
 	exynos4_fimd_setup_clock(&s5p_device_fimd0.dev, "sclk_fimd",
-			"mout_mpll_user_top", 58 * MHZ);
-
-#if !defined(CONFIG_S5P_LCD_INIT)
-		exynos5_keep_disp_clock(&s5p_device_fimd0.dev);
-#endif
-#ifdef CONFIG_FB_S5P_MDNIE
-		mdnie_device_register();
-#endif
-
-	res = platform_get_resource(&s5p_device_fimd0, IORESOURCE_MEM, 1);
-	if (res && bootloaderfb_start) {
-		res->start = bootloaderfb_start;
-		res->end = res->start + bootloaderfb_size - 1;
-		pr_info("bootloader fb located at %8X-%8X\n", res->start,
-				res->end);
-	} else {
-		pr_err("failed to find bootloader fb resource\n");
-	}
+			"mout_mpll_user_top", 200 * MHZ);
 }

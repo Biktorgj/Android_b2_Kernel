@@ -15,7 +15,11 @@
 
 #define MAX_FRAME_SIZE		(2*1024*1024)
 #define DEFAULT_TAG		(0xE05)
+#ifdef CONFIG_SOC_EXYNOS3250
+#define DEC_MAX_FPS		(30000)
+#else
 #define DEC_MAX_FPS		(60000)
+#endif
 
 const struct v4l2_ioctl_ops *get_dec_v4l2_ioctl_ops(void);
 int s5p_mfc_init_dec_ctx(struct s5p_mfc_ctx *ctx);

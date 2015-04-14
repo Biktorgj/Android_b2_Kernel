@@ -32,7 +32,6 @@
 #include <linux/mmc/host.h>
 #include <linux/mmc/mmc.h>
 #include <linux/mmc/sd.h>
-#include <linux/stlog.h>
 #include <linux/mmc/mmc_trace.h>
 
 #include "core.h"
@@ -1237,7 +1236,7 @@ void mmc_set_driver_type(struct mmc_host *host, unsigned int drv_type)
 	mmc_host_clk_release(host);
 }
 
-void mmc_poweroff_notify(struct mmc_host *host)
+static void mmc_poweroff_notify(struct mmc_host *host)
 {
 	struct mmc_card *card;
 	unsigned int timeout;
@@ -1278,7 +1277,6 @@ void mmc_poweroff_notify(struct mmc_host *host)
 	}
 	mmc_release_host(host);
 }
-EXPORT_SYMBOL(mmc_poweroff_notify);
 
 /*
  * Apply power to the MMC stack.  This is a two-stage process.
@@ -1839,17 +1837,6 @@ int mmc_erase(struct mmc_card *card, unsigned int from, unsigned int nr,
 	if (to <= from)
 		return -EINVAL;
 
-	/* to set the address in 16k (32sectors) */
-	if(arg == MMC_TRIM_ARG) {
-		if ((from % 32) != 0)
-			from = ((from >> 5) + 1) << 5;
-
-		to = (to >> 5) << 5;
-
-		if (from >= to)
-			return 0;
-	}
-
 	/* 'from' and 'to' are inclusive */
 	to -= 1;
 
@@ -1888,9 +1875,6 @@ EXPORT_SYMBOL(mmc_can_discard);
 
 int mmc_can_sanitize(struct mmc_card *card)
 {
-	/* do not use sanitize*/
-	return 0;
-
 	if (!mmc_can_trim(card) && !mmc_can_erase(card))
 		return 0;
 	if (card->ext_csd.sec_feature_support & EXT_CSD_SEC_SANITIZE)
@@ -2151,7 +2135,6 @@ int _mmc_detect_card_removed(struct mmc_host *host)
 	if (ret) {
 		mmc_card_set_removed(host->card);
 		pr_debug("%s: card remove detected\n", mmc_hostname(host));
-		ST_LOG("<%s> %s: card remove detected\n", __func__,mmc_hostname(host));
 	}
 
 	return ret;
@@ -2195,7 +2178,7 @@ EXPORT_SYMBOL(mmc_detect_card_removed);
 
 void mmc_rescan(struct work_struct *work)
 {
-	static const unsigned freqs[] = { 400000 };
+	static const unsigned freqs[] = { 400000, 300000, 200000, 100000 };
 	struct mmc_host *host =
 		container_of(work, struct mmc_host, detect.work);
 	int i;
@@ -2243,8 +2226,6 @@ void mmc_rescan(struct work_struct *work)
 
 	if (host->ops->get_cd && host->ops->get_cd(host) == 0)
 		goto out;
-
-	ST_LOG("<%s> %s insertion detected",__func__,host->class_dev.kobj.name);
 
 	mmc_claim_host(host);
 	for (i = 0; i < ARRAY_SIZE(freqs); i++) {
@@ -2400,8 +2381,6 @@ int mmc_card_can_sleep(struct mmc_host *host)
 {
 	struct mmc_card *card = host->card;
 
-	if (host->caps2 & MMC_CAP2_NO_SLEEP_CMD)
-		return 0;
 	if (card && mmc_card_mmc(card) && card->ext_csd.rev >= 3)
 		return 1;
 	return 0;
@@ -2501,8 +2480,6 @@ int mmc_suspend_host(struct mmc_host *host)
 
 	mmc_bus_get(host);
 	if (host->bus_ops && !host->bus_dead) {
-		if (mmc_card_mmc(host->card))
-			mmc_poweroff_notify(host);
 
 		if (host->bus_ops->suspend)
 			err = host->bus_ops->suspend(host);
@@ -2751,21 +2728,6 @@ void mmc_init_context_info(struct mmc_host *host)
 	host->context_info.is_waiting_last_req = false;
 	init_waitqueue_head(&host->context_info.wait);
 }
-
-#if defined(CONFIG_BCM4334) || defined(CONFIG_BCM4334_MODULE)
-void mmc_ctrl_power(struct mmc_host *host, bool onoff)
-{
-      mmc_claim_host(host);
-      if (onoff)
-          mmc_power_up(host);
-      else
-          mmc_power_off(host);
-      /* Wait at least 1 ms according to SD spec */
-      mmc_delay(1);
-      mmc_release_host(host);
-}
-EXPORT_SYMBOL(mmc_ctrl_power);
-#endif /* CONFIG_BCM4334 || CONFIG_BCM4334_MODULE */
 
 static int __init mmc_init(void)
 {

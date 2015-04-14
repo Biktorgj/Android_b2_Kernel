@@ -1,11 +1,15 @@
 /*
  * cyttsp5_i2c.c
- * Cypress TrueTouch(TM) Standard Product V5 I2C Module.
+ * Cypress TrueTouch(TM) Standard Product V5 I2C Driver module.
  * For use with Cypress Txx5xx parts.
  * Supported parts include:
  * TMA5XX
  *
  * Copyright (C) 2012-2013 Cypress Semiconductor
+ * Copyright (C) 2011 Sony Ericsson Mobile Communications AB.
+ *
+ * Author: Aleksej Makarov <aleksej.makarov@sonyericsson.com>
+ * Modified by: Cypress Semiconductor for test with device
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -21,18 +25,38 @@
  *
  */
 
-#include "cyttsp5_regs.h"
+#include <linux/cyttsp5/cyttsp5_bus.h>
+#include <linux/cyttsp5/cyttsp5_core.h>
+#include "cyttsp5_i2c.h"
 
+#include <asm/unaligned.h>
+#include <linux/delay.h>
+#include <linux/hrtimer.h>
 #include <linux/i2c.h>
+#include <linux/init.h>
+#include <linux/of_device.h>
+#include <linux/module.h>
+#include <linux/mutex.h>
+#include <linux/pm_runtime.h>
+#include <linux/slab.h>
 
-#define CY_I2C_DATA_SIZE  (2 * 256)
+#define CY_I2C_DATA_SIZE  (3 * 256)
 
-static int cyttsp5_i2c_read_default(struct device *dev, void *buf, int size)
+struct cyttsp5_i2c {
+	struct i2c_client *client;
+	u8 wr_buf[CY_I2C_DATA_SIZE];
+	char const *id;
+	struct mutex lock;
+};
+
+static int cyttsp5_i2c_read_default_(struct cyttsp5_adapter *adap,
+	void *buf, int size)
 {
-	struct i2c_client *client = to_i2c_client(dev);
+	struct cyttsp5_i2c *ts = dev_get_drvdata(adap->dev);
+	struct i2c_client *client = ts->client;
 	int rc;
 
-	if (!buf || !size || size > CY_I2C_DATA_SIZE)
+	if (!buf || !size)
 		return -EINVAL;
 
 	rc = i2c_master_recv(client, buf, size);
@@ -40,9 +64,26 @@ static int cyttsp5_i2c_read_default(struct device *dev, void *buf, int size)
 	return (rc < 0) ? rc : rc != size ? -EIO : 0;
 }
 
-static int cyttsp5_i2c_read_default_nosize(struct device *dev, u8 *buf, u32 max)
+static int cyttsp5_i2c_read_default(struct cyttsp5_adapter *adap,
+	void *buf, int size)
 {
-	struct i2c_client *client = to_i2c_client(dev);
+	struct cyttsp5_i2c *ts = dev_get_drvdata(adap->dev);
+	int rc;
+
+	pm_runtime_get_noresume(adap->dev);
+	mutex_lock(&ts->lock);
+	rc = cyttsp5_i2c_read_default_(adap, buf, size);
+	mutex_unlock(&ts->lock);
+	pm_runtime_put_noidle(adap->dev);
+
+	return rc;
+}
+
+static int cyttsp5_i2c_read_default_nosize_(struct cyttsp5_adapter *adap,
+	u8 *buf, u32 max)
+{
+	struct cyttsp5_i2c *ts = dev_get_drvdata(adap->dev);
+	struct i2c_client *client = ts->client;
 	struct i2c_msg msgs[2];
 	u8 msg_count = 1;
 	int rc;
@@ -51,16 +92,16 @@ static int cyttsp5_i2c_read_default_nosize(struct device *dev, u8 *buf, u32 max)
 	if (!buf)
 		return -EINVAL;
 
-	msgs[0].addr = client->addr;
+	msgs[0].addr = ts->client->addr;
 	msgs[0].flags = (client->flags & I2C_M_TEN) | I2C_M_RD;
 	msgs[0].len = 2;
 	msgs[0].buf = buf;
-	rc = i2c_transfer(client->adapter, msgs, msg_count); // this fills msgs[0].buf?
+	rc = i2c_transfer(client->adapter, msgs, msg_count);
 	if (rc < 0 || rc != msg_count)
 		return (rc < 0) ? rc : -EIO;
 
 	size = get_unaligned_le16(&buf[0]);
-	if (!size || size == 2)
+	if (!size)
 		return 0;
 
 	if (size > max)
@@ -71,10 +112,28 @@ static int cyttsp5_i2c_read_default_nosize(struct device *dev, u8 *buf, u32 max)
 	return (rc < 0) ? rc : rc != (int)size ? -EIO : 0;
 }
 
-static int cyttsp5_i2c_write_read_specific(struct device *dev, u8 write_len,
-		u8 *write_buf, u8 *read_buf)
+static int cyttsp5_i2c_read_default_nosize(struct cyttsp5_adapter *adap,
+	void *buf, int max)
 {
-	struct i2c_client *client = to_i2c_client(dev);
+	struct cyttsp5_i2c *ts = dev_get_drvdata(adap->dev);
+	int rc;
+
+	pm_runtime_get_noresume(adap->dev);
+	mutex_lock(&ts->lock);
+
+	rc = cyttsp5_i2c_read_default_nosize_(adap, buf, max);
+
+	mutex_unlock(&ts->lock);
+	pm_runtime_put_noidle(adap->dev);
+
+	return rc;
+}
+
+static int cyttsp5_i2c_write_read_specific_(struct cyttsp5_adapter *adap,
+		u8 write_len, u8 *write_buf, u8 *read_buf)
+{
+	struct cyttsp5_i2c *ts = dev_get_drvdata(adap->dev);
+	struct i2c_client *client = ts->client;
 	struct i2c_msg msgs[2];
 	u8 msg_count = 1;
 	int rc;
@@ -82,7 +141,7 @@ static int cyttsp5_i2c_write_read_specific(struct device *dev, u8 write_len,
 	if (!write_buf || !write_len)
 		return -EINVAL;
 
-	msgs[0].addr = client->addr;
+	msgs[0].addr = ts->client->addr;
 	msgs[0].flags = client->flags & I2C_M_TEN;
 	msgs[0].len = write_len;
 	msgs[0].buf = write_buf;
@@ -94,14 +153,30 @@ static int cyttsp5_i2c_write_read_specific(struct device *dev, u8 write_len,
 		rc = 0;
 
 	if (read_buf)
-		rc = cyttsp5_i2c_read_default_nosize(dev, read_buf,
-				CY_I2C_DATA_SIZE);
+		rc = cyttsp5_i2c_read_default_nosize_(adap, read_buf, 512);
 
 	return rc;
 }
 
-static struct cyttsp5_bus_ops cyttsp5_i2c_bus_ops = {
-	.bustype = BUS_I2C,
+static int cyttsp5_i2c_write_read_specific(struct cyttsp5_adapter *adap,
+		u8 write_len, u8 *write_buf, u8 *read_buf)
+{
+	struct cyttsp5_i2c *ts = dev_get_drvdata(adap->dev);
+	int rc;
+
+	pm_runtime_get_noresume(adap->dev);
+	mutex_lock(&ts->lock);
+
+	rc = cyttsp5_i2c_write_read_specific_(adap, write_len, write_buf,
+			read_buf);
+
+	mutex_unlock(&ts->lock);
+	pm_runtime_put_noidle(adap->dev);
+
+	return rc;
+}
+
+static struct cyttsp5_ops ops = {
 	.read_default = cyttsp5_i2c_read_default,
 	.read_default_nosize = cyttsp5_i2c_read_default_nosize,
 	.write_read_specific = cyttsp5_i2c_write_read_specific,
@@ -113,44 +188,83 @@ static struct of_device_id cyttsp5_i2c_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, cyttsp5_i2c_of_match);
 
-static int cyttsp5_i2c_probe(struct i2c_client *client,
+static int __devinit cyttsp5_i2c_probe(struct i2c_client *client,
 	const struct i2c_device_id *i2c_id)
 {
+	struct cyttsp5_i2c *ts_i2c;
 	struct device *dev = &client->dev;
 	const struct of_device_id *match;
+	char const *adap_id;
+	int rc;
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
-		dev_err(dev, "I2C functionality not Supported\n");
-		return -EIO;
+		dev_err(dev, "%s: fail check I2C functionality\n", __func__);
+		rc = -EIO;
+		goto error_alloc_data_failed;
+	}
+
+	ts_i2c = kzalloc(sizeof(struct cyttsp5_i2c), GFP_KERNEL);
+	if (ts_i2c == NULL) {
+		dev_err(dev, "%s: Error, kzalloc.\n", __func__);
+		rc = -ENOMEM;
+		goto error_alloc_data_failed;
 	}
 
 	match = of_match_device(of_match_ptr(cyttsp5_i2c_of_match), dev);
-	if (match)
-		cyttsp5_devtree_create_and_get_pdata(dev);
+	if (match) {
+		rc = of_property_read_string(dev->of_node, "cy,adapter_id",
+				&adap_id);
+		if (rc) {
+			dev_err(dev, "%s: OF error rc=%d\n", __func__, rc);
+			goto error_free_data;
+		}
+	} else {
+		adap_id = dev_get_platdata(dev);
+	}
 
-	return cyttsp5_probe(&cyttsp5_i2c_bus_ops, &client->dev, client->irq,
-			  CY_I2C_DATA_SIZE);
-}
+	mutex_init(&ts_i2c->lock);
+	ts_i2c->client = client;
+	ts_i2c->id = (adap_id) ? adap_id : CYTTSP5_I2C_NAME;
+	client->dev.bus = &i2c_bus_type;
+	i2c_set_clientdata(client, ts_i2c);
+	dev_set_drvdata(&client->dev, ts_i2c);
 
-static int cyttsp5_i2c_remove(struct i2c_client *client)
-{
-	struct device *dev = &client->dev;
-	const struct of_device_id *match;
-	struct cyttsp5_core_data *cd = i2c_get_clientdata(client);
+	dev_dbg(dev, "%s: add adap='%s' (CYTTSP5_I2C_NAME=%s)\n", __func__,
+		ts_i2c->id, CYTTSP5_I2C_NAME);
 
-	cyttsp5_release(cd);
+	pm_runtime_enable(&client->dev);
 
-	match = of_match_device(of_match_ptr(cyttsp5_i2c_of_match), dev);
-	if (match)
-		cyttsp5_devtree_clean_pdata(dev);
+	rc = cyttsp5_add_adapter(ts_i2c->id, &ops, dev);
+	if (rc) {
+		dev_err(dev, "%s: Error on probe %s\n", __func__,
+			CYTTSP5_I2C_NAME);
+		goto add_adapter_err;
+	}
 
 	return 0;
+
+add_adapter_err:
+	pm_runtime_disable(&client->dev);
+	dev_set_drvdata(&client->dev, NULL);
+	i2c_set_clientdata(client, NULL);
+error_free_data:
+	kfree(ts_i2c);
+error_alloc_data_failed:
+	return rc;
 }
 
-static void cyttsp5_i2c_shutdown(struct i2c_client *client)
+/* registered in driver struct */
+static int __devexit cyttsp5_i2c_remove(struct i2c_client *client)
 {
 	struct device *dev = &client->dev;
-	cyttsp5_core_suspend(dev);
+	struct cyttsp5_i2c *ts_i2c = dev_get_drvdata(dev);
+
+	cyttsp5_del_adapter(ts_i2c->id);
+	pm_runtime_disable(&client->dev);
+	dev_set_drvdata(&client->dev, NULL);
+	i2c_set_clientdata(client, NULL);
+	kfree(ts_i2c);
+	return 0;
 }
 
 static const struct i2c_device_id cyttsp5_i2c_id[] = {
@@ -163,12 +277,10 @@ static struct i2c_driver cyttsp5_i2c_driver = {
 	.driver = {
 		.name = CYTTSP5_I2C_NAME,
 		.owner = THIS_MODULE,
-/*		.pm = &cyttsp5_pm_ops,*/
 		.of_match_table = cyttsp5_i2c_of_match,
 	},
 	.probe = cyttsp5_i2c_probe,
-	.remove = cyttsp5_i2c_remove,
-	.shutdown = cyttsp5_i2c_shutdown,
+	.remove = __devexit_p(cyttsp5_i2c_remove),
 	.id_table = cyttsp5_i2c_id,
 };
 
@@ -176,7 +288,7 @@ static int __init cyttsp5_i2c_init(void)
 {
 	int rc = i2c_add_driver(&cyttsp5_i2c_driver);
 
-	pr_info("%s: Cypress TTSP v5 I2C Driver (Built %s) rc=%d\n",
+	pr_info("%s: Cypress TTSP I2C Touchscreen Driver (Built %s) rc=%d\n",
 		 __func__, CY_DRIVER_DATE, rc);
 	return rc;
 }
@@ -188,7 +300,7 @@ static void __exit cyttsp5_i2c_exit(void)
 }
 module_exit(cyttsp5_i2c_exit);
 
-MODULE_ALIAS("i2c:cyttsp5");
+MODULE_ALIAS(CYTTSP5_I2C_NAME);
 MODULE_LICENSE("GPL");
-MODULE_DESCRIPTION("Cypress TrueTouch(R) Standard Product I2C driver");
+MODULE_DESCRIPTION("Cypress TrueTouch(R) Standard Product (TTSP) I2C driver");
 MODULE_AUTHOR("Cypress Semiconductor <ttdrivers@cypress.com>");

@@ -1,9 +1,9 @@
 /*
- * Copyright (C) 2012 ARM Limited. All rights reserved.
- * 
+ * Copyright (C) 2011-2012 ARM Limited. All rights reserved.
+ *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
@@ -158,12 +158,13 @@ static void mali_gp_scheduler_schedule(void)
 	if (_MALI_OSK_ERR_OK != mali_group_start_gp_job(slot.group, job))
 	{
 		MALI_DEBUG_PRINT(3, ("Mali GP scheduler: Failed to start GP job\n"));
-		MALI_DEBUG_ASSERT(0); /* this cant fail on Mali-300+, no need to implement put back of job */
+		MALI_DEBUG_ASSERT(0); /* @@@@ todo: this cant fail on Mali-300+, no need to implement put back of job */
 	}
 
 	mali_group_unlock(slot.group);
 }
 
+/* @@@@ todo: pass the job in as a param to this function, so that we don't have to take the scheduler lock again */
 static void mali_gp_scheduler_schedule_on_group(struct mali_group *group)
 {
 	struct mali_gp_job *job;
@@ -193,7 +194,7 @@ static void mali_gp_scheduler_schedule_on_group(struct mali_group *group)
 	if (_MALI_OSK_ERR_OK != mali_group_start_gp_job(slot.group, job))
 	{
 		MALI_DEBUG_PRINT(3, ("Mali GP scheduler: Failed to start GP job\n"));
-		MALI_DEBUG_ASSERT(0); /* this cant fail on Mali-300+, no need to implement put back of job */
+		MALI_DEBUG_ASSERT(0); /* @@@@ todo: this cant fail on Mali-300+, no need to implement put back of job */
 	}
 }
 
@@ -385,6 +386,7 @@ _mali_osk_errcode_t _mali_ukk_gp_suspend_response(_mali_uk_gp_suspend_response_s
 		resumed_job = mali_group_resume_gp_with_new_heap(slot.group, args->cookie, args->arguments[0], args->arguments[1]);
 		if (NULL != resumed_job)
 		{
+			/* @@@@ todo: move this and other notification handling into the job object itself */
 			resumed_job->oom_notification = new_notification;
 			mali_group_unlock(slot.group);
 			return _MALI_OSK_ERR_OK;

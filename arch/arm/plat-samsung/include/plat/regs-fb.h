@@ -33,7 +33,7 @@
 #define VIDCON0					(0x00)
 #define VIDCON0_DSI_EN                          (1 << 30)
 #define VIDCON0_INTERLACE			(1 << 29)
-#define VIDCON0_VIDOUT_MASK			(0x7 << 26)
+#define VIDCON0_VIDOUT_MASK			(0x3 << 26)
 #define VIDCON0_VIDOUT_SHIFT			(26)
 #define VIDCON0_VIDOUT_RGB			(0x0 << 26)
 #define VIDCON0_VIDOUT_TV			(0x1 << 26)
@@ -72,8 +72,6 @@
 #define VIDCON0_CLKVAL_F_SHIFT			(6)
 #define VIDCON0_CLKVAL_F_LIMIT			(0xff)
 #define VIDCON0_CLKVAL_F(_x)			((_x) << 6)
-#define VIDCON0_VCLK_MASK                       (1 << 5)
-#define VIDCON0_VCLK_NORMAL                     (0 << 5)
 #define VIDCON0_VCLKFREE			(1 << 5)
 #define VIDCON0_CLKDIR				(1 << 4)
 
@@ -132,6 +130,11 @@
 /* VIDCON2 */
 
 #define VIDCON2					(0x08)
+#define VIDCON2_WB_SKIP_1_2			(1 << 0)
+#define VIDCON2_WB_SKIP_1_3			(1 << 1)
+#define VIDCON2_WB_SKIP_1_4			(3 << 0)
+#define VIDCON2_WB_SKIP_1_5			(1 << 2)
+#define VIDCON2_WB_SKIP_MASK			(0x1f << 0)
 #define VIDCON2_EN601				(1 << 23)
 #define VIDCON2_RGB_ORDER_E_MASK	(0x7 << 19)
 #define VIDCON2_RGB_ORDER_E_RGB		(0x0 << 19)
@@ -214,20 +217,19 @@
 #define VIDTCON1_HSPW(_x)			((_x) << 0)
 
 #define VIDTCON2_LINEVAL_E(_x)			((((_x) & 0x800) >> 11) << 23)
-#define VIDTCON2_LINEVAL_E_MASK                 (1 << 23)
-#define VIDTCON2_LINEVAL_E_SHIFT                (23)
 #define VIDTCON2_LINEVAL_MASK			(0x7ff << 11)
 #define VIDTCON2_LINEVAL_SHIFT			(11)
 #define VIDTCON2_LINEVAL_LIMIT			(0x7ff)
 #define VIDTCON2_LINEVAL(_x)			(((_x) & 0x7ff) << 11)
 
 #define VIDTCON2_HOZVAL_E(_x)			((((_x) & 0x800) >> 11) << 22)
-#define VIDTCON2_HOZVAL_E_MASK			(1 << 22)
-#define VIDTCON2_HOZVAL_E_SHIFT			(22)
 #define VIDTCON2_HOZVAL_MASK			(0x7ff << 0)
 #define VIDTCON2_HOZVAL_SHIFT			(0)
 #define VIDTCON2_HOZVAL_LIMIT			(0x7ff)
 #define VIDTCON2_HOZVAL(_x)			(((_x) & 0x7ff) << 0)
+
+/* VIDTCON3 */
+#define VIDTCON3_VSYNCEN			(1 << 31)
 
 /* TRIGCON */
 #define TRIGCON                                 (0x201A4)
@@ -247,11 +249,7 @@
 #define CRCCTRL_CRCEN
 
 /* WINCONx */
-#if defined(CONFIG_FB_I80_COMMAND_MODE)
 #define WINCONx_SHADOW_MASK			(0x4780FF)
-#else
-#define WINCONx_SHADOW_MASK			(0x4780FE)  /*VIDEO MODE*/
-#endif
 #define WINCONx_BITSWP				(1 << 18)
 #define WINCONx_BYTSWP				(1 << 17)
 #define WINCONx_HAWSWP				(1 << 16)

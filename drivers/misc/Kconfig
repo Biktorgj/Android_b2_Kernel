@@ -499,12 +499,12 @@ config SAMSUNG_MUIC
 	help
 	  If you say yes here you will get support for the MUIC chip.
 
-config MUIC_I2C_USE_S3C_DEV_I2C6
-	bool "MUIC using H/W I2C-6"
-	depends on I2C && SAMSUNG_MUIC
+config MUIC_I2C_USE_S3C_DEV_I2C7
+	bool "MUIC using H/W I2C-7"
+	depends on I2C && S3C_DEV_I2C7 && MUIC_MAX14577
 	default n
 	help
-	  Say yes here When MUIC using H/W I2C pin number 6.
+	  Say yes here When MUIC using H/W I2C pin number 7.
 
 config MUIC_I2C_USE_I2C17_EMUL
 	bool "MUIC using Emulated I2C-17"
@@ -523,6 +523,12 @@ config USB_SWITCH_FSA9480
 	  stereo and mono audio, video, microphone and UART data to use
 	  a common connector port.
 
+config SAMSUNG_MUIC
+	bool "Using samsung MUIC chip driver"
+	default n
+	help
+		If you say yes here you will get support for the MUIC chip.
+
 config MUIC_TSU6721
 	bool "TSU6721 MUIC"
 	depends on I2C && SAMSUNG_MUIC
@@ -532,64 +538,6 @@ config MUIC_TSU6721
 	  The TSU6721 is fully controlled using I2C and enables USB data,
 	  stereo and mono audio, video, microphone and UART data to use
 	  a common connector port.
-
-config MUIC_SM5502
-	bool "SM5502 MUIC"
-	depends on I2C && SAMSUNG_MUIC
-	default n
-	help
-	  The SM5502 is a USB port accessory detector and switch.
-	  The SM5502 is fully controlled using I2C and enables USB data,
-	  stereo and mono audio, video, microphone and UART data to use
-	  a common connector port.
-
-config MUIC_SM5502_200K_USB
-	bool "SM5502_MUIC_200K_USB"
-	depends on MUIC_SM5502
-	default n
-	help
-	  When a device with ID resistor is attached to SM5502, The MUIC 
-	  doesn't know if it is attached to a charger or a USB cable. 
-	  When 219k USB is attached, MUIC thinks it is 200k ohm which belongs
-	  to Type1 Charger and set it as a charger. With this FLAG ON, MUIC
-	  handles 200k ohm device as USB not charger.
-	  
-config MUIC_SM5502_ENABLE_AUTOSW
-	bool "SM5502_MUIC_ENABLE_AUTOSW"
-	depends on MUIC_SM5502
-	default n
-	help
-          If you say yes here, Auto Switch mode in MUIC is turned on and
-	  the device will turn off when JIG cable is detached. If the device
-	  has an internal battery, this config must be turned on.
-
-config MUIC_SM5502_SUPPORT_OTG
-	bool "SM5502_MUIC_SUPPORT_OTG"
-	depends on MUIC_SM5502
-	default n
-	help
-          If you say yes here you will get support for OTG USB 
-
-config MUIC_SM5502_SUPPORT_LANHUB
-	bool "SM5502_MUIC_SUPPORT_LANHUB"
-	depends on MUIC_SM5502_SUPPORT_OTG && MUIC_SM5502_ENABLE_AUTOSW
-	default n
-	help
-          If you say yes here you will get support for Lan Hub 
-
-config MUIC_SM5502_SUPPORT_AUDIODOCK
-	bool "SM5502_MUIC_SUPPORT_AUDIODOCK"
-	depends on MUIC_SM5502
-	default n
-	help
-          If you say yes here you will get support for AUDIO DOCK
-
-config MUIC_SM5502_SUPPORT_DESKDOCK
-	bool "SM5502_MUIC_SUPPORT_DESKDOCK"
-	depends on MUIC_SM5502
-	default n
-	help
-          If you say yes here you will get support for DESKTOP DOCK
 
 config MAX8997_MUIC
 	tristate "MAX8997 MUIC Support"
@@ -628,6 +576,14 @@ config MUIC_MAX77803_SUPPORT_MHL_CABLE_DETECTION
       If you say yes here you will get support for the MHL cable
       detection.
 
+config MUIC_MAX14577
+	bool "Using MAX14577 MUIC"
+	depends on (MFD_MAX14577 || MFD_MAX77836)
+	default n
+	help
+	  If you say yes here you will get support for
+	  for the MAX14577 MUIC chip.
+
 config WL127X_RFKILL
 	tristate "Bluetooth power control driver for TI wl127x"
 	depends on RFKILL
@@ -635,14 +591,13 @@ config WL127X_RFKILL
 	---help---
 	 Creates an rfkill entry in sysfs for power control of Bluetooth
 	 TI wl127x chips.
-
-config TIMA_LOG
-	tristate "Support for dumping TIMA log"
-	depends on TIMA
-	default y
-	help
-	  This option enables support for dumping TIMA log.
 	 
+config SLP_GLOBAL_LOCK
+	bool "Enable Global Lock"
+	default n
+	---help---
+	  This supports global lock feature for SLP.
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
@@ -655,4 +610,5 @@ source "drivers/misc/mcu_ipc/Kconfig"
 source "drivers/misc/modem_v1/Kconfig"
 source "drivers/misc/modem_v2/Kconfig"
 source "drivers/misc/modem_if/Kconfig"
+source "drivers/misc/clkmon/Kconfig"
 endmenu

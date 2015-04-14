@@ -30,7 +30,6 @@
 #include <linux/kthread.h>
 #include <linux/slab.h>
 #include <linux/kernel_stat.h>
-#include <linux/pm_qos.h>
 #include <asm/cputime.h>
 
 #ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
@@ -470,7 +469,7 @@ static void cpufreq_interactive_eagle_timer(unsigned long data)
 		pcpu->floor_validate_time = now;
 	}
 
-	if (pcpu->target_freq == new_freq) {
+	if (pcpu->policy->cur == new_freq) {
 		trace_cpufreq_interactive_eagle_already(
 			data, cpu_load, pcpu->target_freq,
 			pcpu->policy->cur, new_freq);
@@ -528,7 +527,7 @@ static void cpufreq_interactive_eagle_idle_start(void)
 
 	pending = timer_pending(&pcpu->cpu_timer);
 
-	if (pcpu->target_freq != pcpu->policy->min) {
+	if (pcpu->policy->cur != pcpu->policy->min) {
 		/*
 		 * Entering idle while not at lowest speed.  On some
 		 * platforms this can hold the other CPU(s) at that speed
@@ -585,17 +584,13 @@ static int cpufreq_interactive_eagle_speedchange_task(void *data)
 	unsigned long flags;
 	struct cpufreq_interactive_eagle_cpuinfo *pcpu;
 
-	while (1) {
+	while (!kthread_should_stop()) {
 		set_current_state(TASK_INTERRUPTIBLE);
 		spin_lock_irqsave(&speedchange_cpumask_lock, flags);
 
 		if (cpumask_empty(&speedchange_cpumask)) {
 			spin_unlock_irqrestore(&speedchange_cpumask_lock,
 					       flags);
-
-			if (kthread_should_stop())
-				break;
-
 			schedule();
 
 			if (kthread_should_stop())
@@ -1329,101 +1324,8 @@ static void cpufreq_interactive_eagle_nop_timer(unsigned long data)
 
 unsigned int cpufreq_interactive_eagle_get_hispeed_freq(void)
 {
-	struct cpufreq_interactive_eagle_cpuinfo *pcpu = &per_cpu(cpuinfo, NR_CA7);
-
-	if (pcpu && pcpu->governor_enabled)
-		return hispeed_freq;
-	else
-		return 0;
+	return hispeed_freq;
 }
-
-#ifdef CONFIG_ARCH_EXYNOS
-static int cpufreq_interactive_eagle_cpu_min_qos_handler(struct notifier_block *b,
-		unsigned long val, void *v)
-{
-	struct cpufreq_interactive_eagle_cpuinfo *pcpu;
-	unsigned long flags;
-	int ret = NOTIFY_OK;
-
-	pcpu = &per_cpu(cpuinfo, NR_CA7);
-
-	mutex_lock(&gov_lock);
-	down_read(&pcpu->enable_sem);
-	if (!pcpu->governor_enabled) {
-		up_read(&pcpu->enable_sem);
-		ret = NOTIFY_BAD;
-		goto exit;
-	}
-	up_read(&pcpu->enable_sem);
-
-	if (!pcpu->policy || !pcpu->policy->user_policy.governor) {
-		ret = NOTIFY_BAD;
-		goto exit;
-	}
-
-	trace_cpufreq_interactive_eagle_cpu_min_qos(NR_CA7, val, pcpu->policy->cur);
-
-	if (val < pcpu->policy->cur) {
-		spin_lock_irqsave(&speedchange_cpumask_lock, flags);
-		cpumask_set_cpu(0, &speedchange_cpumask);
-		spin_unlock_irqrestore(&speedchange_cpumask_lock, flags);
-
-		if (speedchange_task)
-			wake_up_process(speedchange_task);
-	}
-
-exit:
-	mutex_unlock(&gov_lock);
-	return ret;
-}
-
-static struct notifier_block cpufreq_interactive_eagle_cpu_min_qos_notifier = {
-	.notifier_call = cpufreq_interactive_eagle_cpu_min_qos_handler,
-};
-
-static int cpufreq_interactive_eagle_cpu_max_qos_handler(struct notifier_block *b,
-		unsigned long val, void *v)
-{
-	struct cpufreq_interactive_eagle_cpuinfo *pcpu;
-	unsigned long flags;
-	int ret = NOTIFY_OK;
-
-	pcpu = &per_cpu(cpuinfo, NR_CA7);
-
-	mutex_lock(&gov_lock);
-	down_read(&pcpu->enable_sem);
-	if (!pcpu->governor_enabled) {
-		up_read(&pcpu->enable_sem);
-		ret = NOTIFY_BAD;
-		goto exit;
-	}
-	up_read(&pcpu->enable_sem);
-
-	if (!pcpu->policy || !pcpu->policy->user_policy.governor) {
-		ret = NOTIFY_BAD;
-		goto exit;
-	}
-
-	trace_cpufreq_interactive_eagle_cpu_max_qos(NR_CA7, val, pcpu->policy->cur);
-
-	if (val > pcpu->policy->cur) {
-		spin_lock_irqsave(&speedchange_cpumask_lock, flags);
-		cpumask_set_cpu(0, &speedchange_cpumask);
-		spin_unlock_irqrestore(&speedchange_cpumask_lock, flags);
-
-		if (speedchange_task)
-			wake_up_process(speedchange_task);
-	}
-
-exit:
-	mutex_unlock(&gov_lock);
-	return ret;
-}
-
-static struct notifier_block cpufreq_interactive_eagle_cpu_max_qos_notifier = {
-	.notifier_call = cpufreq_interactive_eagle_cpu_max_qos_handler,
-};
-#endif
 
 static int __init cpufreq_interactive_eagle_init(void)
 {
@@ -1463,10 +1365,6 @@ static int __init cpufreq_interactive_eagle_init(void)
 	spin_lock_init(&above_hispeed_delay_lock);
 	mutex_init(&gov_lock);
 
-#ifdef CONFIG_ARCH_EXYNOS
-	pm_qos_add_notifier(PM_QOS_CPU_FREQ_MIN, &cpufreq_interactive_eagle_cpu_min_qos_notifier);
-	pm_qos_add_notifier(PM_QOS_CPU_FREQ_MAX, &cpufreq_interactive_eagle_cpu_max_qos_notifier);
-#endif
 	return cpufreq_register_governor(&cpufreq_gov_interactive_eagle);
 }
 

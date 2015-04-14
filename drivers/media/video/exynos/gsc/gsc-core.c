@@ -1500,15 +1500,6 @@ static int gsc_probe(struct platform_device *pdev)
 		ret = -ENXIO;
 		goto err_req_region;
 	}
-
-	res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
-	if (!res) {
-		dev_err(&pdev->dev, "failed to get IRQ resource\n");
-		ret = -ENXIO;
-		goto err_regs_unmap;
-	}
-	gsc->irq = res->start;
-
 	gsc->clock[CLK_GATE] =
 		clk_get(&pdev->dev, gsc_clocks[CLK_GATE]);
 	if (IS_ERR(gsc->clock[CLK_GATE])) {
@@ -1522,15 +1513,29 @@ static int gsc_probe(struct platform_device *pdev)
 	if (IS_ERR(gsc->clock[CLK_CHILD])) {
 		dev_err(&pdev->dev, "failed to get %s clock\n",
 			gsc_clocks[CLK_CHILD]);
-		goto err_regs_unmap;
+		goto err_clk_put;
 	}
 
 	gsc->clock[CLK_PARENT] = clk_get(NULL, gsc_clocks[CLK_PARENT]);
 	if (IS_ERR(gsc->clock[CLK_PARENT])) {
 		dev_err(&pdev->dev, "failed to get %s clock\n",
 			gsc_clocks[CLK_PARENT]);
+		goto err_clk_put;
+	}
+	res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
+	if (!res) {
+		dev_err(&pdev->dev, "failed to get IRQ resource\n");
+		ret = -ENXIO;
 		goto err_regs_unmap;
 	}
+	gsc->irq = res->start;
+
+	ret = request_irq(gsc->irq, gsc_irq_handler, 0, pdev->name, gsc);
+	if (ret) {
+		dev_err(&pdev->dev, "failed to install irq (%d)\n", ret);
+		goto err_regs_unmap;
+	}
+
 #if defined(CONFIG_VIDEOBUF2_CMA_PHYS)
 	gsc->vb2 = &gsc_vb2_cma;
 #elif defined(CONFIG_VIDEOBUF2_ION)
@@ -1541,17 +1546,17 @@ static int gsc_probe(struct platform_device *pdev)
 
 	ret = gsc_register_m2m_device(gsc);
 	if (ret)
-		goto err_clk_put;
+		goto err_irq;
 
 	/* find media device */
 	driver = driver_find(MDEV_MODULE_NAME, &platform_bus_type);
 	if (!driver)
-		goto err_clk_put;
+		goto err_irq;
 
 	ret = driver_for_each_device(driver, NULL, &mdev[0],
 			gsc_get_media_info);
 	if (ret)
-		goto err_clk_put;
+		goto err_irq;
 
 	gsc->mdev[MDEV_OUTPUT] = mdev[MDEV_OUTPUT];
 	gsc->mdev[MDEV_CAPTURE] = mdev[MDEV_CAPTURE];
@@ -1562,25 +1567,19 @@ static int gsc_probe(struct platform_device *pdev)
 
 	ret = gsc_register_output_device(gsc);
 	if (ret)
-		goto err_clk_put;
+		goto err_irq;
 
 	if (gsc->pdata)	{
 		ret = gsc_register_capture_device(gsc);
 		if (ret)
-			goto err_clk_put;
+			goto err_irq;
 	}
 	snprintf(workqueue_name, WORKQUEUE_NAME_SIZE,
 			"gsc%d_irq_wq_name", gsc->id);
 	gsc->irq_workqueue = create_singlethread_workqueue(workqueue_name);
 	if (gsc->irq_workqueue == NULL) {
 		dev_err(&pdev->dev, "failed to create workqueue for gsc\n");
-		goto err_clk_put;
-	}
-
-	ret = request_irq(gsc->irq, gsc_irq_handler, 0, pdev->name, gsc);
-	if (ret) {
-		dev_err(&pdev->dev, "failed to install irq (%d)\n", ret);
-		goto err_clk_put;
+		goto err_irq;
 	}
 
 	gsc->alloc_ctx = gsc->vb2->init(gsc);
@@ -1603,10 +1602,10 @@ static int gsc_probe(struct platform_device *pdev)
 
 err_irq:
 	free_irq(gsc->irq, gsc);
-err_clk_put:
-	gsc_clk_put(gsc);
 err_regs_unmap:
 	iounmap(gsc->regs);
+err_clk_put:
+	gsc_clk_put(gsc);
 err_req_region:
 	release_resource(gsc->regs_res);
 	kfree(gsc->regs_res);

@@ -99,59 +99,18 @@ struct mif_time_block {
 	char buff[MAX_TIM_LOG_SIZE];
 };
 
-struct __packed utc_time {
-	u32 year:18,
-	    mon:4,
-	    day:5,
-	    hour:5;
-	u32 min:6,
-	    sec:6,
-	    us:20;
-};
-
-/* {Hour, Minute, Second, U(micro)-second} format */
-#define HMSU_FMT	"[%02d:%02d:%02d.%06d]"
-
-#define evt_log(fmt, ...) \
-	pr_err(LOG_TAG pr_fmt(fmt), ##__VA_ARGS__)
-
-static inline unsigned long ns2us(unsigned long ns)
+static inline int ns2us(long ns)
 {
 	return (ns > 0) ? (ns / 1000) : 0;
 }
 
-static inline unsigned long ns2ms(unsigned long ns)
+static inline int ns2ms(long ns)
 {
 	return (ns > 0) ? (ns / 1000000) : 0;
 }
 
-static inline unsigned long us2ms(unsigned long us)
-{
-	return (us > 0) ? (us / 1000) : 0;
-}
-
-static inline unsigned long ms2us(unsigned long ms)
-{
-	return ms * 1E3L;
-}
-
-static inline unsigned long ms2ns(unsigned long ms)
-{
-	return ms * 1E6L;
-}
-
 void ts2utc(struct timespec *ts, struct utc_time *utc);
 void get_utc_time(struct utc_time *utc);
-void print_utc_time(int level, struct utc_time *utc);
-void print_timespec(int level, struct timespec *ts);
-
-/**
-@brief		calculate the offset of @e @@target from @e @@base in bytes
-*/
-static inline unsigned int calc_offset(void *target, void *base)
-{
-	return (unsigned int)target - (unsigned int)base;
-}
 
 int mif_dump_log(struct modem_shared *, struct io_device *);
 
@@ -171,15 +130,9 @@ void _mif_com_log(enum mif_log_id,
 void _mif_time_log(enum mif_log_id,
 	struct modem_shared *, struct timespec, const char *, size_t);
 
-/**
-@brief		find a link device
-
-@param	msd		struct modem_shared *
-@param	link_type	the type of a link device
-
-@retval	struct link_device *	if NO error
-@retval "NULL"			if ANY error
-*/
+/** find_linkdev - find a link device
+ * @msd:	struct modem_shared *
+ */
 static inline struct link_device *find_linkdev(struct modem_shared *msd,
 		enum modem_link link_type)
 {
@@ -191,10 +144,9 @@ static inline struct link_device *find_linkdev(struct modem_shared *msd,
 	return NULL;
 }
 
-/**
-@brief		count number of 1 bits as fastest way
-@param n	number
-*/
+/** countbits - count number of 1 bits as fastest way
+ * @n: number
+ */
 static inline unsigned int countbits(unsigned int n)
 {
 	unsigned int i;
@@ -203,33 +155,8 @@ static inline unsigned int countbits(unsigned int n)
 	return i;
 }
 
-/**
-@brief		check whether or not the counter value @b @@cnt gets to the
-		counter boundary mask @b @@mask
-@remark		@b @@mask must be a number of (2^n - 1), e.g. 0xF, 0x1F, etc.
-*/
-static inline bool count_flood(int cnt, int mask)
-{
-	return (cnt > 0 && (cnt & mask) == 0) ? true : false;
-}
-
-/* print IPC/UDL message as hex string with UTC time */
+/* print IPC message as hex string with UTC time */
 void pr_ipc(int level, const char *tag, const char *data, size_t len);
-
-/**
-@brief		print an IPC data @b WITH a @b LINK header
-
-@param ch	the SIPC channel ID
-@param layer	the layer in the Samsung IPC
-@param dir	the direction of communication (TX or RX)
-@param skb	the pointer to a sk_buff instance
-@param hd_exist	whether or not there is a link header in a message frame
-@param hd_print	whether or not a link header will be logged
-
-@remark		if @e @@hd_exist is false, @e @@hd_print is ignored.
-*/
-void log_ipc_pkt(u8 ch, enum ipc_layer layer, enum direction dir,
-		 struct sk_buff *skb, bool hd_exist, bool hd_print);
 
 /* print buffer as hex string */
 int pr_buffer(const char *tag, const char *data, size_t data_len,
@@ -247,8 +174,6 @@ int pr_buffer(const char *tag, const char *data, size_t data_len,
 /* Stop/wake all TX queues in network interfaces */
 void mif_netif_stop(struct link_device *ld);
 void mif_netif_wake(struct link_device *ld);
-void stop_net_ifaces(struct link_device *ld);
-void resume_net_ifaces(struct link_device *ld);
 
 /* flow control CMD from CP, it use in serial devices */
 int link_rx_flowctl_cmd(struct link_device *ld, const char *data, size_t len);
@@ -258,7 +183,7 @@ int link_rx_flowctl_cmd(struct link_device *ld, const char *data, size_t len);
 struct io_device *get_iod_with_format(struct modem_shared *msd,
 					enum dev_format format);
 struct io_device *get_iod_with_channel(struct modem_shared *msd,
-					unsigned int channel);
+					unsigned channel);
 
 static inline struct io_device *link_get_iod_with_format(
 			struct link_device *ld, enum dev_format format)
@@ -268,7 +193,7 @@ static inline struct io_device *link_get_iod_with_format(
 }
 
 static inline struct io_device *link_get_iod_with_channel(
-			struct link_device *ld, unsigned int channel)
+			struct link_device *ld, unsigned channel)
 {
 	struct io_device *iod = get_iod_with_channel(ld->msd, channel);
 	return (iod && IS_CONNECTED(iod, ld)) ? iod : NULL;
@@ -278,7 +203,7 @@ static inline struct io_device *link_get_iod_with_channel(
 struct io_device *insert_iod_with_format(struct modem_shared *msd,
 			enum dev_format format, struct io_device *iod);
 struct io_device *insert_iod_with_channel(struct modem_shared *msd,
-			unsigned int channel, struct io_device *iod);
+			unsigned channel, struct io_device *iod);
 
 /* iodev for each */
 typedef void (*action_fn)(struct io_device *iod, void *args);
@@ -297,12 +222,10 @@ void mif_add_timer(struct timer_list *timer, unsigned long expire,
 		void (*function)(unsigned long), unsigned long data);
 
 /* debug helper functions for sipc4, sipc5 */
-void mif_print_data(const u8 *data, int len);
-
-void mif_dump2format16(const u8 *data, int len, char *buff, char *tag);
-void mif_dump2format4(const u8 *data, int len, char *buff, char *tag);
-void mif_print_dump(const u8 *data, int len, int width);
-
+void mif_print_data(const char *buff, int len);
+void mif_dump2format16(const char *data, int len, char *buff, char *tag);
+void mif_dump2format4(const char *data, int len, char *buff, char *tag);
+void mif_print_dump(const char *data, int len, int width);
 void print_sipc4_hdlc_fmt_frame(const u8 *psrc);
 void print_sipc4_fmt_frame(const u8 *psrc);
 void print_sipc5_link_fmt_frame(const u8 *psrc);
@@ -390,6 +313,8 @@ void mif_init_irq(struct modem_irq *irq, unsigned int num, const char *name,
 int mif_request_irq(struct modem_irq *irq, irq_handler_t isr, void *data);
 void mif_enable_irq(struct modem_irq *irq);
 void mif_disable_irq(struct modem_irq *irq);
+
+int mif_test_dpram(char *dp_name, void __iomem *start, u16 bytes);
 
 struct file *mif_open_file(const char *path);
 void mif_save_file(struct file *fp, const char *buff, size_t size);

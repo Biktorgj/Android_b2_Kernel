@@ -37,6 +37,7 @@ struct melfas_tsi_platform_data {
 	const u8	*config_fw_version;
 	void	(*input_event)(void *data);
 	void	(*register_cb)(void *);
+	u8	report_rate;
 };
 extern struct class *sec_class;
 void tsp_charger_infom(bool en);

@@ -333,12 +333,12 @@ struct dw_mci_board {
 	int (*get_bus_wd)(u32 slot_id);
 	void (*cfg_gpio)(int width);
 	void (*hw_reset)(u32 slot_id);
-	void (*set_io_timing)(void *data, unsigned int tuning,
-			unsigned char timing, struct mmc_host *mmc);
+	void (*set_io_timing)(void *data, unsigned int tuning, unsigned char timing);
 	void (*save_drv_st)(void *data, u32 slot_id);
 	void (*restore_drv_st)(void *data, u32 slot_id, int *compensation);
 	void (*tuning_drv_st)(void *data, u32 slot_id);
 	void (*set_power)(unsigned int power);
+	void (*control_power)(unsigned int bus_width, int enable);
 
 	void (*register_notifier)(void *data);
 	void (*unregister_notifier)(void *data);
@@ -380,6 +380,9 @@ struct dw_mci_board {
 	/* Number of descriptors */
 	unsigned int desc_sz;
 
+	/* Delay value before power-off */
+	unsigned int poweroff_delay;
+
 	/* ext_cd_cleanup: Cleanup external card detect subsystem.
 	* ext_cd_init: Initialize external card detect subsystem.
 	*	notify_func argument is a callback to the dwmci driver
@@ -387,13 +390,9 @@ struct dw_mci_board {
 	*	dev is pointer to platform device of the host controller,
 	*	state is new state of the card (0 - removed, 1 - inserted).
 	*/
-#if defined(CONFIG_BCM4334) || defined(CONFIG_BCM4334_MODULE)
-	int (*ext_cd_init)(void (*notify_func)
-		(struct platform_device *, int state),void* mmc_host);
-#else /* CONFIG_BCM4334 || CONFIG_BCM4334_MODULE */
+
 	int (*ext_cd_init)(void (*notify_func)
 		(struct platform_device *, int state));
-#endif /* CONFIG_BCM4334 || CONFIG_BCM4334_MODULE */
 	int (*ext_cd_cleanup)(void (*notify_func)
 		(struct platform_device *, int state));
 
@@ -414,43 +413,6 @@ struct dw_mci_board {
 	unsigned int sw_timeout;
 	u16 tuning_map[MAX_TUNING_RETRIES];
 	unsigned int dev_drv_str;
-#define DW_MMC_MISC_LOW_FREQ_HOOK	BIT(0)
-	unsigned long misc_flag;
-#if defined(CONFIG_MMC_DW_CMD_LOGGING)
-	atomic_t log_count;
-	bool dw_mci_cmd_logging;
-#endif
-};
-
-/**
- * struct dw_mci_slot - MMC slot state
- * @mmc: The mmc_host representing this slot.
- * @host: The MMC controller this slot is using.
- * @ctype: Card type for this slot.
- * @mrq: mmc_request currently being processed or waiting to be
- *	processed, or NULL when the slot is idle.
- * @queue_node: List node for placing this node in the @queue list of
- *	&struct dw_mci.
- * @clock: Clock rate configured by set_ios(). Protected by host->lock.
- * @flags: Random state bits associated with the slot.
- * @id: Number of this slot.
- * @last_detect_state: Most recently observed card detect state.
- */
-struct dw_mci_slot {
-	struct mmc_host		*mmc;
-	struct dw_mci		*host;
-
-	u32			ctype;
-
-	struct mmc_request	*mrq;
-	struct list_head	queue_node;
-
-	unsigned int		clock;
-	unsigned long		flags;
-#define DW_MMC_CARD_PRESENT	0
-#define DW_MMC_CARD_NEED_INIT	1
-	int			id;
-	int			last_detect_state;
 };
 
 void dw_mci_ciu_clk_en(struct dw_mci *host);

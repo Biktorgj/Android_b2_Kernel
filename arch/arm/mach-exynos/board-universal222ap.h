@@ -22,21 +22,15 @@ void exynos4_smdk4270_mmc2_init(void);
 void exynos4_smdk4270_usb_init(void);
 void exynos4_smdk4270_display_init(void);
 void exynos4_smdk4270_input_init(void);
+void exynos4_smdk4270_modemif_init(void);
+void exynos4_smdk4270_modem_init(void);
 void exynos4_smdk4270_audio_init(void);
 void exynos4_smdk4270_media_init(void);
 void exynos4_smdk4270_charger_init(void);
 void exynos4_smdk4270_muic_init(void);
 void exynos4_universal222ap_clock_init(void);
 void exynos4_universal222ap_camera_init(void);
-void board_universal_ss222ap_init_fpga(void);
 void board_universal_ss222ap_init_gpio(void);
-void board_universal_ss222ap_init_gpio_i2c(void);
-int board_universal_ss222ap_add_platdata_gpio_i2c(int index,
-		                void *platform_data);
 void exynos4_smdk4270_mfd_init(void);
-void board_universal_ss222ap_init_sensor(void);
-#ifdef CONFIG_W1
-void exynos4_universal222ap_cover_id_init(void);
-#endif
 
 #endif

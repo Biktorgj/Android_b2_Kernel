@@ -11,7 +11,6 @@
 */
 #include <linux/io.h>
 #include <linux/delay.h>
-#include <asm/byteorder.h>
 
 #include "jpeg_regs.h"
 #include "jpeg_conf.h"
@@ -309,32 +308,139 @@ void jpeg_set_enc_out_fmt(void __iomem *base,
 void jpeg_set_enc_tbl(void __iomem *base,
 		enum jpeg_img_quality_level level)
 {
-	unsigned int i, j;
+	int i;
 
-	if (level < QUALITY_LEVEL_1 || level > QUALITY_LEVEL_6)
-		level = 0;
-
-	/* q-table */
-	for (i = 0; i < NUM_QUANT_TBLS; i++) {
-		for (j = 0; j < DCTSIZE; j++) {
-			if (i % 2) {
-				writel(cpu_to_be32(qtbl[level][i][j]),
-						base + S5P_JPEG_QUAN_TBL_ENTRY_REG +
-						0x40 + (j*0x04));
-				writel(cpu_to_be32(qtbl[level][i][j]),
-						base + S5P_JPEG_QUAN_TBL_ENTRY_REG +
-						0xC0 + (j*0x04));
-			} else {
-				writel(cpu_to_be32(qtbl[level][i][j]),
-						base + S5P_JPEG_QUAN_TBL_ENTRY_REG +
-						(j*0x04));
-				writel(cpu_to_be32(qtbl[level][i][j]),
-						base + S5P_JPEG_QUAN_TBL_ENTRY_REG +
-						0x80 + (j*0x04));
-			}
+	switch (level) {
+	case QUALITY_LEVEL_1:
+		for (i = 0; i < 16; i++) {
+			writel((unsigned int)ITU_Q_tbl[0][i],
+				base + S5P_JPEG_QUAN_TBL_ENTRY_REG
+				+ (i*0x04));
 		}
-	}
 
+		for (i = 0; i < 16; i++) {
+			writel((unsigned int)ITU_Q_tbl[1][i],
+				base + S5P_JPEG_QUAN_TBL_ENTRY_REG
+				+ 0x40 + (i*0x04));
+		}
+
+		for (i = 0; i < 16; i++) {
+			writel((unsigned int)ITU_Q_tbl[0][i],
+				base + S5P_JPEG_QUAN_TBL_ENTRY_REG
+				+ 0x80 + (i*0x04));
+		}
+
+		for (i = 0; i < 16; i++) {
+			writel((unsigned int)ITU_Q_tbl[1][i],
+				base + S5P_JPEG_QUAN_TBL_ENTRY_REG
+				+ 0xc0 + (i*0x04));
+		}
+		break;
+
+	case QUALITY_LEVEL_2:
+		for (i = 0; i < 16; i++) {
+			writel((unsigned int)ITU_Q_tbl[2][i],
+				base + S5P_JPEG_QUAN_TBL_ENTRY_REG
+				+ (i*0x04));
+		}
+
+		for (i = 0; i < 16; i++) {
+			writel((unsigned int)ITU_Q_tbl[3][i],
+				base + S5P_JPEG_QUAN_TBL_ENTRY_REG
+				+ 0x40 + (i*0x04));
+		}
+
+		for (i = 0; i < 16; i++) {
+			writel((unsigned int)ITU_Q_tbl[2][i],
+			base + S5P_JPEG_QUAN_TBL_ENTRY_REG
+			+ 0x80 + (i*0x04));
+		}
+
+		for (i = 0; i < 16; i++) {
+			writel((unsigned int)ITU_Q_tbl[3][i],
+				base + S5P_JPEG_QUAN_TBL_ENTRY_REG
+				+ 0xc0 + (i*0x04));
+		}
+		break;
+
+	case QUALITY_LEVEL_3:
+		for (i = 0; i < 16; i++) {
+			writel((unsigned int)ITU_Q_tbl[4][i],
+				base + S5P_JPEG_QUAN_TBL_ENTRY_REG
+				+ (i*0x04));
+		}
+
+		for (i = 0; i < 16; i++) {
+			writel((unsigned int)ITU_Q_tbl[5][i],
+				base + S5P_JPEG_QUAN_TBL_ENTRY_REG
+				+ 0x40 + (i*0x04));
+		}
+
+		for (i = 0; i < 16; i++) {
+			writel((unsigned int)ITU_Q_tbl[4][i],
+				base + S5P_JPEG_QUAN_TBL_ENTRY_REG
+				+ 0x80 + (i*0x04));
+		}
+
+		for (i = 0; i < 16; i++) {
+			writel((unsigned int)ITU_Q_tbl[5][i],
+				base + S5P_JPEG_QUAN_TBL_ENTRY_REG
+				+ 0xc0 + (i*0x04));
+		}
+		break;
+
+	case QUALITY_LEVEL_4:
+		for (i = 0; i < 16; i++) {
+			writel((unsigned int)ITU_Q_tbl[6][i],
+				base + S5P_JPEG_QUAN_TBL_ENTRY_REG
+				+ (i*0x04));
+		}
+
+		for (i = 0; i < 16; i++) {
+			writel((unsigned int)ITU_Q_tbl[7][i],
+				base + S5P_JPEG_QUAN_TBL_ENTRY_REG
+				+ 0x40 + (i*0x04));
+		}
+
+		for (i = 0; i < 16; i++) {
+			writel((unsigned int)ITU_Q_tbl[6][i],
+				base + S5P_JPEG_QUAN_TBL_ENTRY_REG
+				+ 0x80 + (i*0x04));
+		}
+
+		for (i = 0; i < 16; i++) {
+			writel((unsigned int)ITU_Q_tbl[7][i],
+				base + S5P_JPEG_QUAN_TBL_ENTRY_REG
+				+ 0xc0 + (i*0x04));
+		}
+		break;
+
+	default:
+		for (i = 0; i < 16; i++) {
+			writel((unsigned int)ITU_Q_tbl[0][i],
+				base + S5P_JPEG_QUAN_TBL_ENTRY_REG
+				+ (i*0x04));
+		}
+
+		for (i = 0; i < 16; i++) {
+			writel((unsigned int)ITU_Q_tbl[1][i],
+				base + S5P_JPEG_QUAN_TBL_ENTRY_REG
+				+ 0x40 + (i*0x04));
+		}
+
+		for (i = 0; i < 16; i++) {
+			writel((unsigned int)ITU_Q_tbl[0][i],
+				base + S5P_JPEG_QUAN_TBL_ENTRY_REG
+				+ 0x80 + (i*0x04));
+		}
+
+		for (i = 0; i < 16; i++) {
+			writel((unsigned int)ITU_Q_tbl[1][i],
+				base + S5P_JPEG_QUAN_TBL_ENTRY_REG
+				+ 0xc0 + (i*0x04));
+		}
+		break;
+	}
 	for (i = 0; i < 4; i++) {
 		writel((unsigned int)ITU_H_tbl_len_DC_luminance[i],
 			base + S5P_JPEG_HUFF_TBL_ENTRY_REG + (i*0x04));

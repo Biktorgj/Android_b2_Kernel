@@ -28,64 +28,20 @@
 #include <linux/err.h>
 #include <linux/regulator/consumer.h>
 #include <plat/gpio-cfg.h>
+#include <mach/gpio-shannon222ap.h>
 
 /* cyttsp */
+#include <linux/cyttsp5/cyttsp5_bus.h>
 #include <linux/cyttsp5/cyttsp5_core.h>
 #include <linux/cyttsp5/cyttsp5_platform.h>
 
 #ifdef CONFIG_TOUCHSCREEN_CYPRESS_CYTTSP5_PLATFORM_FW_UPGRADE
-/* #include "TSG5M_Kmini_rev_0C HW0x01FW0x0200.h" */
-#include "cyttsp5_firmware.h"
-
-#ifdef CONFIG_SEC_DEBUG_TSP_LOG
-#include <mach/sec_debug.h>
-#endif
-
-/*#define dev_dbg(dev, fmt, arg...) dev_info(dev, fmt, ##arg)*/
-
-#ifdef CONFIG_SEC_DEBUG_TSP_LOG
-#define tsp_debug_dbg(mode, dev, fmt, ...)	\
-({								\
-	if (mode) {							\
-		dev_dbg(dev, fmt, ## __VA_ARGS__);	\
-		sec_debug_tsp_log(fmt, ## __VA_ARGS__);		\
-	}				\
-	else					\
-		dev_dbg(dev, fmt, ## __VA_ARGS__);	\
-})
-
-#define tsp_debug_info(mode, dev, fmt, ...)	\
-({								\
-	if (mode) {							\
-		dev_info(dev, fmt, ## __VA_ARGS__);		\
-		sec_debug_tsp_log(fmt, ## __VA_ARGS__);		\
-	}				\
-	else					\
-		dev_info(dev, fmt, ## __VA_ARGS__);	\
-})
-
-#define tsp_debug_err(mode, dev, fmt, ...)	\
-({								\
-	if (mode) {							\
-		dev_err(dev, fmt, ## __VA_ARGS__);	\
-		sec_debug_tsp_log(fmt, ## __VA_ARGS__);		\
-	}				\
-	else					\
-		dev_err(dev, fmt, ## __VA_ARGS__); \
-})
-#else
-#define tsp_debug_dbg(mode, dev, fmt, ...)	dev_dbg(dev, fmt, ## __VA_ARGS__)
-#define tsp_debug_info(mode, dev, fmt, ...)	dev_info(dev, fmt, ## __VA_ARGS__)
-#define tsp_debug_err(mode, dev, fmt, ...)	dev_err(dev, fmt, ## __VA_ARGS__)
-#endif
-
+#include "cyttsp5_fw.h"
 static struct cyttsp5_touch_firmware cyttsp5_firmware = {
 	.img = cyttsp4_img,
 	.size = ARRAY_SIZE(cyttsp4_img),
 	.ver = cyttsp4_ver,
 	.vsize = ARRAY_SIZE(cyttsp4_ver),
-	.hw_version = CY_HW_VERSION,
-	.fw_version = CY_FW_VERSION,
 };
 #else
 static struct cyttsp5_touch_firmware cyttsp5_firmware = {
@@ -128,60 +84,43 @@ static struct cyttsp5_touch_config cyttsp5_ttconfig = {
 struct cyttsp5_loader_platform_data _cyttsp5_loader_platform_data = {
 	.fw = &cyttsp5_firmware,
 	.ttconfig = &cyttsp5_ttconfig,
-	.flags = CY_LOADER_FLAG_CALIBRATE_AFTER_FW_UPGRADE,
+	.flags = CY_FLAG_LOAD_NONE,
 };
 
-static int enabled = 0;
-extern unsigned int system_rev;
-static int cyttsp5_hw_power(struct cyttsp5_core_platform_data *pdata,
-		struct device *dev, int on)
+int enabled = 0;
+
+int cyttsp5_hw_power(int on)
 {
 	struct regulator *regulator_vdd;
 	struct regulator *regulator_avdd;
 
-	mutex_lock(&pdata->poweronoff_lock);
-	if (enabled == on) {
-		tsp_debug_err(true, dev, "%s: same command. not excute(%d)\n",
-			__func__, enabled);
-		mutex_unlock(&pdata->poweronoff_lock);
+	if (enabled == on)
 		return 0;
-	}
 
 	regulator_vdd = regulator_get(NULL, "vdd_tsp_1v8");
 	if (IS_ERR(regulator_vdd)) {
-		tsp_debug_err(true, dev, "%s: tsp_vdd regulator_get failed\n",
-			__func__);
-		mutex_unlock(&pdata->poweronoff_lock);
+		printk(KERN_ERR "[TSP]ts_power_on : tsp_vdd regulator_get failed\n");
 		return PTR_ERR(regulator_vdd);
 	}
 
 	regulator_avdd = regulator_get(NULL, "vtsp_a3v3");
 	if (IS_ERR(regulator_avdd)) {
-		tsp_debug_err(true, dev, "%s: tsp_avdd regulator_get failed\n",
-			__func__);
+		printk(KERN_ERR "[TSP]ts_power_on : tsp_avdd regulator_get failed\n");
 		regulator_put(regulator_vdd);
-		mutex_unlock(&pdata->poweronoff_lock);
 		return PTR_ERR(regulator_avdd);
 	}
 
-	tsp_debug_err(true, dev, "%s %s\n", __func__, on ? "on" : "off");
+	printk(KERN_ERR "[TSP] %s %s\n", __func__, on ? "on" : "off");
 
 	if (on) {
-		regulator_enable(regulator_avdd);
 		regulator_enable(regulator_vdd);
+		regulator_enable(regulator_avdd);
 
 		s3c_gpio_cfgpin(GPIO_TSP_INT, S3C_GPIO_SFN(0xf));
-#ifdef CONFIG_MACH_KMINI
-		if (system_rev >= 1)
-			s3c_gpio_setpull(GPIO_TSP_INT, S3C_GPIO_PULL_UP);
-		else
-			s3c_gpio_setpull(GPIO_TSP_INT, S3C_GPIO_PULL_NONE);
-#else
 		s3c_gpio_setpull(GPIO_TSP_INT, S3C_GPIO_PULL_NONE);
-#endif
 	} else {
 		s3c_gpio_cfgpin(GPIO_TSP_INT, S3C_GPIO_INPUT);
-		s3c_gpio_setpull(GPIO_TSP_INT, S3C_GPIO_PULL_DOWN);
+		s3c_gpio_setpull(GPIO_TSP_INT, S3C_GPIO_PULL_NONE);
 
 		/*
 		 * TODO: If there is a case the regulator must be disabled
@@ -191,14 +130,12 @@ static int cyttsp5_hw_power(struct cyttsp5_core_platform_data *pdata,
 		regulator_disable(regulator_avdd);
 
 		/* TODO: Delay time should be adjusted */
-		//msleep(10);
+		msleep(10);
 	}
 
 	enabled = on;
 	regulator_put(regulator_vdd);
 	regulator_put(regulator_avdd);
-
-	mutex_unlock(&pdata->poweronoff_lock);
 
 	return 0;
 }
@@ -207,20 +144,20 @@ int cyttsp5_xres(struct cyttsp5_core_platform_data *pdata,
 {
 	int rc;
 
-	rc = cyttsp5_hw_power(pdata, dev, 0);
+	rc = cyttsp5_hw_power(0);
 	if (rc) {
 		dev_err(dev, "%s: Fail power down HW\n", __func__);
 		goto exit;
 	}
 
-	msleep(50);
+	msleep(200);
 
-	rc = cyttsp5_hw_power(pdata, dev, 1);
+	rc = cyttsp5_hw_power(1);
 	if (rc) {
 		dev_err(dev, "%s: Fail power up HW\n", __func__);
 		goto exit;
 	}
-	msleep(50);
+	msleep(100);
 
 exit:
 	return rc;
@@ -233,25 +170,28 @@ int cyttsp5_init(struct cyttsp5_core_platform_data *pdata,
 	int rc = 0;
 
 	enabled = 0;
-#if 0
-	if (on)
-		cyttsp5_hw_power(pdata, dev, 1);
-	else
-		cyttsp5_hw_power(pdata, dev, 0);
-#else
-	if (!on)
-		cyttsp5_hw_power(pdata, dev, 0);
-#endif
+
+	if (on) {
+		gpio_request(irq_gpio, "TSP_INT");
+		s3c_gpio_cfgpin(irq_gpio, S3C_GPIO_SFN(0xf));
+		s3c_gpio_setpull(irq_gpio, S3C_GPIO_PULL_UP);
+		s5p_register_gpio_interrupt(irq_gpio);
+		cyttsp5_hw_power(1);
+	} else {
+		cyttsp5_hw_power(0);
+		gpio_free(irq_gpio);
+	}
+
 	dev_info(dev,
-		"%s: INIT CYTTSP IRQ gpio=%d onoff=%d r=%d\n",
-		__func__, irq_gpio, on, rc);
+		"%s: INIT CYTTSP IRQ gpio=%d r=%d\n",
+		__func__, irq_gpio, rc);
 	return rc;
 }
 
 int cyttsp5_power(struct cyttsp5_core_platform_data *pdata,
 		int on, struct device *dev, atomic_t *ignore_irq)
 {
-	return cyttsp5_hw_power(pdata, dev, on);
+	return cyttsp5_hw_power(on);
 }
 
 int cyttsp5_irq_stat(struct cyttsp5_core_platform_data *pdata,

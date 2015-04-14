@@ -1,9 +1,9 @@
 /*
- * Copyright (C) 2012 ARM Limited. All rights reserved.
- * 
+ * Copyright (C) 2011-2012 ARM Limited. All rights reserved.
+ *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
@@ -32,7 +32,6 @@ struct mali_bcast_unit *mali_bcast_unit_create(const _mali_osk_resource_t *resou
 	bcast_unit = _mali_osk_malloc(sizeof(struct mali_bcast_unit));
 	if (NULL == bcast_unit)
 	{
-		MALI_PRINT_ERROR(("Mali Broadcast unit: Failed to allocate memory for Broadcast unit\n"));
 		return NULL;
 	}
 
@@ -45,10 +44,8 @@ struct mali_bcast_unit *mali_bcast_unit_create(const _mali_osk_resource_t *resou
 	}
 	else
 	{
-		MALI_PRINT_ERROR(("Mali Broadcast unit: Failed map broadcast unit\n"));
+		MALI_PRINT_ERROR(("Mali Broadcast unit: Failed to allocate memory for Broadcast unit\n"));
 	}
-
-	_mali_osk_free(bcast_unit);
 
 	return NULL;
 }
@@ -63,18 +60,19 @@ void mali_bcast_unit_delete(struct mali_bcast_unit *bcast_unit)
 
 void mali_bcast_add_group(struct mali_bcast_unit *bcast_unit, struct mali_group *group)
 {
-	u32 bcast_id;
+	u32 core_id;
 	u32 broadcast_mask;
 
 	MALI_DEBUG_ASSERT_POINTER(bcast_unit);
 	MALI_DEBUG_ASSERT_POINTER(group);
 
-	bcast_id = mali_pp_core_get_bcast_id(mali_group_get_pp_core(group));
-
+	core_id = mali_pp_core_get_id(mali_group_get_pp_core(group));
 	broadcast_mask = bcast_unit->current_mask;
 
-	broadcast_mask |= (bcast_id); /* add PP core to broadcast */
-	broadcast_mask |= (bcast_id << 16); /* add MMU to broadcast */
+	/* set the bit corresponding to the group's core's id to 1 */
+	core_id = 1 << core_id;
+	broadcast_mask |= (core_id); /* add PP core to broadcast */
+	broadcast_mask |= (core_id << 16); /* add MMU to broadcast */
 
 	/* store mask so we can restore on reset */
 	bcast_unit->current_mask = broadcast_mask;
@@ -84,17 +82,18 @@ void mali_bcast_add_group(struct mali_bcast_unit *bcast_unit, struct mali_group 
 
 void mali_bcast_remove_group(struct mali_bcast_unit *bcast_unit, struct mali_group *group)
 {
-	u32 bcast_id;
+	u32 core_id;
 	u32 broadcast_mask;
 
 	MALI_DEBUG_ASSERT_POINTER(bcast_unit);
 	MALI_DEBUG_ASSERT_POINTER(group);
 
-	bcast_id = mali_pp_core_get_bcast_id(mali_group_get_pp_core(group));
-
+	core_id = mali_pp_core_get_id(mali_group_get_pp_core(group));
 	broadcast_mask = bcast_unit->current_mask;
 
-	broadcast_mask &= ~((bcast_id << 16) | bcast_id);
+	/* set the bit corresponding to the group's core's id to 0 */
+	core_id = 1 << core_id;
+	broadcast_mask &= ~((core_id << 16) | core_id);
 
 	/* store mask so we can restore on reset */
 	bcast_unit->current_mask = broadcast_mask;
@@ -115,19 +114,4 @@ void mali_bcast_reset(struct mali_bcast_unit *bcast_unit)
 	mali_hw_core_register_write(&bcast_unit->hw_core,
 	                            bcast_unit_addr_irq_override_mask,
 	                            bcast_unit->current_mask & 0xFF);
-}
-
-void mali_bcast_disable(struct mali_bcast_unit *bcast_unit)
-{
-	MALI_DEBUG_ASSERT_POINTER(bcast_unit);
-
-	/* set broadcast mask */
-	mali_hw_core_register_write(&bcast_unit->hw_core,
-	                            bcast_unit_addr_broadcast_mask,
-	                            0x0);
-
-	/* set IRQ override mask */
-	mali_hw_core_register_write(&bcast_unit->hw_core,
-	                            bcast_unit_addr_irq_override_mask,
-	                            0x0);
 }

@@ -56,6 +56,7 @@ struct iommu_domain {
  * @detach_dev: detach device from an iommu domain
  * @map: map a physically contiguous memory region to an iommu domain
  * @unmap: unmap a physically contiguous memory region from an iommu domain
+ * @tlb_flush_all: flush all tlb entries of iommu hw.
  * @iova_to_phys: translate iova to physical address
  * @domain_has_cap: domain capabilities query
  * @commit: commit iommu domain
@@ -70,6 +71,7 @@ struct iommu_ops {
 		   phys_addr_t paddr, size_t size, int prot);
 	size_t (*unmap)(struct iommu_domain *domain, unsigned long iova,
 		     size_t size);
+	void (*tlb_flush_all)(struct iommu_domain *domain);
 	phys_addr_t (*iova_to_phys)(struct iommu_domain *domain,
 				    unsigned long iova);
 	int (*domain_has_cap)(struct iommu_domain *domain,

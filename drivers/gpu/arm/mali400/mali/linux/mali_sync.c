@@ -1,9 +1,9 @@
 /*
- * Copyright (C) 2012 ARM Limited. All rights reserved.
- * 
+ * Copyright (C) 2011-2012 ARM Limited. All rights reserved.
+ *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
@@ -15,7 +15,6 @@
 
 #include <linux/seq_file.h>
 #include <linux/sync.h>
-#include <linux/timer.h>
 
 #include "mali_osk.h"
 #include "mali_kernel_common.h"
@@ -32,10 +31,7 @@ struct mali_sync_pt
 	struct sync_pt pt;
 	u32 order;
 	s32 error;
-	struct timer_list timer;
 };
-
-static void mali_sync_timed_pt_timeout(unsigned long data);
 
 static inline struct mali_sync_timeline *to_mali_sync_timeline(struct sync_timeline *timeline)
 {
@@ -102,16 +98,6 @@ static int timeline_compare(struct sync_pt *a, struct sync_pt *b)
 	}
 }
 
-static void timeline_free_pt(struct sync_pt *pt)
-{
-	struct mali_sync_pt *mpt = to_mali_sync_pt(pt);
-
-	if (mpt->timer.function == mali_sync_timed_pt_timeout)
-	{
-		del_timer_sync(&mpt->timer);
-	}
-}
-
 static void timeline_print_tl(struct seq_file *s, struct sync_timeline *sync_timeline)
 {
 	struct mali_sync_timeline *mtl = to_mali_sync_timeline(sync_timeline);
@@ -132,7 +118,6 @@ static struct sync_timeline_ops mali_timeline_ops = {
 	.dup            = timeline_dup,
 	.has_signaled   = timeline_has_signaled,
 	.compare        = timeline_compare,
-	.free_pt        = timeline_free_pt,
 	.print_obj      = timeline_print_tl,
 	.print_pt       = timeline_print_pt
 };
@@ -178,65 +163,6 @@ struct sync_pt *mali_sync_pt_alloc(struct sync_timeline *parent)
 	mpt->error = 0;
 
 	return pt;
-}
-
-static void mali_sync_timed_pt_timeout(unsigned long data)
-{
-	struct sync_pt *pt = (struct sync_pt *)data;
-
-	MALI_DEBUG_ASSERT_POINTER(pt);
-
-	mali_sync_signal_pt(pt, -ETIME);
-}
-
-struct sync_pt *mali_sync_timed_pt_alloc(struct sync_timeline *parent)
-{
-	struct sync_pt *pt;
-	struct mali_sync_pt *mpt;
-	const u32 timeout = msecs_to_jiffies(MALI_SYNC_TIMED_FENCE_TIMEOUT);
-
-	pt = mali_sync_pt_alloc(parent);
-	if (NULL == pt) return NULL;
-	mpt = to_mali_sync_pt(pt);
-
-	init_timer(&mpt->timer);
-
-	mpt->timer.function = mali_sync_timed_pt_timeout;
-	mpt->timer.data = (unsigned long)pt;
-	mpt->timer.expires = jiffies + timeout;
-
-	add_timer(&mpt->timer);
-
-	return pt;
-}
-
-/*
- * Returns 0 if sync_pt has been committed and are ready for use, -ETIME if
- * timeout already happened and the fence has been signalled.
- *
- * If an error occurs the sync point can not be used.
- */
-int mali_sync_timed_commit(struct sync_pt *pt)
-{
-	struct mali_sync_pt *mpt = to_mali_sync_pt(pt);
-	int ret;
-
-	if (!mali_sync_timeline_is_ours(pt->parent))
-	{
-		return -EINVAL;
-	}
-
-	/* Stop timer */
-	ret = del_timer_sync(&mpt->timer);
-
-	if (0 == ret)
-	{
-		return -ETIME;
-	}
-
-	MALI_DEBUG_ASSERT(0 == timeline_has_signaled(pt));
-
-	return 0;
 }
 
 void mali_sync_signal_pt(struct sync_pt *pt, int error)

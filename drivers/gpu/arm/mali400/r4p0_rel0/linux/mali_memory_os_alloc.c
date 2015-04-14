@@ -423,24 +423,20 @@ static int mali_mem_os_shrink(struct shrinker *shrinker, struct shrink_control *
 #else
 	int nr = sc->nr_to_scan;
 #endif
-	size_t pool_count_debug = 0;
 
 	if (0 == nr) {
 		return mali_mem_os_allocator.pool_count + mali_mem_page_table_page_pool.count;
+	}
+
+	if (0 == mali_mem_os_allocator.pool_count) {
+		/* No pages availble */
+		return 0;
 	}
 
 	if (0 == spin_trylock_irqsave(&mali_mem_os_allocator.pool_lock, flags)) {
 		/* Not able to lock. */
 		return -1;
 	}
-
-	if (0 == mali_mem_os_allocator.pool_count) {
-		/* No pages availble */
-		spin_unlock_irqrestore(&mali_mem_os_allocator.pool_lock, flags);
-		return 0;
-	}
-
-	pool_count_debug = mali_mem_os_allocator.pool_count;
 
 	/* Release from general page pool */
 	nr = min((size_t)nr, mali_mem_os_allocator.pool_count);
@@ -453,11 +449,6 @@ static int mali_mem_os_shrink(struct shrinker *shrinker, struct shrink_control *
 	spin_unlock_irqrestore(&mali_mem_os_allocator.pool_lock, flags);
 
 	list_for_each_entry_safe(page, tmp, &pages, lru) {
-		if ((size_t)page < 0xC0000000) {
-			printk(KERN_ALERT"the pointer of page is %p, nr = %lu, pool count = %u \n",
-				(void *)page, sc->nr_to_scan, pool_count_debug);
-		}
-
 		mali_mem_os_free_page(page);
 	}
 

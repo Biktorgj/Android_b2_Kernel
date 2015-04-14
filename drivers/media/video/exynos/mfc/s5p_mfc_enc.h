@@ -16,7 +16,11 @@
 #define MFC_ENC_AVG_FPS_MODE
 
 #define ENC_HIGH_FPS	(48000)
+#ifdef CONFIG_SOC_EXYNOS3250
+#define ENC_MAX_FPS	(30000)
+#else
 #define ENC_MAX_FPS	(120000)
+#endif
 #define ENC_AVG_FRAMES	(10)
 
 const struct v4l2_ioctl_ops *get_enc_v4l2_ioctl_ops(void);

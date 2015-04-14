@@ -53,12 +53,7 @@
 #endif
 
 #define FLITE_MAX_RESET_READY_TIME	20 /* 100ms */
-#ifdef CONFIG_VIDEO_SAMSUNG_EXT_CAMERA
-#define FLITE_MAX_CTRL_NUM_EXT		9
-#define FLITE_MAX_CTRL_NUM		(25 + FLITE_MAX_CTRL_NUM_EXT)
-#else
 #define FLITE_MAX_CTRL_NUM		27
-#endif
 #define FLITE_CLK_NAME_SIZE		20
 #define FLITE_MAX_OUT_BUFS 		flite->reqbufs_cnt
 #ifdef CONFIG_ARCH_EXYNOS4
@@ -69,6 +64,11 @@
 #ifdef CONFIG_SOC_EXYNOS4415
 #define USE_FLITEB_CSISA
 #endif
+#ifdef CONFIG_SOC_EXYNOS3470
+/* #define ENABLE_VB_EXPBUF */
+#endif
+
+#define FLITE_OVF_CNT_BUG 100
 
 enum flite_b_csis_source {
 	FLITE_SRC_CSIS_B = 0,
@@ -209,21 +209,8 @@ struct flite_ctrls {
 	struct v4l2_ctrl	*aeawb_lockunlock;
 	struct v4l2_ctrl	*caf_startstop;
 	struct v4l2_ctrl	*digital_zoom;
-#ifdef CONFIG_VIDEO_SAMSUNG_EXT_CAMERA
-	struct v4l2_ctrl	*vt_mode;
-	struct v4l2_ctrl	*sensor_mode;
-	struct v4l2_ctrl	*touch_af_startstop;
-	struct v4l2_ctrl	*flash_mode;
-	struct v4l2_ctrl	*antishake;
-	struct v4l2_ctrl	*check_esd;
-	struct v4l2_ctrl	*antibanding;
-	struct v4l2_ctrl	*exif_exptime;
-	struct v4l2_ctrl	*exif_flash;
-	struct v4l2_ctrl	*reset;
-#else
 	struct v4l2_ctrl	*flash_mode;
 	struct v4l2_ctrl	*single_af;
-#endif
 };
 /**
   * struct flite_dev - top structure of FIMC-Lite device
@@ -282,11 +269,6 @@ struct flite_dev {
 	int				qos_lock_value;
 	int				frame_rate;
 	u32				ovf_cnt;
-
-#ifdef CONFIG_VIDEO_SAMSUNG_EXT_CAMERA	
-	int				dbg_irq_cnt;
-	int				cap_mode;
-#endif
 };
 
 struct flite_vb2 {
@@ -310,7 +292,7 @@ struct flite_buffer {
 	struct flite_addr	paddr;
 	int			index;
 };
-
+;
 /* fimc-reg.c */
 void flite_hw_clr_ovf_indication(struct flite_dev *dev);
 void flite_hw_set_ovf_interrupt_source(struct flite_dev *dev);

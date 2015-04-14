@@ -7,3 +7,7 @@ config SND_SOC_YAMAHA_YMU831_DEBUG
 	bool "YAMAHA_YMU831 verbose debug messages while core driver call"
 	select SND_DEBUG
 	depends on SND_SOC_YAMAHA_YMU831
+
+config SND_SOC_YAMAHA_YMU831_SEC_CDSP
+	bool "SEC Solution on Yamaha YMU831 C-DSP"
+	depends on SND_SOC_YAMAHA_YMU831

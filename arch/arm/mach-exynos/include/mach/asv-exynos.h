@@ -80,9 +80,6 @@ enum asv_type_id {
 /* define Struct for ASV common */
 struct asv_common {
 	char		lot_name[5];
-	/* speed_value, efuse_status is e-fuse related variables */
-	int		speed_value;
-	unsigned int	efuse_status;
 	unsigned int	ids_value;
 	unsigned int	hpm_value;
 	unsigned int	(*init)(void);
@@ -120,10 +117,6 @@ struct asv_ops {
 	unsigned int	(*get_asv_group)(struct asv_common *asv_comm);
 	void		(*set_asv_info)(struct asv_info *asv_inform, bool show_value);
 };
-
-#ifdef CONFIG_SOC_EXYNOS4415
-extern bool exynos4415_get_arm_maxlimit(void);
-#endif
 
 /* define function for common asv */
 extern void add_asv_member(struct asv_info *exynos_asv_info);

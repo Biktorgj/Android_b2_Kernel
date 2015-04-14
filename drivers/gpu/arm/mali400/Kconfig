@@ -12,7 +12,16 @@ menuconfig MALI400
 choice
 depends on MALI400
 prompt "Select MALI VER"
-default MALI_VER_R3P2_REL2
+default MALI_VER_R3P2_REL0
+
+config MALI_VER_R3P2_REL0
+	bool "Mali400 Version R3P2-REL0"
+	help
+	  Choose this option to select DDK version.
+
+if MALI_VER_R3P2_REL0
+source "drivers/gpu/arm/mali400/mali/Kconfig"
+endif
 
 config MALI_VER_R3P2_REL2
 	bool "Mali400 Version R3P2-REL2"

@@ -29,6 +29,12 @@ enum calibration_type {
 	TYPE_NONE,
 };
 
+enum calibration_valid_type {
+	TMU_CALIBRATION_OK = 0,
+	TMU_CHIP_UNCALIBRATED,
+	TMU_INVALID_EFUSE,
+};
+
 enum soc_type {
 	SOC_ARCH_EXYNOS3 = 1,
 	SOC_ARCH_EXYNOS4,
@@ -93,6 +99,9 @@ struct exynos_tmu_platform_data {
 	u8 reference_voltage;
 	u8 noise_cancel_mode;
 	u32 efuse_value;
+
+	/* workaround for uncalibrated chip list */
+	char *uncalibrated_chips[10];
 
 	enum calibration_type cal_type;
 	enum soc_type type;

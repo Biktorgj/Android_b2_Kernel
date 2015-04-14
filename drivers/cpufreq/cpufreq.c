@@ -1613,6 +1613,9 @@ static int __cpufreq_set_policy(struct cpufreq_policy *data,
 	pr_debug("setting new policy for CPU %u: %u - %u kHz\n", policy->cpu,
 		policy->min, policy->max);
 
+	printk(KERN_DEBUG "%s cpu%d policy->min=%d, max=%d\n",
+		__FUNCTION__, policy->cpu, policy->min, policy->max);
+
 	memcpy(&policy->cpuinfo, &data->cpuinfo,
 				sizeof(struct cpufreq_cpuinfo));
 

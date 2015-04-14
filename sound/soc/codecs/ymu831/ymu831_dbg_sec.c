@@ -20,13 +20,13 @@
  * 3. This notice may not be removed or altered from any source distribution.
  */
 
-#ifndef CONFIG_SAMSUNG_PRODUCT_SHIP
+#ifdef CONFIG_SLP_KERNEL_ENG
 
 #include "mcdriver.h"
 #include "ymu831_priv.h"
 
 
-#define YMU831_SEC_DEBUG_LEVEL 1
+#define YMU831_SEC_DEBUG_LEVEL 2
 
 
 static void mc_asoc_dump_init_info_sec(const void *pvPrm, UINT32 dPrm)

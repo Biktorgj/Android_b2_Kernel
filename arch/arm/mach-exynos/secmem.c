@@ -15,6 +15,7 @@
 #include <linux/fs.h>
 #include <linux/miscdevice.h>
 #include <linux/mutex.h>
+#include <linux/pm_runtime.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/mm.h>
@@ -41,9 +42,7 @@ static char *secmem_regions[] = {
 	"mfc_sh",	/* 0 */
 	"g2d_wfd",	/* 1 */
 	"video",	/* 2 */
-#ifndef CONFIG_SOC_EXYNOS3470
 	"mfc_input",	/* 3 */
-#endif
 	"mfc_fw",	/* 4 */
 	"sectbl",	/* 5 */
 	NULL
@@ -77,6 +76,12 @@ static int secmem_open(struct inode *inode, struct file *file)
 static void drm_enable_locked(struct secmem_info *info, bool enable)
 {
 	if (drm_onoff != enable) {
+#ifdef CONFIG_EXYNOS_DEV_GSC
+		if (enable)
+			pm_runtime_forbid(info->dev->parent);
+		else
+			pm_runtime_allow(info->dev->parent);
+#endif
 		drm_onoff = enable;
 		/*
 		 * this will only allow this instance to turn drm_off either by
@@ -284,6 +289,9 @@ struct miscdevice secmem = {
 	.minor	= MISC_DYNAMIC_MINOR,
 	.name	= SECMEM_DEV_NAME,
 	.fops	= &secmem_fops,
+#ifdef CONFIG_EXYNOS_DEV_GSC
+	.parent	= &exynos5_device_gsc0.dev,
+#endif
 };
 
 static int __init secmem_init(void)
@@ -299,6 +307,7 @@ static int __init secmem_init(void)
 
 	crypto_driver = NULL;
 
+	pm_runtime_enable(secmem.this_device);
 #if defined(CONFIG_ARM_EXYNOS5410_BUS_DEVFREQ)
 	pm_qos_add_request(&exynos5_secmem_mif_qos, PM_QOS_BUS_THROUGHPUT, 0);
 #endif
@@ -312,6 +321,7 @@ static void __exit secmem_exit(void)
 	pm_qos_remove_request(&exynos5_secmem_mif_qos);
 #endif
 
+	__pm_runtime_disable(secmem.this_device, false);
 	misc_deregister(&secmem);
 }
 

@@ -70,23 +70,6 @@
 
 #define DEC_LAST_FRAME		0x80000000
 
-/* Command ID for smc */
-#if defined(CONFIG_SOC_EXYNOS5260)
-#define SMC_PROTECTION_SET	0x83000000
-#define SMC_DRM_FW_LOADING	0x83000001
-#define SMC_SUPPORT		0x83000002
-#define SMC_MEM_PROT_SET	0x83000005
-#else
-#define SMC_PROTECTION_SET	0x81000000
-#define SMC_DRM_FW_LOADING	0x81000001
-#define SMC_SUPPORT		0x81000002
-#define SMC_MEM_PROT_SET	0x81000005
-#endif
-
-/* Parameter for smc */
-#define SMC_PROTECTION_ENABLE	1
-#define SMC_PROTECTION_DISABLE	0
-
 /**
  * enum s5p_mfc_inst_type - The type of an MFC device node.
  */
@@ -186,7 +169,6 @@ struct s5p_mfc_buf {
 		dma_addr_t stream;
 	} planes;
 	int used;
-	int already;
 };
 
 #define vb_to_mfc_buf(x)	\
@@ -341,8 +323,6 @@ struct s5p_mfc_dev {
 	int min_rate;
 	int curr_rate;
 #endif
-	int is_support_smc;
-	int skip_bus_waiting;
 };
 
 /**
@@ -636,7 +616,6 @@ struct s5p_mfc_dec {
 
 	struct s5p_mfc_extra_buf dsc;
 	unsigned long consumed;
-	unsigned long remained_size;
 	unsigned long dpb_status;
 	unsigned int dpb_flush;
 
@@ -665,8 +644,6 @@ struct s5p_mfc_dec {
 	struct dec_dpb_ref_info *ref_info;
 	int assigned_fd[MFC_MAX_DPBS];
 	struct mfc_user_shared_handle sh_handle;
-
-	int dynamic_ref_filled;
 };
 
 struct s5p_mfc_enc {
@@ -936,9 +913,6 @@ static inline unsigned int mfc_version(struct s5p_mfc_dev *dev)
 					(dev->fw.date >= 0x131203)))
 
 #define HW_LOCK_CLEAR_MASK		(0xFFFFFFFF)
-
-#define is_h264(ctx)		((ctx->codec_mode == S5P_FIMV_CODEC_H264_DEC) ||\
-				(ctx->codec_mode == S5P_FIMV_CODEC_H264_MVC_DEC))
 
 /* Extra information for Decoder */
 #define	DEC_SET_DUAL_DPB		(1 << 0)

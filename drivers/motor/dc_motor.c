@@ -1,6 +1,6 @@
 /* drivers/motor/dc_motor.c
  *
- * Copyright (C) 2013 Samsung Electronics Co. Ltd. All Rights Reserved.
+ * Copyright (C) 2012 Samsung Electronics Co. Ltd. All Rights Reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -13,33 +13,7 @@
  *
  */
 
-#include <linux/hrtimer.h>
-#include <linux/err.h>
-#include <linux/gpio.h>
-#include <linux/wakelock.h>
-#include <linux/mutex.h>
-#include <linux/workqueue.h>
-#include <linux/platform_device.h>
-#include <linux/module.h>
-#include <linux/device.h>
-#include <linux/vmalloc.h>
-#include <linux/fs.h>
-#include <linux/mm.h>
-#include <linux/slab.h>
-#include <linux/timed_output.h>
 #include <linux/dc_motor.h>
-#include <linux/fs.h>
-
-struct dc_motor_drvdata {
-	struct timed_output_dev dev;
-	struct hrtimer timer;
-	struct work_struct work;
-	void (*power) (bool on);
-	spinlock_t lock;
-	bool running;
-	int timeout;
-	int max_timeout;
-};
 
 static enum hrtimer_restart dc_motor_timer_func(struct hrtimer *_timer)
 {
@@ -66,6 +40,7 @@ static void dc_motor_work(struct work_struct *_work)
 		if (data->running)
 			return ;
 		data->running = true;
+		data->set_voltage(21);
 		data->power(1);
 	}
 }
@@ -107,6 +82,24 @@ static void dc_motor_enable(struct timed_output_dev *_dev, int value)
 	spin_unlock_irqrestore(&data->lock, flags);
 }
 
+#if defined(CONFIG_VIBETONZ)
+static struct dc_motor_drvdata *vibe_ddata;
+void vibtonz_enable(bool en)
+{
+#if defined(SEC_DC_MOTOR_LOG)
+	printk(KERN_DEBUG "[VIB] %s\n", __func__);
+#endif
+	vibe_ddata->power(en);
+}
+void vibtonz_set_voltage(int val)
+{
+#if defined(SEC_DC_MOTOR_LOG)
+	printk(KERN_DEBUG "[VIB] %s\n", __func__);
+#endif
+	vibe_ddata->set_voltage(val);
+}
+#endif
+
 static int __devinit dc_motor_driver_probe(struct platform_device *pdev)
 {
 	struct dc_motor_platform_data *pdata = pdev->dev.platform_data;
@@ -114,7 +107,7 @@ static int __devinit dc_motor_driver_probe(struct platform_device *pdev)
 	int ret = 0;
 
 	ddata = kzalloc(sizeof(struct dc_motor_drvdata), GFP_KERNEL);
-	if (ddata == NULL) {
+	if (NULL == ddata) {
 		printk(KERN_ERR "[VIB] Failed to alloc memory\n");
 		ret = -ENOMEM;
 		goto err_free_mem;
@@ -122,6 +115,10 @@ static int __devinit dc_motor_driver_probe(struct platform_device *pdev)
 
 	ddata->max_timeout = pdata->max_timeout;
 	ddata->power = pdata->power;
+#if defined(CONFIG_VIBETONZ)
+	vibe_ddata = ddata;
+	ddata->set_voltage = pdata->set_voltage;
+#endif
 
 	ddata->dev.name = "vibrator";
 	ddata->dev.get_time = dc_motor_get_time;
@@ -158,9 +155,9 @@ static int __devexit dc_motor_remove(struct platform_device *pdev)
 }
 
 #ifdef CONFIG_PM
-static int dc_motor_suspend(struct device *dev)
+static int dc_motor_suspend(struct platform_device *pdev,
+			pm_message_t state)
 {
-	struct platform_device *pdev = to_platform_device(dev);
 	struct dc_motor_drvdata *ddata = platform_get_drvdata(pdev);
 
 	cancel_work_sync(&ddata->work);
@@ -172,26 +169,29 @@ static int dc_motor_suspend(struct device *dev)
 	return 0;
 }
 
-static int dc_motor_resume(struct device *dev)
+static int dc_motor_resume(struct platform_device *pdev)
 {
 	return 0;
 }
+#endif	/* CONFIG_PM */
 
-static const struct dev_pm_ops dc_motor_pm_ops = {
-	.suspend = dc_motor_suspend,
-	.resume = dc_motor_resume,
-};
-#endif
+static void dc_motor_driver_shutdown(struct platform_device *pdev)
+{
+	struct dc_motor_drvdata *ddata = platform_get_drvdata(pdev);
+	ddata->power(false);
+}
 
 static struct platform_driver dc_motor_driver = {
 	.probe		= dc_motor_driver_probe,
 	.remove		= __devexit_p(dc_motor_remove),
-	.driver		= {
-		.name	= "sec-vibrator",
-		.owner	= THIS_MODULE,
+	.shutdown		= dc_motor_driver_shutdown,
 #ifdef CONFIG_PM
-		.pm	= &dc_motor_pm_ops,
-#endif
+	.suspend		= dc_motor_suspend,
+	.resume		= dc_motor_resume,
+#endif	/* CONFIG_PM */
+	.driver		= {
+		.name	= "dc_motor",
+		.owner	= THIS_MODULE,
 	}
 };
 
@@ -208,6 +208,3 @@ static void __exit dc_motor_exit(void)
 module_init(dc_motor_init);
 module_exit(dc_motor_exit);
 
-/* Module information */
-MODULE_DESCRIPTION("vibrator driver for coin(DC) motor");
-MODULE_LICENSE("GPL");

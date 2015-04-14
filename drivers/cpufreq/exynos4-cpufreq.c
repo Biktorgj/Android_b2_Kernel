@@ -322,7 +322,7 @@ static int exynos_cpufreq_pm_notifier(struct notifier_block *notifier,
 		exynos_set_abb(ID_ARM, ABB_BYPASS);
 		exynos_set_ema(tmp_volt);
 #else
-		if (samsung_rev() >= EXYNOS3470_REV_2_0)
+		if (samsung_rev() == EXYNOS3470_REV_2_0)
 			exynos_set_abb(ID_ARM, ABB_BYPASS);
 #endif
 
@@ -334,7 +334,7 @@ static int exynos_cpufreq_pm_notifier(struct notifier_block *notifier,
 #ifdef CONFIG_SOC_EXYNOS4415
 		exynos_set_abb(ID_ARM, exynos_info->abb_table[L6]);
 #else
-		if (samsung_rev() >= EXYNOS3470_REV_2_0)
+		if (samsung_rev() == EXYNOS3470_REV_2_0)
 			exynos_set_abb(ID_ARM, exynos_info->abb_table[L6]);
 #endif
 

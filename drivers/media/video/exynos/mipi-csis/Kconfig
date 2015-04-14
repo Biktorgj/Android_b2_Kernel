@@ -6,10 +6,3 @@ config VIDEO_EXYNOS_MIPI_CSIS
 	default n
 	help
 	  This is a v4l2 driver for exynos mipi-csis interface device.
-
-config VIDEO_EXYNOS_MIPI_CSIS_IRQ_DEBUG
-	bool "FIMC MIPI Error interrupt message"
-	depends on VIDEO_EXYNOS_MIPI_CSIS
-	default n
-	help
-	  This is for debugging mipi error interrupt.

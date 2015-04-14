@@ -1,9 +1,9 @@
-/**
- * Copyright (C) 2010-2012 ARM Limited. All rights reserved.
- * 
+/*
+ * Copyright (C) 2011-2012 ARM Limited. All rights reserved.
+ *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
@@ -26,12 +26,12 @@
 
 static _mali_osk_atomic_t mali_pm_ref_count;
 
-void _mali_osk_pm_dev_enable(void)
+void _mali_osk_pm_dev_enable(void) /* @@@@ todo: change to init of some kind.. or change the way or where atomics are initialized? */
 {
 	_mali_osk_atomic_init(&mali_pm_ref_count, 0);
 }
 
-void _mali_osk_pm_dev_disable(void)
+void _mali_osk_pm_dev_disable(void) /* @@@@ todo: change to term of some kind */
 {
 	_mali_osk_atomic_term(&mali_pm_ref_count);
 }

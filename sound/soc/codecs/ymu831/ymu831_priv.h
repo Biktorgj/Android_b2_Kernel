@@ -332,13 +332,7 @@ extern SINT32	McDrv_Ctrl_dbg(
 
 #else
 
-#ifdef CONFIG_SAMSUNG_PRODUCT_SHIP
-
-#define dbg_info(format, arg...)
-#define TRACE_FUNC()
-#define _McDrv_Ctrl McDrv_Ctrl
-
-#else
+#ifdef CONFIG_SLP_KERNEL_ENG
 
 #define dbg_info(format, arg...)	printk(KERN_DEBUG "ymu831 " \
 								format, ## arg)
@@ -347,6 +341,12 @@ extern SINT32	McDrv_Ctrl_dbg(
 
 extern SINT32	McDrv_Ctrl_dbg_sec(
 			UINT32 dCmd, void *pvPrm1, void *pvPrm2, UINT32 dPrm);
+#else
+
+#define dbg_info(format, arg...)
+#define TRACE_FUNC()
+#define _McDrv_Ctrl McDrv_Ctrl
+
 #endif
 #endif /* CONFIG_SND_SOC_YAMAHA_YMU831_DEBUG */
 

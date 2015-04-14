@@ -1,5 +1,31 @@
+menuconfig POWER_SUPPLY
+	tristate "Power supply class support"
+	help
+	  Say Y here to enable power supply class support. This allows
+	  power supply (batteries, AC, USB) monitoring by userspace
+	  via sysfs and uevent (if available) and/or APM kernel interface
+	  (if selected below).
+
+if POWER_SUPPLY
 
 config BATTERY_SAMSUNG
+	tristate "samsung battery driver"
+	help
+	 Say Y to include support for samsung battery driver
+	 This battery driver integrated all battery-related functions
+	 To see battery-related functions,
+	 refer to sec_charging_common.h
+
+config FUELGAUGE_RT5033
+	tristate "RT5033 fuel gauge driver"
+	depends on BATTERY_SAMSUNG
+	help
+	 Say Y to include support
+	 for Richtek RT5033 fuel gauge driver.
+	 This driver source code implemented
+	 all functions for RT5033 fuel gauge.
+
+config BATTERY_SAMSUNG_P1X
 	tristate "samsung battery driver"
 	help
 	 Say Y to include support for samsung battery driver
@@ -16,42 +42,41 @@ config SAMSUNG_LPM_MODE
 	 Before enable this feature,
 	 implement power off charging in the bootloader.
 
+config SAMSUNG_BATTERY_ENG_TEST
+	bool "enable ENG mode for battery test"
+	default n
+	help
+	  Say Y to include support for battery test
+	  enable this feature only ENG mode
+	  this featuren must disabled user binary
+	  stability test etc..
+
 # Fuel Gauge
 
 config FUELGAUGE_DUMMY
 	tristate "dummy fuel gauge driver"
 	default n
-	depends on BATTERY_SAMSUNG
+	depends on BATTERY_SAMSUNG_P1X
 	help
 	 Say Y to include support
 	 for dummy fuel gauge driver.
 	 This driver source code implemented
 	 skeleton source code for fuel gauge functions.
 
-config FUELGAUGE_STC3115
-	tristate "stc3115 fuel gauge driver"
+config FUELGAUGE_ADC
+	tristate "ADC fuel gauge driver"
 	default n
-	depends on BATTERY_SAMSUNG
+	depends on BATTERY_SAMSUNG_P1X
 	help
 	 Say Y to include support
-	 for dummy fuel gauge driver.
-	 This driver source code implemented
-	 skeleton source code for fuel gauge functions.
-
-config FUELGAUGE_STC3117
-	tristate "STC3117 fuel gauge driver"
-	default n
-	depends on BATTERY_SAMSUNG
-	help
-	 Say Y to include support
-	 for STC3117 fuel gauge driver.
-	 This driver source code implemented
-	 all functions for STC3117 fuel gauge.
+	 for ADC gauge driver.
+	 This driver source code can be used for
+	 fuel-gauge that is made of ADC.
 
 config FUELGAUGE_MAX17042
 	tristate "MAX17042 fuel gauge driver"
 	default n
-	depends on BATTERY_SAMSUNG
+	depends on BATTERY_SAMSUNG_P1X
 	help
 	 Say Y to include support
 	 for MAXIM MAX17042 fuel gauge driver.
@@ -81,7 +106,7 @@ config FUELGAUGE_MAX17042_COULOMB_COUNTING
 config FUELGAUGE_MAX17048
 	tristate "MAX17048 fuel gauge driver"
 	default n
-	depends on BATTERY_SAMSUNG
+	depends on BATTERY_SAMSUNG_P1X
 	help
 	 Say Y to include support
 	 for MAXIM MAX17048 fuel gauge driver.
@@ -91,7 +116,7 @@ config FUELGAUGE_MAX17048
 config FUELGAUGE_MAX17050
 	tristate "MAX17050 fuel gauge driver"
 	default n
-	depends on BATTERY_SAMSUNG
+	depends on BATTERY_SAMSUNG_P1X
 	help
 	 Say Y to include support
 	 for MAXIM MAX17047 or MAX17050 fuel gauge driver.
@@ -118,21 +143,23 @@ config FUELGAUGE_MAX17050_COULOMB_COUNTING
 	 This mode is for target that consumes high current
 	 like tablet.
 
-config FUELGAUGE_RT5033
-	tristate "RT5033 fuel gauge driver"
-	depends on BATTERY_SAMSUNG
-	help
-	 Say Y to include support
-	 for Richtek RT5033 fuel gauge driver.
-	 This driver source code implemented
-	 all functions for RT5033 fuel gauge.
 
 # Charger
+
+config CHARGER_MFD
+	tristate "use mfd driver for charger driver"
+	default n
+	depends on BATTERY_SAMSUNG_P1X
+	help
+	 Say Y to include support
+	 for charger driver with mfd.
+	 This driver source code implemented
+	 charger driver with mfd.
 
 config CHARGER_DUMMY
 	tristate "dummy charger driver"
 	default n
-	depends on BATTERY_SAMSUNG
+	depends on BATTERY_SAMSUNG_P1X
 	help
 	 Say Y to include support
 	 for dummy charger driver.
@@ -142,27 +169,17 @@ config CHARGER_DUMMY
 config CHARGER_MAX8903
 	tristate "MAX8903 charger driver"
 	default n
-	depends on BATTERY_SAMSUNG
+	depends on BATTERY_SAMSUNG_P1X
 	help
 	 Say Y to include support
 	 for MAXIM MAX8903 charger driver.
 	 This driver source code implemented
 	 all functions for MAX8903 charger.
 
-config CHARGER_SMB327
-	tristate "SMB327 charger driver"
-	default n
-	depends on BATTERY_SAMSUNG
-	help
-	 Say Y to include support
-	 for Summit SMB327 charger driver.
-	 This driver source code implemented
-	 all functions for SMB327 charger.
-
 config CHARGER_SMB328
 	tristate "SMB328 charger driver"
 	default n
-	depends on BATTERY_SAMSUNG
+	depends on BATTERY_SAMSUNG_P1X
 	help
 	 Say Y to include support
 	 for Summit SMB328 charger driver.
@@ -172,17 +189,26 @@ config CHARGER_SMB328
 config CHARGER_SMB347
 	tristate "SMB347 charger driver"
 	default n
-	depends on BATTERY_SAMSUNG
+	depends on BATTERY_SAMSUNG_P1X
 	help
 	 Say Y to include support
 	 for Summit SMB347 charger driver.
 	 This driver source code implemented
 	 all functions for SMB347 charger.
 
+config CHARGER_SMB358
+        tristate "SMB358 charger driver"
+        depends on BATTERY_SAMSUNG_P1X
+        help
+         Say Y to include support
+         for SMB358 charger driver.
+         This driver source code implemented
+         all functions for SMB358 charger.
+
 config CHARGER_BQ24157
 	tristate "BQ24157 charger driver"
 	default n
-	depends on BATTERY_SAMSUNG
+	depends on BATTERY_SAMSUNG_P1X
 	help
 	 Say Y to include support
 	 for TI BQ24157 charger driver.
@@ -192,7 +218,7 @@ config CHARGER_BQ24157
 config CHARGER_BQ24190
 	tristate "BQ24190 charger driver"
 	default n
-	depends on BATTERY_SAMSUNG
+	depends on BATTERY_SAMSUNG_P1X
 	help
 	 Say Y to include support
 	 for TI BQ24190 charger driver.
@@ -202,7 +228,7 @@ config CHARGER_BQ24190
 config CHARGER_BQ24191
 	tristate "BQ24191 charger driver"
 	default n
-	depends on BATTERY_SAMSUNG
+	depends on BATTERY_SAMSUNG_P1X
 	help
 	 Say Y to include support
 	 for TI BQ24191 charger driver.
@@ -212,46 +238,48 @@ config CHARGER_BQ24191
 config CHARGER_BQ24260
 	tristate "BQ24260 charger driver"
 	default n
-	depends on BATTERY_SAMSUNG
+	depends on BATTERY_SAMSUNG_P1X
 	help
 	 Say Y to include support
 	 for TI BQ24260 charger driver.
 	 This driver source code implemented
 	 all functions for BQ24260 charger.
 
-config CHARGER_MAX77693
-	tristate "MAX77693 battery charger support"
-	depends on MFD_MAX77693 && I2C
-	help
-	  Say Y here to enable support for the MAX77693 charger
-	  MAX77693 incluse muic, pmic, haptic, led,
-	  flash driver.
-	  You have to define MFD_MAX77693
-
-config CHARGER_MAX77803
-	tristate "MAX77803 battery charger support"
-	depends on MFD_MAX77803 && I2C
-	help
-	  Say Y here to enable support for the MAX77803 charger
-	  MAX77803 incluse muic, pmic, haptic, led,
-	  flash driver.
-	  You have to define MFD_MAX77693
-
-config CHARGER_RT5033
-	tristate "RT5033 charger driver"
-	depends on MFD_RT5033 && I2C
+config CHARGER_NCP1851
+	tristate "NCP1851 charger driver"
 	default n
+	depends on BATTERY_SAMSUNG_P1X
 	help
 	 Say Y to include support
-	 for Richtek RT5033 charger driver.
-
-config CHARGER_SM5414
-	tristate "SM5414 charger driver"
-	default n
-	depends on BATTERY_SAMSUNG
-	help
-	 Say Y to include support
-	 for SM5414 charger driver.
+	 for NCP1851 charger driver.
 	 This driver source code implemented
-	 all functions for SM5414 charger.
+	 all functions for NCP1851 charger.
 
+config CHARGER_TSU8111
+	tristate "TSU8111 charger driver"
+	default n
+	depends on BATTERY_SAMSUNG_P1X
+	help
+	 Say Y to include support
+	 for TSU8111 charger driver.
+	 This driver source code implemented
+	 all functions for TSU8111 charger.
+
+config CHARGER_MAX14577
+	tristate "MAX14577 charger driver"
+	default n
+	depends on BATTERY_SAMSUNG_P1X
+	depends on CHARGER_MFD
+	help
+	 Say Y to include support
+	 for MAX14577 charger driver.
+	 This driver source code implemented
+	 all functions for MAX14577 charger.
+
+config CHARGER_MAX77693_BAT
+        tristate "MAX77693 battery charger support"
+        depends on BATTERY_SAMSUNG_P1X
+	help
+          Say Y here to enable support for the MAX77693 charger
+
+endif # POWER_SUPPLY

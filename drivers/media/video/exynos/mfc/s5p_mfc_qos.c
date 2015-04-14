@@ -24,12 +24,6 @@
 #include "s5p_mfc_reg.h"
 
 #ifdef CONFIG_MFC_USE_BUS_DEVFREQ
-#if defined(CONFIG_SOC_EXYNOS3470)
-#define MFC_QOS_IMPROVED
-#define MFC_QOS_WFD_MB			108000			/* 720p@30fps */
-#define MFC_QOS_RECALC(x)		(((x) * 23) / 10)	/* 2.3x */
-#endif
-
 enum {
 	MFC_QOS_ADD,
 	MFC_QOS_UPDATE,
@@ -160,9 +154,6 @@ void s5p_mfc_qos_on(struct s5p_mfc_ctx *ctx)
 	int found = 0, total_mb = 0;
 	/* TODO: cpu lock is not separated yet */
 	int need_cpulock = 0;
-#if defined(MFC_QOS_IMPROVED)
-	int is_wfd = 0, qos_inst = 0;
-#endif
 
 	list_for_each_entry(qos_ctx, &dev->qos_queue, qos_list) {
 		total_mb += get_ctx_mb(qos_ctx);
@@ -180,18 +171,6 @@ void s5p_mfc_qos_on(struct s5p_mfc_ctx *ctx)
 		if (ctx->type == MFCINST_DECODER)
 			need_cpulock++;
 	}
-#if defined(MFC_QOS_IMPROVED)
-	list_for_each_entry(qos_ctx, &dev->qos_queue, qos_list) {
-		qos_inst++;
-		if (qos_ctx->type == MFCINST_ENCODER) {
-			if (get_ctx_mb(qos_ctx) == MFC_QOS_WFD_MB)
-				is_wfd = 1;
-		}
-	}
-
-	if (qos_inst > 1 && is_wfd)
-		total_mb = MFC_QOS_RECALC(total_mb);
-#endif
 
 	mfc_qos_add_or_update(ctx, total_mb);
 }

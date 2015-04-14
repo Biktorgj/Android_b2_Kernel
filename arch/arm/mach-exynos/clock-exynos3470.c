@@ -97,8 +97,6 @@ static struct sleep_save exynos4_clock_save[] = {
 	SAVE_ITEM(EXYNOS4270_CLKGATE_IP_DMC0),
 	SAVE_ITEM(EXYNOS4270_CLKGATE_IP_ACP0),
 	SAVE_ITEM(EXYNOS4270_CLKSRC_MASK_ACP),
-	SAVE_ITEM(EXYNOS4270_CLKGATE_SCLK_LCD),
-	SAVE_ITEM(EXYNOS4270_CLKGATE_BUS_LCD),
 };
 #endif
 
@@ -207,16 +205,6 @@ static int exynos4_clk_ip_lcd0_ctrl(struct clk *clk, int enable)
 	return s5p_gatectrl(EXYNOS4_CLKGATE_IP_LCD0, clk, enable);
 }
 
-static int exynos4_clk_sclk_lcd0_ctrl(struct clk *clk, int enable)
-{
-	return s5p_gatectrl(EXYNOS4270_CLKGATE_SCLK_LCD, clk, enable);
-}
-
-static int exynos4_clk_gate_bus_lcd0_ctrl(struct clk *clk, int enable)
-{
-	return s5p_gatectrl(EXYNOS4270_CLKGATE_BUS_LCD, clk, enable);
-}
-
 int exynos4_clk_ip_lcd1_ctrl(struct clk *clk, int enable)
 {
 	return s5p_gatectrl(EXYNOS4210_CLKGATE_IP_LCD1, clk, enable);
@@ -240,11 +228,6 @@ int exynos4_clk_ip_peril_ctrl(struct clk *clk, int enable)
 static int exynos4_clk_ip_perir_ctrl(struct clk *clk, int enable)
 {
 	return s5p_gatectrl(EXYNOS4_CLKGATE_IP_PERIR, clk, enable);
-}
-
-static int exynos4_clk_ip_maudio_ctrl(struct clk *clk, int enable)
-{
-	return s5p_gatectrl(EXYNOS4_CLKGATE_IP_MAUDIO, clk, enable);
 }
 
 static int exynos4_clksrc_mask_maudio_ctrl(struct clk *clk, int enable)
@@ -949,7 +932,6 @@ static struct clk exynos4_init_clocks_off[] = {
 	}, {
 		.name		= "gate_isp0",
 		.devname	= FIMC_IS_DEV_NAME,
-		.parent		= &exynos4_clk_aclk_266.clk,
 		.enable		= exynos4_clk_ip_isp0_ctrl,
 		.ctrlbit	= ((0x3 << 30) | (0x1 << 28) |
 				   (0x3 << 25) | (0x1 << 23) |
@@ -957,7 +939,6 @@ static struct clk exynos4_init_clocks_off[] = {
 	}, {
 		.name		= "gate_isp1",
 		.devname	= FIMC_IS_DEV_NAME,
-		.parent		= &exynos4_clk_aclk_266.clk,
 		.enable		= exynos4_clk_ip_isp1_ctrl,
 		.ctrlbit	= ((0x3 << 15) | (0x1 << 0)),
 	}, {
@@ -1322,38 +1303,6 @@ static struct clk exynos4_init_clocks_off[] = {
 		.name		= "rotator",
 		.enable		= exynos4_clk_ip_image_ctrl,
 		.ctrlbit	= (1 << 1),
-	}, {
-		.name		= "ppmu_image",
-		.enable		= exynos4_clk_ip_image_ctrl,
-		.ctrlbit	= (1 << 9),
-	}, {
-		.name		= "qe_image",
-		.enable		= exynos4_clk_ip_image_ctrl,
-		.ctrlbit	= (1 << 7),
-	}, {
-		.name		= "qe_cam",
-		.enable		= exynos4_clk_ip_cam_ctrl,
-		.ctrlbit	= (1 << 12) | (1 << 13) | (1 << 14) | (1 << 15) | (1 << 19) | (1 << 21),
-	}, {
-		.name		= "ppmu_cam",
-		.enable		= exynos4_clk_ip_cam_ctrl,
-		.ctrlbit	= (1 << 16),
-	}, {
-		.name		= "mie0",
-		.enable		= exynos4_clk_ip_lcd0_ctrl,
-		.ctrlbit	= (1 << 1),
-	}, {
-		.name		= "pcm0",
-		.enable		= exynos4_clk_ip_maudio_ctrl,
-		.ctrlbit	= (1 << 2),
-	}, {
-		.name		= "nfcon",
-		.enable		= exynos4_clk_ip_fsys_ctrl,
-		.ctrlbit	= (1 << 16),
-	}, {
-		.name		= "audio_sss",
-		.enable		= exynos4_clk_ip_maudio_ctrl,
-		.ctrlbit	= (1 << 0),
 	},
 };
 
@@ -1490,18 +1439,6 @@ static struct clk exynos4_init_clocks_on[] = {
 		.devname	= SYSMMU_CLOCK_DEVNAME(fimd0, 10),
 		.enable		= exynos4_clk_ip_lcd0_ctrl,
 		.ctrlbit	= (1 << 4),
-	}, {
-		.name		= "apb_mdnie0",
-		.enable		= exynos4_clk_gate_bus_lcd0_ctrl,
-		.ctrlbit	= (1 << 2) | (1 << 16),
-	}, {
-		.name		= "sclk_mdnie0",
-		.enable		= exynos4_clk_sclk_lcd0_ctrl,
-		.ctrlbit	= (1 << 1),
-	}, {
-		.name		= "mdnie0",
-		.enable		= exynos4_clk_ip_lcd0_ctrl,
-		.ctrlbit	= (1 << 2),
 	}, {
 		.name		= "dsim0",
 		.enable		= exynos4_clk_ip_lcd0_ctrl,

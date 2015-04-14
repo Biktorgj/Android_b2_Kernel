@@ -1,9 +1,9 @@
 /*
- * Copyright (C) 2012 ARM Limited. All rights reserved.
- * 
+ * Copyright (C) 2011-2012 ARM Limited. All rights reserved.
+ *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
@@ -167,16 +167,16 @@ _mali_osk_errcode_t mali_dlbu_reset(struct mali_dlbu_core *dlbu)
 void mali_dlbu_add_group(struct mali_dlbu_core *dlbu, struct mali_group *group)
 {
 	struct mali_pp_core *pp_core;
-	u32 bcast_id;
+	u32 core_id;
 
 	MALI_DEBUG_ASSERT_POINTER( dlbu );
 	MALI_DEBUG_ASSERT_POINTER( group );
 
 	pp_core = mali_group_get_pp_core(group);
-	bcast_id = mali_pp_core_get_bcast_id(pp_core);
+	core_id = mali_pp_core_get_id(pp_core);
 
-	dlbu->pp_cores_mask |= bcast_id;
-	MALI_DEBUG_PRINT(3, ("Mali DLBU: Adding core[%d] New mask= 0x%02x\n", bcast_id , dlbu->pp_cores_mask));
+	dlbu->pp_cores_mask |= (0x1 << core_id);
+	MALI_DEBUG_PRINT(3, ("Mali DLBU: Adding core[%d] New mask= 0x%02x\n",core_id , dlbu->pp_cores_mask));
 
 	mali_hw_core_register_write(&dlbu->hw_core, MALI_DLBU_REGISTER_PP_ENABLE_MASK, dlbu->pp_cores_mask);
 }
@@ -185,16 +185,16 @@ void mali_dlbu_add_group(struct mali_dlbu_core *dlbu, struct mali_group *group)
 void mali_dlbu_remove_group(struct mali_dlbu_core *dlbu, struct mali_group *group)
 {
 	struct mali_pp_core *pp_core;
-	u32 bcast_id;
+	u32 core_id;
 
 	MALI_DEBUG_ASSERT_POINTER( dlbu );
 	MALI_DEBUG_ASSERT_POINTER( group );
 
 	pp_core = mali_group_get_pp_core(group);
-	bcast_id = mali_pp_core_get_bcast_id(pp_core);
+	core_id = mali_pp_core_get_id(pp_core);
 
-	dlbu->pp_cores_mask &= ~bcast_id;
-		MALI_DEBUG_PRINT(3, ("Mali DLBU: Removing core[%d] New mask= 0x%02x\n", bcast_id, dlbu->pp_cores_mask));
+	dlbu->pp_cores_mask &= ~(0x1 << core_id);
+		MALI_DEBUG_PRINT(3, ("Mali DLBU: Removing core[%d] New mask= 0x%02x\n", core_id, dlbu->pp_cores_mask));
 
 	mali_hw_core_register_write(&dlbu->hw_core, MALI_DLBU_REGISTER_PP_ENABLE_MASK, dlbu->pp_cores_mask);
 }

@@ -38,11 +38,12 @@
 #include <linux/delay.h>
 #include <linux/wakelock.h>
 
+#include <linux/platform_data/modem_v1.h>
 #include "modem_prj.h"
 #include "modem_utils.h"
 
-#define CMD_SUSPEND	((u16)(0x00CA))
-#define CMD_RESUME	((u16)(0x00CB))
+#define CMD_SUSPEND	((unsigned short)(0x00CA))
+#define CMD_RESUME	((unsigned short)(0x00CB))
 
 #define TX_SEPARATOR	"mif: >>>>>>>>>> Outgoing packet "
 #define RX_SEPARATOR	"mif: Incoming packet <<<<<<<<<<"
@@ -63,7 +64,7 @@ void ts2utc(struct timespec *ts, struct utc_time *utc)
 	utc->hour = tm.tm_hour;
 	utc->min = tm.tm_min;
 	utc->sec = tm.tm_sec;
-	utc->us = ns2us(ts->tv_nsec);
+	utc->msec = ns2ms(ts->tv_nsec);
 }
 
 void get_utc_time(struct utc_time *utc)
@@ -72,42 +73,16 @@ void get_utc_time(struct utc_time *utc)
 	getnstimeofday(&ts);
 	ts2utc(&ts, utc);
 }
-
-void print_utc_time(int level, struct utc_time *utc)
-{
-	if (level < 0)
-		return;
-
-	if (level > 0) {
-		pr_err("%s: " HMSU_FMT "\n",
-			MIF_TAG, utc->hour, utc->min, utc->sec, utc->us);
-	} else {
-		pr_info("%s: " HMSU_FMT "\n",
-			MIF_TAG, utc->hour, utc->min, utc->sec, utc->us);
-	}
-}
-
-void print_timespec(int level, struct timespec *ts)
-{
-	struct utc_time utc;
-
-	if (level < 0)
-		return;
-
-	ts2utc(ts, &utc);
-
-	print_utc_time(level, &utc);
-}
+EXPORT_SYMBOL(get_utc_time);
 
 int mif_dump_log(struct modem_shared *msd, struct io_device *iod)
 {
+	struct sk_buff *skb;
 	unsigned long read_len = 0;
 	unsigned long int flags;
 
 	spin_lock_irqsave(&msd->lock, flags);
 	while (read_len < MAX_MIF_BUFF_SIZE) {
-		struct sk_buff *skb;
-
 		skb = alloc_skb(MAX_IPC_SKB_SIZE, GFP_ATOMIC);
 		if (!skb) {
 			mif_err("ERR! alloc_skb fail\n");
@@ -239,26 +214,21 @@ void _mif_time_log(enum mif_log_id id, struct modem_shared *msd,
  * the length of @buff must be greater than "@len * 3"
  * it need 3 bytes per one data byte to print.
  */
-static inline int dump2hex(char *buff, size_t size, const char *data,
-			   size_t len)
+static inline int dump2hex(char *buff, const char *data, size_t len)
 {
 	char *dest = buff;
 	int i;
-
-	if (size < (len * 3))
-		goto exit;
 
 	for (i = 0; i < len; i++) {
 		*dest++ = hex[(data[i] >> 4) & 0xf];
 		*dest++ = hex[data[i] & 0xf];
 		*dest++ = ' ';
 	}
-
 	if (likely(len > 0))
-		dest--; /* last space will be overwritten with null */
+		dest--; /* last space will be overwrited with null */
 
-exit:
-	*dest = 0;
+	*dest = '\0';
+
 	return dest - buff;
 }
 
@@ -267,128 +237,18 @@ void pr_ipc(int level, const char *tag, const char *data, size_t len)
 	struct utc_time utc;
 	unsigned char str[128];
 
+	if (level < 0)
+		return;
+
 	get_utc_time(&utc);
-	dump2hex(str, 128, data, (len > 32 ? 32 : len));
-
+	dump2hex(str, data, (len > 32 ? 32 : len));
 	if (level > 0) {
-		pr_err("%s: " HMSU_FMT " %s: %s\n", MIF_TAG,
-			utc.hour, utc.min, utc.sec, utc.us, tag, str);
+		pr_err("%s: [%02d:%02d:%02d.%03d] %s: %s\n", MIF_TAG,
+			utc.hour, utc.min, utc.sec, utc.msec, tag, str);
 	} else {
-		pr_info("%s: " HMSU_FMT " %s: %s\n", MIF_TAG,
-			utc.hour, utc.min, utc.sec, utc.us, tag, str);
+		pr_info("%s: [%02d:%02d:%02d.%03d] %s: %s\n", MIF_TAG,
+			utc.hour, utc.min, utc.sec, utc.msec, tag, str);
 	}
-}
-
-static inline void pr_ipc_msg(int level, u8 ch, struct timespec *ts,
-			      const char *prefix, const u8 *msg,
-			      unsigned int len)
-{
-	size_t offset;
-	struct utc_time utc;
-	char str[MAX_STR_LEN] = {0, };
-
-	/*
-	If @ch is for BOOT or DUMP, only UDL command without any payload should
-	be printed.
-	*/
-	if (sipc5_udl_ch(ch)) {
-		u32 udl_cmd = *((u32 *)msg);
-		if (std_udl_with_payload(udl_cmd))
-			return;
-	}
-
-	ts2utc(ts, &utc);
-
-	if (prefix)
-		snprintf(str, MAX_STR_LEN, "%s", prefix);
-
-	offset = strlen(str);
-	dump2hex((str + offset), (MAX_STR_LEN - offset), msg,
-		 (len > MAX_HEX_LEN ? MAX_HEX_LEN : len));
-
-	if (level > 0) {
-		pr_err("%s: " HMSU_FMT " %s\n", MIF_TAG,
-			utc.hour, utc.min, utc.sec, utc.us, str);
-	} else {
-		pr_info("%s: " HMSU_FMT " %s\n", MIF_TAG,
-			utc.hour, utc.min, utc.sec, utc.us, str);
-	}
-}
-
-/**
-@brief		print an IPC data @b WITH a @b LINK header
-
-@param ch	the SIPC channel ID
-@param layer	the layer in the Samsung IPC
-@param dir	the direction of communication (TX or RX)
-@param skb	the pointer to a sk_buff instance
-@param hd_exist	whether or not there is a link header in a message frame
-@param hd_print	whether or not a link header will be logged
-
-@remark		if @e @@hd_exist is false, @e @@hd_print is ignored.
-*/
-void log_ipc_pkt(u8 ch, enum ipc_layer layer, enum direction dir,
-		 struct sk_buff *skb, bool hd_exist, bool hd_print)
-{
-	struct io_device *iod = skbpriv(skb)->iod;
-	struct link_device *ld = skbpriv(skb)->ld;
-	struct modem_ctl *mc = iod->mc;
-	struct timespec *ts = &skbpriv(skb)->ts;
-	u8 *h = (hd_exist && hd_print) ? skb->data : NULL;
-	unsigned int hlen = hd_exist ? sipc5_get_hdr_len(skb->data) : 0;
-	u8 *msg = (skb->data + hlen);
-	unsigned int len = (skb->len - hlen);
-	char prefix[MAX_PREFIX_LEN];
-
-	/**
-	 * Make a route string
-	 */
-	if (dir == TX) {
-		snprintf(prefix, MAX_PREFIX_LEN, "%s TX: %s: %s->%s: ",
-			 layer_str(layer), ld->name, iod->name, mc->name);
-	} else {
-		snprintf(prefix, MAX_PREFIX_LEN, "%s RX: %s: %s<-%s: ",
-			 layer_str(layer), ld->name, iod->name, mc->name);
-	}
-
-	/**
-	 * Append a string of a link header
-	 */
-	if (h && hlen > 0) {
-		size_t offset = strlen(prefix);
-		dump2hex((prefix + offset), (MAX_PREFIX_LEN - offset), h, hlen);
-		strncat(prefix, " | ", (MAX_PREFIX_LEN - strlen(prefix)));
-	}
-
-	/**
-	 * Print an IPC message with the prefix
-	 */
-	if (sipc5_fmt_ch(ch))
-		pr_ipc_msg(1, ch, ts, prefix, msg, len);
-#ifdef DEBUG_MODEM_IF_BOOT
-	else if (sipc5_boot_ch(ch))
-		pr_ipc_msg(1, ch, ts, prefix, msg, len);
-#endif
-#ifdef DEBUG_MODEM_IF_DUMP
-	else if (sipc5_dump_ch(ch))
-		pr_ipc_msg(1, ch, ts, prefix, msg, len);
-#endif
-#ifdef DEBUG_MODEM_IF_RFS
-	else if (sipc5_rfs_ch(ch))
-		pr_ipc_msg(0, ch, ts, prefix, msg, len);
-#endif
-#ifdef DEBUG_MODEM_IF_CSVT
-	else if (sipc_csd_ch(ch))
-		pr_ipc_msg(1, ch, ts, prefix, msg, len);
-#endif
-#ifdef DEBUG_MODEM_IF_LOG
-	else if (sipc_log_ch(ch))
-		pr_ipc_msg(0, ch, ts, prefix, msg, len);
-#endif
-#ifdef DEBUG_MODEM_IF_PS
-	else if (sipc_ps_ch(ch))
-		pr_ipc_msg(0, ch, ts, prefix, msg, len);
-#endif
 }
 
 /* print buffer as hex string */
@@ -396,27 +256,12 @@ int pr_buffer(const char *tag, const char *data, size_t data_len,
 							size_t max_len)
 {
 	size_t len = min(data_len, max_len);
-	size_t size;
-	unsigned char *str;
-	int ret;
-
-	if (len == 0)
-		return 0;
-
-	size = len * 3;
-	str = kmalloc(size, in_interrupt() ? GFP_ATOMIC : GFP_KERNEL);
-	if (!str)
-		return 0;
-
-	dump2hex(str, size, data, len);
+	unsigned char str[len ? len * 3 : 1]; /* 1 <= sizeof <= max_len*3 */
+	dump2hex(str, data, len);
 
 	/* don't change this printk to mif_debug for print this as level7 */
-	ret = printk(KERN_INFO "%s: %s(%u): %s%s\n", MIF_TAG, tag, data_len,
+	return printk(KERN_INFO "%s: %s(%u): %s%s\n", MIF_TAG, tag, data_len,
 			str, (len == data_len) ? "" : " ...");
-
-	kfree(str);
-
-	return ret;
 }
 
 /* flow control CM from CP, it use in serial devices */
@@ -452,13 +297,11 @@ int link_rx_flowctl_cmd(struct link_device *ld, const char *data, size_t len)
 }
 
 struct io_device *get_iod_with_channel(struct modem_shared *msd,
-				unsigned int channel)
+					unsigned channel)
 {
 	struct rb_node *n = msd->iodevs_tree_chan.rb_node;
-
+	struct io_device *iodev;
 	while (n) {
-		struct io_device *iodev;
-
 		iodev = rb_entry(n, struct io_device, node_chan);
 		if (channel < iodev->id)
 			n = n->rb_left;
@@ -467,7 +310,6 @@ struct io_device *get_iod_with_channel(struct modem_shared *msd,
 		else
 			return iodev;
 	}
-
 	return NULL;
 }
 
@@ -475,10 +317,8 @@ struct io_device *get_iod_with_format(struct modem_shared *msd,
 			enum dev_format format)
 {
 	struct rb_node *n = msd->iodevs_tree_fmt.rb_node;
-
+	struct io_device *iodev;
 	while (n) {
-		struct io_device *iodev;
-
 		iodev = rb_entry(n, struct io_device, node_fmt);
 		if (format < iodev->format)
 			n = n->rb_left;
@@ -487,19 +327,16 @@ struct io_device *get_iod_with_format(struct modem_shared *msd,
 		else
 			return iodev;
 	}
-
 	return NULL;
 }
 
 struct io_device *insert_iod_with_channel(struct modem_shared *msd,
-		unsigned int channel, struct io_device *iod)
+		unsigned channel, struct io_device *iod)
 {
 	struct rb_node **p = &msd->iodevs_tree_chan.rb_node;
 	struct rb_node *parent = NULL;
-
+	struct io_device *iodev;
 	while (*p) {
-		struct io_device *iodev;
-
 		parent = *p;
 		iodev = rb_entry(parent, struct io_device, node_chan);
 		if (channel < iodev->id)
@@ -509,7 +346,6 @@ struct io_device *insert_iod_with_channel(struct modem_shared *msd,
 		else
 			return iodev;
 	}
-
 	rb_link_node(&iod->node_chan, parent, p);
 	rb_insert_color(&iod->node_chan, &msd->iodevs_tree_chan);
 	return NULL;
@@ -520,10 +356,8 @@ struct io_device *insert_iod_with_format(struct modem_shared *msd,
 {
 	struct rb_node **p = &msd->iodevs_tree_fmt.rb_node;
 	struct rb_node *parent = NULL;
-
+	struct io_device *iodev;
 	while (*p) {
-		struct io_device *iodev;
-
 		parent = *p;
 		iodev = rb_entry(parent, struct io_device, node_fmt);
 		if (format < iodev->format)
@@ -533,7 +367,6 @@ struct io_device *insert_iod_with_format(struct modem_shared *msd,
 		else
 			return iodev;
 	}
-
 	rb_link_node(&iod->node_fmt, parent, p);
 	rb_insert_color(&iod->node_fmt, &msd->iodevs_tree_fmt);
 	return NULL;
@@ -541,11 +374,9 @@ struct io_device *insert_iod_with_format(struct modem_shared *msd,
 
 void iodevs_for_each(struct modem_shared *msd, action_fn action, void *args)
 {
+	struct io_device *iod;
 	struct rb_node *node = rb_first(&msd->iodevs_tree_chan);
-
 	for (; node; node = rb_next(node)) {
-		struct io_device *iod;
-
 		iod = rb_entry(node, struct io_device, node_chan);
 		action(iod, args);
 	}
@@ -619,62 +450,21 @@ void mif_netif_wake(struct link_device *ld)
 		iodevs_for_each(iod->msd, iodev_netif_wake, 0);
 }
 
-void stop_net_ifaces(struct link_device *ld)
-{
-	struct io_device *iod;
-	unsigned long flags;
-
-	spin_lock_irqsave(&ld->netif_lock, flags);
-
-	if (atomic_read(&ld->netif_stopped) > 0)
-		goto exit;
-
-	iod = link_get_iod_with_channel(ld, RMNET0_CH_ID);
-	if (iod)
-		iodevs_for_each(iod->msd, iodev_netif_stop, 0);
-
-	atomic_set(&ld->netif_stopped, 1);
-
-exit:
-	spin_unlock_irqrestore(&ld->netif_lock, flags);
-}
-
-void resume_net_ifaces(struct link_device *ld)
-{
-	struct io_device *iod;
-	unsigned long flags;
-
-	spin_lock_irqsave(&ld->netif_lock, flags);
-
-	if (atomic_read(&ld->netif_stopped) == 0)
-		goto exit;
-
-	iod = link_get_iod_with_channel(ld, RMNET0_CH_ID);
-	if (iod)
-		iodevs_for_each(iod->msd, iodev_netif_wake, 0);
-
-	atomic_set(&ld->netif_stopped, 0);
-
-exit:
-	spin_unlock_irqrestore(&ld->netif_lock, flags);
-}
-
 /**
-@brief		ipv4 string to be32 (big endian 32bits integer)
-@return		zero when errors occurred
-*/
+ * ipv4str_to_be32 - ipv4 string to be32 (big endian 32bits integer)
+ * @return: return zero when errors occurred
+ */
 __be32 ipv4str_to_be32(const char *ipv4str, size_t count)
 {
 	unsigned char ip[4];
 	char ipstr[16]; /* == strlen("xxx.xxx.xxx.xxx") + 1 */
 	char *next = ipstr;
+	char *p;
 	int i;
 
 	strncpy(ipstr, ipv4str, ARRAY_SIZE(ipstr));
 
 	for (i = 0; i < 4; i++) {
-		char *p;
-
 		p = strsep(&next, ".");
 		if (kstrtou8(p, 10, &ip[i]) < 0)
 			return 0; /* == 0.0.0.0 */
@@ -696,21 +486,19 @@ void mif_add_timer(struct timer_list *timer, unsigned long expire,
 	add_timer(timer);
 }
 
-void mif_print_data(const u8 *data, int len)
+void mif_print_data(const char *buff, int len)
 {
 	int words = len >> 4;
 	int residue = len - (words << 4);
 	int i;
 	char *b;
 	char last[80];
+	char tb[8];
 
 	/* Make the last line, if ((len % 16) > 0) */
 	if (residue > 0) {
-		char tb[8];
-
 		sprintf(last, "%04X: ", (words << 4));
-		b = (char *)data + (words << 4);
-
+		b = (char *)buff + (words << 4);
 		for (i = 0; i < residue; i++) {
 			sprintf(tb, "%02x ", b[i]);
 			strcat(last, tb);
@@ -722,9 +510,9 @@ void mif_print_data(const u8 *data, int len)
 	}
 
 	for (i = 0; i < words; i++) {
-		b = (char *)data + (i << 4);
-		mif_err("%04X: "\
-			"%02x %02x %02x %02x  %02x %02x %02x %02x  "\
+		b = (char *)buff + (i << 4);
+		mif_err("%04X: "
+			"%02x %02x %02x %02x  %02x %02x %02x %02x  "
 			"%02x %02x %02x %02x  %02x %02x %02x %02x\n",
 			(i << 4),
 			b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7],
@@ -736,23 +524,24 @@ void mif_print_data(const u8 *data, int len)
 		mif_err("%s\n", last);
 }
 
-void mif_dump2format16(const u8 *data, int len, char *buff, char *tag)
+void mif_dump2format16(const char *data, int len, char *buff, char *tag)
 {
 	char *d;
 	int i;
 	int words = len >> 4;
 	int residue = len - (words << 4);
 	char line[LINE_BUFF_SIZE];
+	char tb[8];
 
 	for (i = 0; i < words; i++) {
 		memset(line, 0, LINE_BUFF_SIZE);
 		d = (char *)data + (i << 4);
 
 		if (tag)
-			sprintf(line, "%s%04X| "\
-				"%02x %02x %02x %02x  "\
-				"%02x %02x %02x %02x  "\
-				"%02x %02x %02x %02x  "\
+			sprintf(line, "%s%04X| "
+				"%02x %02x %02x %02x  "
+				"%02x %02x %02x %02x  "
+				"%02x %02x %02x %02x  "
 				"%02x %02x %02x %02x\n",
 				tag, (i << 4),
 				d[0], d[1], d[2], d[3],
@@ -760,10 +549,10 @@ void mif_dump2format16(const u8 *data, int len, char *buff, char *tag)
 				d[8], d[9], d[10], d[11],
 				d[12], d[13], d[14], d[15]);
 		else
-			sprintf(line, "%04X| "\
-				"%02x %02x %02x %02x  "\
-				"%02x %02x %02x %02x  "\
-				"%02x %02x %02x %02x  "\
+			sprintf(line, "%04X| "
+				"%02x %02x %02x %02x  "
+				"%02x %02x %02x %02x  "
+				"%02x %02x %02x %02x  "
 				"%02x %02x %02x %02x\n",
 				(i << 4),
 				d[0], d[1], d[2], d[3],
@@ -776,8 +565,6 @@ void mif_dump2format16(const u8 *data, int len, char *buff, char *tag)
 
 	/* Make the last line, if (len % 16) > 0 */
 	if (residue > 0) {
-		char tb[8];
-
 		memset(line, 0, LINE_BUFF_SIZE);
 		memset(tb, 0, sizeof(tb));
 		d = (char *)data + (words << 4);
@@ -801,13 +588,14 @@ void mif_dump2format16(const u8 *data, int len, char *buff, char *tag)
 	}
 }
 
-void mif_dump2format4(const u8 *data, int len, char *buff, char *tag)
+void mif_dump2format4(const char *data, int len, char *buff, char *tag)
 {
 	char *d;
 	int i;
 	int words = len >> 2;
 	int residue = len - (words << 2);
 	char line[LINE_BUFF_SIZE];
+	char tb[8];
 
 	for (i = 0; i < words; i++) {
 		memset(line, 0, LINE_BUFF_SIZE);
@@ -825,8 +613,6 @@ void mif_dump2format4(const u8 *data, int len, char *buff, char *tag)
 
 	/* Make the last line, if (len % 4) > 0 */
 	if (residue > 0) {
-		char tb[8];
-
 		memset(line, 0, LINE_BUFF_SIZE);
 		memset(tb, 0, sizeof(tb));
 		d = (char *)data + (words << 2);
@@ -846,7 +632,7 @@ void mif_dump2format4(const u8 *data, int len, char *buff, char *tag)
 	}
 }
 
-void mif_print_dump(const u8 *data, int len, int width)
+void mif_print_dump(const char *data, int len, int width)
 {
 	char *buff;
 
@@ -933,7 +719,7 @@ void print_sipc4_fmt_frame(const u8 *psrc)
 
 void print_sipc5_link_fmt_frame(const u8 *psrc)
 {
-	u8 *lf;			/* Link Frame	*/
+	u8 *lf;				/* Link Frame	*/
 	struct sipc5_link_hdr *lh;	/* Link Header	*/
 	struct sipc_fmt_hdr *fh;	/* IPC Header	*/
 	int lh_len;
@@ -945,7 +731,7 @@ void print_sipc5_link_fmt_frame(const u8 *psrc)
 
 	/* Point HDLC header and IPC header */
 	lh = (struct sipc5_link_hdr *)lf;
-	lh_len = sipc5_get_hdr_len((u8 *)lh);
+	lh_len = (u16)sipc5_get_hdr_len((u8 *)lh);
 	fh = (struct sipc_fmt_hdr *)(lf + lh_len);
 	fh_len = sizeof(struct sipc_fmt_hdr);
 
@@ -1091,7 +877,7 @@ void print_ip4_packet(const u8 *ip_pkt, bool tx)
 {
 	char *buff;
 	struct iphdr *iph = (struct iphdr *)ip_pkt;
-	char *pkt = (char *)ip_pkt + (iph->ihl << 2);
+	u8 *pkt = (u8 *)ip_pkt + (iph->ihl << 2);
 	u16 flags = (ntohs(iph->frag_off) & 0xE000);
 	u16 frag_off = (ntohs(iph->frag_off) & 0x1FFF);
 	int eol;
@@ -1228,25 +1014,23 @@ bool is_syn_packet(const u8 *ip_pkt)
 }
 
 /**
-@brief		register an ISR for an IRQ number
-
-@param irq	the IRQ number for an interrupt
-@param isr	the function pointer to an interrupt service routine
-@param flags	the set of interrupt flags
-@param name	the name of the interrupt
-@param data	the pointer to a data for @e @@isr
-
-@retval "= 0"	if NO error
-@retval "< 0"	an error code
-*/
+ * mif_register_isr
+ * @irq: IRQ number for a DPRAM interrupt
+ * @isr: function pointer to an interrupt service routine
+ * @flags: set of interrupt flags
+ * @name: name of the interrupt
+ * @data: pointer to a data for @isr
+ *
+ * Registers the ISR for the IRQ number.
+ */
 int mif_register_isr(unsigned int irq, irq_handler_t isr, unsigned long flags,
-		     const char *name, void *data)
+			const char *name, void *data)
 {
 	int ret;
 
 	ret = request_irq(irq, isr, flags, name, data);
 	if (ret) {
-		mif_err("%s: ERR! request_irq fail (err %d)\n", name, ret);
+		mif_info("%s: ERR! request_irq fail (err %d)\n", name, ret);
 		return ret;
 	}
 
@@ -1254,7 +1038,7 @@ int mif_register_isr(unsigned int irq, irq_handler_t isr, unsigned long flags,
 	if (ret)
 		mif_err("%s: ERR! enable_irq_wake fail (err %d)\n", name, ret);
 
-	mif_err("%s(#%d) handler registered\n", name, irq);
+	mif_info("%s (#%d) handler registered\n", name, irq);
 
 	return 0;
 }
@@ -1264,7 +1048,7 @@ void mif_init_irq(struct modem_irq *irq, unsigned int num, const char *name,
 {
 	spin_lock_init(&irq->lock);
 	irq->num = num;
-	strncpy(irq->name, name, (MAX_NAME_LEN - 1));
+	strncpy(irq->name, name, MIF_MAX_NAME_LEN);
 	irq->flags = flags;
 	mif_err("name:%s num:%d flags:0x%08lX\n", name, num, flags);
 }
@@ -1320,6 +1104,176 @@ void mif_disable_irq(struct modem_irq *irq)
 
 exit:
 	spin_unlock_irqrestore(&irq->lock, flags);
+}
+
+int mif_test_dpram(char *dp_name, void __iomem *start, u16 bytes)
+{
+	u16 i;
+	u16 words = bytes >> 1;
+	u16 __iomem *dst = (u16 __iomem *)start;
+	u16 val;
+	int err_cnt = 0;
+
+	mif_err("%s: start 0x%p, bytes %d\n", dp_name, start, bytes);
+
+	mif_err("%s: 0/6 stage ...\n", dp_name);
+	for (i = 1; i <= 100; i++) {
+		iowrite16(0x1234, dst);
+		val = ioread16(dst);
+		if (val != 0x1234) {
+			mif_err("%s: [0x0000] read 0x%04X != written 0x1234 "
+				"(try# %d)\n", dp_name, val, i);
+			err_cnt++;
+		}
+	}
+
+	if (err_cnt > 0) {
+		mif_err("%s: FAIL!!!\n", dp_name);
+		return -EINVAL;
+	}
+
+	mif_err("%s: 1/6 stage ...\n", dp_name);
+	dst = (u16 __iomem *)start;
+	for (i = 0; i < words; i++) {
+		iowrite16(0, dst);
+		dst++;
+	}
+
+	dst = (u16 __iomem *)start;
+	for (i = 0; i < words; i++) {
+		val = ioread16(dst);
+		if (val != 0x0000) {
+			mif_err("%s: ERR! [0x%04X] read 0x%04X != written "
+				"0x0000\n", dp_name, i, val);
+			err_cnt++;
+		}
+		dst++;
+	}
+
+	if (err_cnt > 0) {
+		mif_err("%s: FAIL!!!\n", dp_name);
+		return -EINVAL;
+	}
+
+	mif_err("%s: 2/6 stage ...\n", dp_name);
+	dst = (u16 __iomem *)start;
+	for (i = 0; i < words; i++) {
+		iowrite16(0xFFFF, dst);
+		dst++;
+	}
+
+	dst = (u16 __iomem *)start;
+	for (i = 0; i < words; i++) {
+		val = ioread16(dst);
+		if (val != 0xFFFF) {
+			mif_err("%s: ERR! [0x%04X] read 0x%04X != written "
+				"0xFFFF\n", dp_name, i, val);
+			err_cnt++;
+		}
+		dst++;
+	}
+
+	if (err_cnt > 0) {
+		mif_err("%s: FAIL!!!\n", dp_name);
+		return -EINVAL;
+	}
+
+	mif_err("%s: 3/6 stage ...\n", dp_name);
+	dst = (u16 __iomem *)start;
+	for (i = 0; i < words; i++) {
+		iowrite16(0x00FF, dst);
+		dst++;
+	}
+
+	dst = (u16 __iomem *)start;
+	for (i = 0; i < words; i++) {
+		val = ioread16(dst);
+		if (val != 0x00FF) {
+			mif_err("%s: ERR! [0x%04X] read 0x%04X != written "
+				"0x00FF\n", dp_name, i, val);
+			err_cnt++;
+		}
+		dst++;
+	}
+
+	if (err_cnt > 0) {
+		mif_err("%s: FAIL!!!\n", dp_name);
+		return -EINVAL;
+	}
+
+	mif_err("%s: 4/6 stage ...\n", dp_name);
+	dst = (u16 __iomem *)start;
+	for (i = 0; i < words; i++) {
+		iowrite16(0x0FF0, dst);
+		dst++;
+	}
+
+	dst = (u16 __iomem *)start;
+	for (i = 0; i < words; i++) {
+		val = ioread16(dst);
+		if (val != 0x0FF0) {
+			mif_err("%s: ERR! [0x%04X] read 0x%04X != written "
+				"0x0FF0\n", dp_name, i, val);
+			err_cnt++;
+		}
+		dst++;
+	}
+
+	if (err_cnt > 0) {
+		mif_err("%s: FAIL!!!\n", dp_name);
+		return -EINVAL;
+	}
+
+	mif_err("%s: 5/6 stage ...\n", dp_name);
+	dst = (u16 __iomem *)start;
+	for (i = 0; i < words; i++) {
+		iowrite16(0xFF00, dst);
+		dst++;
+	}
+
+	dst = (u16 __iomem *)start;
+	for (i = 0; i < words; i++) {
+		val = ioread16(dst);
+		if (val != 0xFF00) {
+			mif_err("%s: ERR! [0x%04X] read 0x%04X != written "
+				"0xFF00\n", dp_name, i, val);
+			err_cnt++;
+		}
+		dst++;
+	}
+
+	mif_err("%s: 6/6 stage ...\n", dp_name);
+	dst = (u16 __iomem *)start;
+	for (i = 0; i < words; i++) {
+		iowrite16((i & 0xFFFF), dst);
+		dst++;
+	}
+
+	dst = (u16 __iomem *)start;
+	for (i = 0; i < words; i++) {
+		val = ioread16(dst);
+		if (val != (i & 0xFFFF)) {
+			mif_err("%s: ERR! [0x%04X] read 0x%04X != written "
+				"0x%04X\n", dp_name, i, val, (i & 0xFFFF));
+			err_cnt++;
+		}
+		dst++;
+	}
+
+	if (err_cnt > 0) {
+		mif_err("%s: FAIL!!!\n", dp_name);
+		return -EINVAL;
+	}
+
+	mif_err("%s: PASS!!!\n", dp_name);
+
+	dst = (u16 __iomem *)start;
+	for (i = 0; i < words; i++) {
+		iowrite16(0, dst);
+		dst++;
+	}
+
+	return 0;
 }
 
 struct file *mif_open_file(const char *path)

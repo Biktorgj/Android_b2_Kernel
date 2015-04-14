@@ -1,5 +1,7 @@
 # CPUfreq core
 obj-$(CONFIG_CPU_FREQ)			+= cpufreq.o
+obj-$(CONFIG_CPU_FREQ)                  += cpufreq_pmqos.o
+
 # CPUfreq stats
 obj-$(CONFIG_CPU_FREQ_STAT)             += cpufreq_stats.o
 
@@ -8,6 +10,7 @@ obj-$(CONFIG_CPU_FREQ_GOV_PERFORMANCE)	+= cpufreq_performance.o
 obj-$(CONFIG_CPU_FREQ_GOV_POWERSAVE)	+= cpufreq_powersave.o
 obj-$(CONFIG_CPU_FREQ_GOV_USERSPACE)	+= cpufreq_userspace.o
 obj-$(CONFIG_CPU_FREQ_GOV_ONDEMAND)	+= cpufreq_ondemand.o
+obj-$(CONFIG_CPU_FREQ_GOV_TIZEN_B2)     += cpufreq_tizen_b2.o
 obj-$(CONFIG_CPU_FREQ_GOV_CONSERVATIVE)	+= cpufreq_conservative.o
 obj-$(CONFIG_CPU_FREQ_GOV_INTERACTIVE)	+= cpufreq_interactive.o
 obj-$(CONFIG_CPU_FREQ_GOV_INTERACTIVE_EAGLE)	+= cpufreq_interactive_eagle.o
@@ -57,7 +60,6 @@ obj-$(CONFIG_ARM_EXYNOS_IKS_CLUSTER)	+= exynos-ikcs-cpufreq.o
 obj-$(CONFIG_ARM_EXYNOS_MP_CPUFREQ)	+= exynos-mp-cpufreq.o
 obj-$(CONFIG_ARM_EXYNOS3250_CPUFREQ)	+= exynos3250-cpufreq.o
 obj-$(CONFIG_ARM_EXYNOS3470_CPUFREQ)	+= exynos3470-cpufreq.o
-obj-$(CONFIG_ARM_EXYNOS3472_CPUFREQ)	+= exynos3472-cpufreq.o
 obj-$(CONFIG_ARM_EXYNOS4210_CPUFREQ)	+= exynos4210-cpufreq.o
 obj-$(CONFIG_ARM_EXYNOS4X12_CPUFREQ)	+= exynos4x12-cpufreq.o
 obj-$(CONFIG_ARM_EXYNOS4415_CPUFREQ)	+= exynos4415-cpufreq.o
@@ -70,8 +72,6 @@ obj-$(CONFIG_EXYNOS5_DYNAMIC_CPU_HOTPLUG)	+= dm_cpu_hotplug.o
 ifeq ($(CONFIG_SOC_EXYNOS3470),y)
 obj-$(CONFIG_EXYNOS_DM_CPU_HOTPLUG)     += dm_cpu_hotplug_exynos3470.o
 else ifeq ($(CONFIG_SOC_EXYNOS3250),y)
-obj-$(CONFIG_EXYNOS_DM_CPU_HOTPLUG)     += dm_cpu_hotplug.o
-else ifeq ($(CONFIG_SOC_EXYNOS3472),y)
 obj-$(CONFIG_EXYNOS_DM_CPU_HOTPLUG)     += dm_cpu_hotplug.o
 else
 ifeq ($(CONFIG_SOC_EXYNOS4415),y)

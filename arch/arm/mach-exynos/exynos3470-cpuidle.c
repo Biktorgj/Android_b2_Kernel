@@ -45,10 +45,6 @@
 #include <plat/gpio-core.h>
 #include <plat/usb-phy.h>
 
-#ifdef CONFIG_SEC_DEBUG
-#include <mach/sec_debug.h>     /* for sec_debug_aftr_log() */
-#endif
-
 #ifdef CONFIG_ARM_TRUSTZONE
 #define REG_DIRECTGO_ADDR	(S5P_VA_SYSRAM_NS + 0x24)
 #define REG_DIRECTGO_FLAG	(S5P_VA_SYSRAM_NS + 0x20)
@@ -59,27 +55,14 @@
 
 #define EXYNOS_CHECK_DIRECTGO	0xFCBA0D10
 
-#if defined(CONFIG_SEC_PM)
-#define CPUIDLE_ENABLE_MASK (ENABLE_C2 | ENABLE_C3 | ENABLE_LPA)
-#else
 #define CPUIDLE_ENABLE_MASK (ENABLE_C2 | ENABLE_C3)
-#endif
 
 static enum {
 	ENABLE_IDLE = 0x0,
 	ENABLE_C2   = 0x1,
 	ENABLE_C3   = 0x2,
-#if defined(CONFIG_SEC_PM)
-	ENABLE_AFTR = ENABLE_C3,
-	ENABLE_LPA  = 0x4,
-#endif
 } enable_mask = CPUIDLE_ENABLE_MASK;
 module_param_named(enable_mask, enable_mask, uint, 0644);
-
-#ifdef CONFIG_SEC_PM_DEBUG
-unsigned int log_en = ENABLE_LPA;
-module_param_named(log_en, log_en, uint, 0644);
-#endif /* CONFIG_SEC_PM_DEBUG */
 
 static int exynos_enter_idle(struct cpuidle_device *dev,
 			struct cpuidle_driver *drv,
@@ -214,32 +197,8 @@ static int exynos_uart_fifo_check(void)
 	return ret;
 }
 
-static inline int check_bt_op(void)
-{
-#if defined(CONFIG_BT)
-	extern int bt_is_running;
-
-	return bt_is_running;
-#else
-	return 0;
-#endif
-}
-
-//LPA disable if GPS is running.
-#if defined(CONFIG_GPS_BCMxxxxx) || defined(CONFIG_GPS_CSRxT)
-static int check_gps_op(void)
-{
-    /* This pin is high when gps is working */
-    int gps_is_running = gpio_get_value(GPIO_GPS_PWR_EN);
-    return gps_is_running;
-}
-#endif
-
 static int __maybe_unused exynos_check_enter_mode(void)
 {
-#if defined(CONFIG_SEC_PM)
-	unsigned int mask = enable_mask;
-#endif
 	/* Check power domain */
 	if (exynos_check_reg_status(exynos_power_domain,
 			    ARRAY_SIZE(exynos_power_domain)))
@@ -250,18 +209,6 @@ static int __maybe_unused exynos_check_enter_mode(void)
 		return EXYNOS_CHECK_DIDLE;
 #if defined(CONFIG_EXYNOS_DEV_DWMCI)
 	if (loop_sdmmc_check())
-		return EXYNOS_CHECK_DIDLE;
-#endif
-#if defined(CONFIG_GPS_BCMxxxxx) || defined(CONFIG_GPS_CSRxT)
-	if (check_gps_op())
-		return EXYNOS_CHECK_DIDLE;
-#endif
-
-#if defined(CONFIG_SEC_PM)
-	if (check_bt_op())
-		return EXYNOS_CHECK_DIDLE;
-
-	if (!(mask & ENABLE_LPA))
 		return EXYNOS_CHECK_DIDLE;
 #endif
 	if (exynos_check_usb_op())
@@ -323,8 +270,6 @@ void exynos_init_idle_clock_down(void)
 	tmp |= (100 << 16) | (10 << 8) | (1 << 4) | (0 << 0);
 	tmp |= (1 << 25) | (1 << 24);
 	__raw_writel(tmp, EXYNOS4_PWR_CTRL2);
-
-//	pr_info("Exynos ARM idle clock down enabled\n");
 }
 
 void exynos_idle_clock_down_disable(void)
@@ -338,8 +283,6 @@ void exynos_idle_clock_down_disable(void)
 	tmp = __raw_readl(EXYNOS4_PWR_CTRL2);
 	tmp &= ~(0x3 << 24);
 	__raw_writel(tmp, EXYNOS4_PWR_CTRL2);
-
-//	pr_info("Exynos ARM idle clock down disabled\n");
 }
 #else
 void exynos_init_idle_clock_down(void) {
@@ -428,11 +371,6 @@ static int exynos_enter_core0_aftr(struct cpuidle_device *dev,
 	unsigned int cpuid = smp_processor_id();
 
 	local_irq_disable();
-	sec_debug_task_log_msg(cpuid, "aftr+");
-#ifdef CONFIG_SEC_PM_DEBUG
-	if (log_en & ENABLE_AFTR)
-		pr_info("+++aftr\n");
-#endif
 	do_gettimeofday(&before);
 
 	exynos_set_wakeupmask();
@@ -477,11 +415,6 @@ static int exynos_enter_core0_aftr(struct cpuidle_device *dev,
 	__raw_writel(0x0, EXYNOS_WAKEUP_STAT);
 
 	do_gettimeofday(&after);
-	sec_debug_task_log_msg(cpuid, "aftr-");
-#ifdef CONFIG_SEC_PM_DEBUG
-	if (log_en & ENABLE_AFTR)
-		pr_info("---aftr\n");
-#endif
 
 	local_irq_enable();
 	idle_time = (after.tv_sec - before.tv_sec) * USEC_PER_SEC +
@@ -514,10 +447,6 @@ static struct sleep_save exynos4_set_clksrc[] = {
 	{ .reg = EXYNOS4_CLKSRC_MASK_PERIL1		, .val = 0xffffffff, },
 };
 
-#if defined(CONFIG_BT)
-extern void bt_uart_rts_ctrl(int flag);
-#endif
-
 static int exynos_enter_core0_lpa(struct cpuidle_device *dev,
 				struct cpuidle_driver *drv,
 				int index)
@@ -533,17 +462,7 @@ static int exynos_enter_core0_lpa(struct cpuidle_device *dev,
 	s3c_pm_do_restore_core(exynos4_set_clksrc,
 			       ARRAY_SIZE(exynos4_set_clksrc));
 
-#if defined(CONFIG_BT)
-	/* BT-UART RTS Control (RTS High) */
-	bt_uart_rts_ctrl(1);
-#endif
-
 	local_irq_disable();
-	sec_debug_task_log_msg(cpuid, "lpa+");
-#ifdef CONFIG_SEC_PM_DEBUG
-	if (log_en & ENABLE_LPA)
-		pr_info("+++lpa\n");
-#endif
 	do_gettimeofday(&before);
 
 	/*
@@ -624,23 +543,12 @@ early_wakeup:
 	__raw_writel(0x0, EXYNOS_WAKEUP_STAT);
 
 	do_gettimeofday(&after);
-	sec_debug_task_log_msg(cpuid, "lpa-");
-#ifdef CONFIG_SEC_PM_DEBUG
-	if (log_en & ENABLE_LPA)
-		pr_info("---lpa\n");
-#endif
 
 	local_irq_enable();
 	idle_time = (after.tv_sec - before.tv_sec) * USEC_PER_SEC +
 		    (after.tv_usec - before.tv_usec);
 
 	dev->last_residency = idle_time;
-
-#if defined(CONFIG_BT)
-	/* BT-UART RTS Control (RTS Low) */
-	bt_uart_rts_ctrl(0);
- #endif
-
 	return index;
 }
 
@@ -678,12 +586,9 @@ static int exynos_enter_lowpower(struct cpuidle_device *dev,
 #else
 		return exynos_enter_idle(dev, drv, 0);
 #endif
-	if (exynos_check_enter_mode() == EXYNOS_CHECK_DIDLE) {
-		if ((enable_mask & ENABLE_C3) && !(__raw_readl(EXYNOS4_ISP_STATUS) & 0x7))
-			return exynos_enter_core0_aftr(dev, drv, new_index);
-		else
-			return exynos_enter_idle(dev, drv, 0);
-	} else
+	if (exynos_check_enter_mode() == EXYNOS_CHECK_DIDLE)
+		return exynos_enter_core0_aftr(dev, drv, new_index);
+	else
 		return exynos_enter_core0_lpa(dev, drv, new_index);
 }
 
@@ -724,7 +629,6 @@ static int exynos_enter_c2(struct cpuidle_device *dev,
 	__raw_writel(EXYNOS_CHECK_DIRECTGO, REG_DIRECTGO_FLAG);
 
 	set_boot_flag(cpuid, C2_STATE);
-	sec_debug_task_log_msg(cpuid, "c2+");
 	cpu_pm_enter();
 
 	tmp = __raw_readl(EXYNOS_ARM_CORE_CONFIGURATION(cpuid));
@@ -742,10 +646,6 @@ static int exynos_enter_c2(struct cpuidle_device *dev,
 	}
 
 	clear_boot_flag(cpuid, C2_STATE);
-	if (ret)
-		sec_debug_task_log_msg(cpuid, "c2_");    /* early wakeup */
-	else
-		sec_debug_task_log_msg(cpuid, "c2-");    /* normal wakeup */
 	cpu_pm_exit();
 
 	do_gettimeofday(&after);

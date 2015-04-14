@@ -46,6 +46,8 @@ int s5p_mfc_init_shm(struct s5p_mfc_ctx *ctx)
 	}
 
 	memset((void *)ctx->shm.virt, 0, buf_size->shared_buf);
+	s5p_mfc_mem_clean_priv(ctx->shm.alloc, ctx->shm.virt, 0,
+			buf_size->shared_buf);
 
 	mfc_debug(2, "shm info addr: 0x%08x, phys: 0x%08lx\n",
 		 (unsigned int)ctx->shm.virt, ctx->shm.ofs);

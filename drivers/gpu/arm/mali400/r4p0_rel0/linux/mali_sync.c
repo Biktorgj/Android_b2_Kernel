@@ -15,7 +15,6 @@
 #include "mali_timeline.h"
 
 #include <linux/file.h>
-#include <linux/fs.h>
 #include <linux/seq_file.h>
 #include <linux/module.h>
 
@@ -86,7 +85,7 @@ static int timeline_compare(struct sync_pt *pta, struct sync_pt *ptb)
 	MALI_DEBUG_ASSERT_POINTER(mptb->flag);
 
 	a = mpta->flag->point;
-	b = mptb->flag->point;
+	b = mpta->flag->point;
 
 	if (a == b) return 0;
 
@@ -116,15 +115,9 @@ static void timeline_print_pt(struct seq_file *s, struct sync_pt *sync_pt)
 	MALI_DEBUG_ASSERT_POINTER(sync_pt);
 
 	mpt = to_mali_sync_pt(sync_pt);
+	MALI_DEBUG_ASSERT_POINTER(mpt->flag);
 
-	/* It is possible this sync point is just under construct,
-	 * make sure the flag is valid before accessing it
-	*/
-	if (mpt->flag) {
-		seq_printf(s, "%u", mpt->flag->point);
-	} else {
-		seq_printf(s, "uninitialized");
-	}
+	seq_printf(s, "%u", mpt->flag->point);
 }
 
 static struct sync_timeline_ops mali_timeline_ops = {
@@ -164,7 +157,7 @@ s32 mali_sync_fence_fd_alloc(struct sync_fence *sync_fence)
 {
 	s32 fd = -1;
 
-	fd = get_unused_fd_flags(O_CLOEXEC);
+	fd = get_unused_fd();
 	if (fd < 0) {
 		sync_fence_put(sync_fence);
 		return -1;

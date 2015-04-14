@@ -2719,7 +2719,10 @@ SINT32	McPacket_AddPowerDown(
 					| (UINT32)MCI_HSDETEN,
 					bReg);
 		}
-
+/*
+ * 2014.01.18 Temporarily disabled. To debug MCDRV_SET_PATH failure.
+ * Kwang-Hui Cho
+ *
 		if ((bRegPD&MCB_ANACLK_PD) != 0) {
 			sdRet	= WakeANACLK_PD(&bRegPD, &bAP);
 			if (sdRet != MCDRV_SUCCESS) {
@@ -2737,7 +2740,7 @@ SINT32	McPacket_AddPowerDown(
 		if (sdRet != MCDRV_SUCCESS) {
 			goto exit;
 		}
-
+*/
 		if ((bRegPD&MCB_ANACLK_PD) == 0) {
 			if (McDevProf_GetDevId() != eMCDRV_DEV_ID_80_90H) {
 				;

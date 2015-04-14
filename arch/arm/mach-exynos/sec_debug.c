@@ -1,13 +1,6 @@
 /*
  *  sec_debug.c
- * Copyright (c) 2012-2013 Samsung Electronics Co., Ltd.
- *              http://www.samsung.com
  *
- * sec_debug.c - Samsung mobile debugging features
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 
 #include <linux/errno.h>
@@ -68,21 +61,6 @@ struct sched_log {
 		work_func_t f;
 		int en;
 	} work[CONFIG_NR_CPUS][SCHED_LOG_MAX];
-#ifdef CONFIG_SEC_DEBUG_I2C_LOG
-        struct i2c_log {
-                unsigned long long time;
-                const char *func;
-                int en;
-                unsigned long reg;
-        } i2c[CONFIG_NR_CPUS][SCHED_LOG_MAX];
-#endif
-#ifdef CONFIG_SEC_DEBUG_PM_LOG
-        struct pm_log {
-                unsigned long long time;
-                const char *dev_name;
-                int en;
-        } pm[CONFIG_NR_CPUS][SCHED_LOG_MAX * 2];
-#endif
 #ifdef CONFIG_SEC_DEBUG_TIMER_LOG
 	struct timer_log {
 		unsigned long long time;
@@ -94,12 +72,10 @@ struct sched_log {
 #endif				/* CONFIG_SEC_DEBUG_SCHED_LOG */
 
 #ifdef CONFIG_SEC_DEBUG_AUXILIARY_LOG
-#define AUX_LOG_CPU_CLOCK_SWITCH_MAX 64
-#define AUX_LOG_THERMAL_MAX 128
-#define AUX_LOG_RUNTIME_PM_MAX 64
+#define AUX_LOG_CPU_CLOCK_SWITCH_MAX 128
+#define AUX_LOG_RUNTIME_PM_MAX 128
 #define AUX_LOG_PM_MAX 1024
 #define AUX_LOG_NOTIFY_FAIL_MAX 64
-#define AUX_LOG_THERMAL_CHANGE_MAX 64
 #define AUX_LOG_LENGTH 128
 
 struct auxiliary_info {
@@ -111,7 +87,6 @@ struct auxiliary_info {
 /* This structure will be modified if some other items added for log */
 struct auxiliary_log {
 	struct auxiliary_info CpuClockSwitchLog[AUX_LOG_CPU_CLOCK_SWITCH_MAX];
-	struct auxiliary_info ThermalLog[AUX_LOG_THERMAL_MAX];
 	struct auxiliary_info RuntimePmLog[AUX_LOG_RUNTIME_PM_MAX];
 	struct auxiliary_info PmLog[AUX_LOG_PM_MAX];
 	struct auxiliary_info NotifyFailLog[AUX_LOG_NOTIFY_FAIL_MAX];
@@ -284,17 +259,11 @@ static struct sched_log sec_debug_log __cacheline_aligned;
 static struct sched_log sec_debug_log[NR_CPUS][SCHED_LOG_MAX]
 	__cacheline_aligned;
 */
-static atomic_t task_log_idx[NR_CPUS] = { ATOMIC_INIT(-1), ATOMIC_INIT(-1), ATOMIC_INIT(-1), ATOMIC_INIT(-1) };
-static atomic_t irq_log_idx[NR_CPUS] = { ATOMIC_INIT(-1), ATOMIC_INIT(-1), ATOMIC_INIT(-1), ATOMIC_INIT(-1) };
-static atomic_t work_log_idx[NR_CPUS] = { ATOMIC_INIT(-1), ATOMIC_INIT(-1), ATOMIC_INIT(-1), ATOMIC_INIT(-1) };
-#ifdef CONFIG_SEC_DEBUG_I2C_LOG
-static atomic_t i2c_log_idx[NR_CPUS] = { ATOMIC_INIT(-1), ATOMIC_INIT(-1), ATOMIC_INIT(-1), ATOMIC_INIT(-1) };
-#endif
-#ifdef CONFIG_SEC_DEBUG_PM_LOG
-static atomic_t pm_log_idx[NR_CPUS] = { ATOMIC_INIT(-1), ATOMIC_INIT(-1), ATOMIC_INIT(-1), ATOMIC_INIT(-1) };
-#endif
+static atomic_t task_log_idx[NR_CPUS] = { ATOMIC_INIT(-1), ATOMIC_INIT(-1) };
+static atomic_t irq_log_idx[NR_CPUS] = { ATOMIC_INIT(-1), ATOMIC_INIT(-1) };
+static atomic_t work_log_idx[NR_CPUS] = { ATOMIC_INIT(-1), ATOMIC_INIT(-1) };
 #ifdef CONFIG_SEC_DEBUG_TIMER_LOG
-static atomic_t timer_log_idx[NR_CPUS] = { ATOMIC_INIT(-1), ATOMIC_INIT(-1), ATOMIC_INIT(-1), ATOMIC_INIT(-1) };
+static atomic_t timer_log_idx[NR_CPUS] = { ATOMIC_INIT(-1), ATOMIC_INIT(-1) };
 #endif /* CONFIG_SEC_DEBUG_TIMER_LOG */
 static struct sched_log (*psec_debug_log) = (&sec_debug_log);
 /*
@@ -309,10 +278,17 @@ static unsigned long long gExcpIrqExitTime[NR_CPUS];
 static struct auxiliary_log gExcpAuxLog	__cacheline_aligned;
 static struct auxiliary_log *gExcpAuxLogPtr;
 static atomic_t gExcpAuxCpuClockSwitchLogIdx = ATOMIC_INIT(-1);
-static atomic_t gExcpAuxThermalLogIdx = ATOMIC_INIT(-1);
 static atomic_t gExcpAuxRuntimePmLogIdx = ATOMIC_INIT(-1);
 static atomic_t gExcpAuxPmLogIdx = ATOMIC_INIT(-1);
 static atomic_t gExcpAuxNotifyFailLogIdx = ATOMIC_INIT(-1);
+#endif
+
+#ifdef CONFIG_SEC_DEBUG_SCHED_LOG
+#include <asm/cacheflush.h>
+void sched_log_clean_cache(void)
+{
+	clean_dcache_area(&sec_debug_log, sizeof(sec_debug_log));
+}
 #endif
 
 static int bStopLogging;
@@ -544,12 +520,12 @@ inline void sec_debug_save_context(void)
 	local_irq_restore(flags);
 }
 
-void sec_debug_set_upload_magic(unsigned magic, char *str)
+static void sec_debug_set_upload_magic(unsigned magic, char *str)
 {
 	pr_emerg("(%s) %x\n", __func__, magic);
 
 	*(unsigned int *)SEC_DEBUG_MAGIC_VA = magic;
-	*(unsigned int *)(SEC_DEBUG_MAGIC_VA + 0x4000- 4) = magic;
+	*(unsigned int *)(SEC_DEBUG_MAGIC_VA + 0x4000) = magic;
 
 	if (str)
 		strncpy((char *)SEC_DEBUG_MAGIC_VA + 4, str, SZ_1K - 4);
@@ -607,7 +583,11 @@ static inline void sec_debug_hw_reset(void)
 
 	outer_flush_all();
 
-	exynos5_restart(0, 0);
+#ifdef CONFIG_ARCH_EXYNOS3
+	exynos3_restart(0, 0);
+#else
+	exynos4_restart(0, 0);
+#endif
 
 	while (1) {
 		pr_err("should not be happend\n");
@@ -670,8 +650,6 @@ static int sec_debug_panic_handler(struct notifier_block *nb,
 #ifdef CONFIG_SEC_DEBUG_FUPLOAD_DUMP_MORE
 	dump_all_task_info();
 	dump_cpu_stat();
-
-	show_state_filter(TASK_STATE_MAX);	/* no backtrace */
 #else
 	show_state();
 #endif
@@ -682,9 +660,81 @@ static int sec_debug_panic_handler(struct notifier_block *nb,
 	return 0;
 }
 
+#if defined(CONFIG_MACH_Q1_BD)
+/*
+ * This function can be used while current pointer is invalid.
+ */
+int sec_debug_panic_handler_safe(void *buf)
+{
+	local_irq_disable();
+
+	sec_debug_set_upload_magic(0x66262564, buf);
+
+	sec_debug_set_upload_cause(UPLOAD_CAUSE_KERNEL_PANIC);
+
+	pr_err("(%s) checksum_sched_log: %x\n", __func__, checksum_sched_log());
+
+	sec_debug_dump_stack();
+	sec_debug_hw_reset();
+
+	return 0;
+}
+#endif
+
+#if defined(CONFIG_SEC_DEBUG_ONEKEY)
+#define KEY_CHECK_TIME 1200 /* in miliseconds */
+#define KEY_COUNT 7
+#define KEY_CRASH_CODE KEY_POWER
+
+static void sec_debug_one_key_crash(unsigned int code, int value)
+{
+	static u64 key_press_time[KEY_COUNT];
+	static int key_count;
+	static int key_index;
+	unsigned int crash_key = KEY_POWER;
+
+	/* One key Force Upload
+	 * Press a key KEY_COUNT times in KEY_CHECK_TIME milisec.
+	 */
+	if (!value)
+		return;
+
+	if (code == crash_key) {
+		u64 key_prev;
+		u64 key_time;
+
+		key_time = cpu_clock(0);
+		do_div(key_time, 1000000);
+
+		key_index = (key_index + 1) % KEY_COUNT;
+
+		if (key_count < KEY_COUNT) {
+			key_press_time[key_index] = key_time;
+			key_count++;
+		} else {
+			key_press_time[key_index] = key_time;
+		}
+
+		if (key_count >= KEY_COUNT) {
+			int index = (key_index + 1) % KEY_COUNT;
+			key_prev = key_press_time[index];
+			if( key_time - key_prev < KEY_CHECK_TIME )
+				panic("Forced upload : Crash Key");
+		}
+	}
+}
+#endif
+
 #if !defined(CONFIG_TARGET_LOCALE_NA)
 void sec_debug_check_crash_key(unsigned int code, int value)
 {
+#if defined(CONFIG_SEC_DEBUG_ONEKEY)
+	if (!sec_debug_level.en.kernel_fault)
+		return;
+
+	/* Using ONE KEY UPLOAD */
+	sec_debug_one_key_crash(code, value);
+#else
 	static bool volup_p;
 	static bool voldown_p;
 	static int loopcount;
@@ -726,6 +776,7 @@ void sec_debug_check_crash_key(unsigned int code, int value)
 			voldown_p = false;
 		}
 	}
+#endif
 }
 
 #else
@@ -838,6 +889,7 @@ int __init sec_debug_init(void)
 	if (!sec_debug_level.en.kernel_fault)
 		return -1;
 	
+	sec_debug_magic_init();
 	sec_debug_set_upload_magic(0x66262564, NULL);
 	sec_debug_set_upload_cause(UPLOAD_CAUSE_INIT);
 
@@ -858,7 +910,7 @@ int __init sec_debug_init(void)
 	return 0;
 }
 
-unsigned int get_sec_debug_level(void)
+int get_sec_debug_level(void)
 {
 	return sec_debug_level.uint_val;
 }
@@ -919,35 +971,6 @@ void __sec_debug_work_log(struct worker *worker,
 	psec_debug_log->work[cpu][i].en = en;
 }
 
-#ifdef CONFIG_SEC_DEBUG_I2C_LOG
-void __sec_debug_i2c_log(int cpu, const char *func, int en, unsigned long reg)
-{
-	unsigned i;
-
-	if (bStopLogging)
-		return;
-
-	i = atomic_inc_return(&i2c_log_idx[cpu]) & (SCHED_LOG_MAX - 1);
-	psec_debug_log->i2c[cpu][i].time = cpu_clock(cpu);
-	psec_debug_log->i2c[cpu][i].func = func;
-	psec_debug_log->i2c[cpu][i].en = en;
-	psec_debug_log->i2c[cpu][i].reg = reg;
-}
-#endif
-#ifdef CONFIG_SEC_DEBUG_PM_LOG
-void __sec_debug_pm_log(int cpu, const char *dev_name, int en)
-{
-	unsigned i;
-
-	if (bStopLogging)
-		return;
-
-	i = atomic_inc_return(&pm_log_idx[cpu]) & (SCHED_LOG_MAX * 2 - 1);
-	psec_debug_log->pm[cpu][i].time = cpu_clock(cpu);
-	psec_debug_log->pm[cpu][i].dev_name = dev_name;
-	psec_debug_log->pm[cpu][i].en = en;
-}
-#endif
 #ifdef CONFIG_SEC_DEBUG_TIMER_LOG
 void __sec_debug_timer_log(unsigned int type, void *fn)
 {
@@ -995,22 +1018,6 @@ void sec_debug_aux_log(int idx, char *fmt, ...)
 		(*gExcpAuxLogPtr).CpuClockSwitchLog[i].time = cpu_clock(cpu);
 		(*gExcpAuxLogPtr).CpuClockSwitchLog[i].cpu = cpu;
 		strncpy((*gExcpAuxLogPtr).CpuClockSwitchLog[i].log,
-			buf, AUX_LOG_LENGTH);
-		break;
-	case SEC_DEBUG_AUXLOG_CPU_BUS_CLOCK_CHANGE:
-		i = atomic_inc_return(&gExcpAuxCpuClockSwitchLogIdx) 
-			& (AUX_LOG_CPU_CLOCK_SWITCH_MAX - 1);
-		(*gExcpAuxLogPtr).CpuClockSwitchLog[i].time = cpu_clock(cpu);
-		(*gExcpAuxLogPtr).CpuClockSwitchLog[i].cpu = cpu;
-		strncpy((*gExcpAuxLogPtr).CpuClockSwitchLog[i].log, 
-			buf, AUX_LOG_LENGTH);
-		break;
-	case SEC_DEBUG_AUXLOG_THERMAL_CHANGE:
-		i = atomic_inc_return(&gExcpAuxThermalLogIdx) 
-			& (AUX_LOG_THERMAL_MAX - 1);
-		(*gExcpAuxLogPtr).ThermalLog[i].time = cpu_clock(cpu);
-		(*gExcpAuxLogPtr).ThermalLog[i].cpu = cpu;
-		strncpy((*gExcpAuxLogPtr).ThermalLog[i].log, 
 			buf, AUX_LOG_LENGTH);
 		break;
 	case SEC_DEBUG_AUXLOG_RUNTIME_PM_CHANGE:
@@ -1290,7 +1297,6 @@ device_initcall(sec_debug_reset_reason_init);
 
 int __init sec_debug_magic_init(void)
 {
-	printk("%s: try to reserve magic code area %d\n", __func__, SEC_DEBUG_MAGIC_PA);
 	if (reserve_bootmem(SEC_DEBUG_MAGIC_PA, SZ_4K, BOOTMEM_EXCLUSIVE)) {
 		pr_err("%s: failed reserving magic code area\n", __func__);
 		return -ENOMEM;
@@ -1332,15 +1338,13 @@ static void dump_one_task_info(struct task_struct *tsk, bool is_main)
 		state >>= 1;
 	}
 
-	pr_info("%8d %8d %8d %16lld %c(%d) %3d  %08x %08x  %08x %c %16s [%s]\n",
-			tsk->pid, (int)(tsk->utime), (int)(tsk->stime),
-			tsk->se.exec_start, state_array[idx], (int)(tsk->state),
-			task_cpu(tsk), (int)wchan, (int)pc, (int)tsk,
-			is_main ? '*' : ' ', tsk->comm, symname);
-
 	if (tsk->state == TASK_RUNNING
-			|| tsk->state == TASK_UNINTERRUPTIBLE
-			|| tsk->mm == NULL) {
+			|| tsk->state == TASK_UNINTERRUPTIBLE) {
+		pr_info("%8d %8d %8d %16lld %c(%d) %3d	%08x %08x  %08x %c %16s [%s]\n",
+					tsk->pid, (int)(tsk->utime), (int)(tsk->stime),
+					tsk->se.exec_start, state_array[idx], (int)(tsk->state),
+					task_cpu(tsk), (int)wchan, (int)pc, (int)tsk,
+					is_main ? '*' : ' ', tsk->comm, symname);
 		show_stack(tsk, NULL);
 		pr_info("\n");
 	}
@@ -1676,8 +1680,6 @@ static int sec_input_debug_probe(struct platform_device *pdev)
 	int i = 0;
 
 	ddata = kzalloc(sizeof(struct input_debug_drv_data), GFP_KERNEL);
-	if (!ddata)
-		return -ENOMEM;
 
 	ddata->pdata = pdata;
 

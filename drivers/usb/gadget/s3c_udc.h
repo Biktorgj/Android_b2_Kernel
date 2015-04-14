@@ -49,6 +49,7 @@
 #include <asm/irq.h>
 #include <asm/system.h>
 #include <asm/unaligned.h>
+
 #include <linux/wakelock.h>
 
 /* Max packet size */
@@ -148,10 +149,10 @@ struct s3c_udc {
 	unsigned int irq;
 	unsigned req_pending:1, req_std:1, req_config:1;
 	int udc_enabled;
+	bool udc_suspended;
 
 	struct wake_lock	usbd_wake_lock;
 	struct wake_lock	usb_cb_wake_lock;
-	struct mutex		mutex;
 };
 
 extern struct s3c_udc *the_controller;

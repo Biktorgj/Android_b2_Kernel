@@ -68,14 +68,14 @@ static struct bts_set_table axiqos_highest_table[] = {
 	{READ_QOS_CONTROL, 0x0},
 	{WRITE_QOS_CONTROL, 0x0},
 	{READ_CHANNEL_PRIORITY, 0xffff},
-	{READ_TOKEN_MAX_VALUE, 0xffdf},
-	{READ_BW_UPPER_BOUNDARY, 0x18},
+	{READ_TOKEN_MAX_VALUE, 0x20},
+	{READ_BW_UPPER_BOUNDARY, 0x8},
 	{READ_BW_LOWER_BOUNDARY, 0x1},
 	{READ_INITIAL_TOKEN_VALUE, 0x8},
 
 	{WRITE_CHANNEL_PRIORITY, 0xffff},
-	{WRITE_TOKEN_MAX_VALUE, 0xffdf},
-	{WRITE_BW_UPPER_BOUNDARY, 0x18},
+	{WRITE_TOKEN_MAX_VALUE, 0x20},
+	{WRITE_BW_UPPER_BOUNDARY, 0x8},
 	{WRITE_BW_LOWER_BOUNDARY, 0x1},
 	{WRITE_INITIAL_TOKEN_VALUE, 0x8},
 	{READ_QOS_CONTROL, 0x1},
@@ -86,10 +86,8 @@ static struct bts_set_table fbm_r_high_table[] = {
 	{READ_QOS_CONTROL, 0x0},
 	{WRITE_QOS_CONTROL, 0x0},
 	{READ_CHANNEL_PRIORITY, 0x4444},
-	{READ_TOKEN_MAX_VALUE, 0xffdf},
-	{READ_BW_UPPER_BOUNDARY, 0x18},
-	{WRITE_TOKEN_MAX_VALUE, 0xffdf},
-	{WRITE_BW_UPPER_BOUNDARY, 0x18},
+	{READ_TOKEN_MAX_VALUE, 0x20},
+	{READ_BW_UPPER_BOUNDARY, 0x8},
 	{READ_BW_LOWER_BOUNDARY, 0x1},
 	{READ_INITIAL_TOKEN_VALUE, 0x8},
 	{READ_DEMOTION_WINDOW, 0x7fff},
@@ -101,8 +99,8 @@ static struct bts_set_table fbm_r_high_table[] = {
 	{READ_FLEXIBLE_BLOCKING_CONTROL, 0x2},
 
 	{WRITE_CHANNEL_PRIORITY, 0x4444},
-	{WRITE_TOKEN_MAX_VALUE, 0xffdf},
-	{WRITE_BW_UPPER_BOUNDARY, 0x18},
+	{WRITE_TOKEN_MAX_VALUE, 0x20},
+	{WRITE_BW_UPPER_BOUNDARY, 0x8},
 	{WRITE_BW_LOWER_BOUNDARY, 0x1},
 	{WRITE_INITIAL_TOKEN_VALUE, 0x8},
 	{WRITE_DEMOTION_WINDOW, 0x7fff},
@@ -238,9 +236,9 @@ static void set_cam_scenario(bool on)
 		__raw_writel(0x3, fbm_right + FBM_THRESHOLD2);
 		__raw_writel(0x2, fbm_right + FBM_OUTSEL20);
 	} else {
-		__raw_writel(0x4, fbm_right + FBM_THRESHOLD0);
-		__raw_writel(0x8, fbm_right + FBM_THRESHOLD1);
-		__raw_writel(0x8, fbm_right + FBM_THRESHOLD2);
+		__raw_writel(0x8, fbm_right + FBM_THRESHOLD0);
+		__raw_writel(0x8, fbm_right + FBM_THRESHOLD0);
+		__raw_writel(0x8, fbm_right + FBM_THRESHOLD0);
 
 		__raw_writel(0x0, tidemark_gdr + 0x400);
 		__raw_writel(0x0, tidemark_gdr + 0x404);
@@ -252,7 +250,7 @@ static void set_fbm(void)
 	BTS_DBG("[BTS] FBM SETUP\n");
 
 	__raw_writel(0x3, fbm_right + FBM_MODESEL0);
-	__raw_writel(0x4, fbm_right + FBM_THRESHOLD0);
+	__raw_writel(0x8, fbm_right + FBM_THRESHOLD0);
 	__raw_writel(0x0, fbm_right + FBM_OUTSEL0);
 
 	__raw_writel(0x3, fbm_right + FBM_MODESEL1);
@@ -279,7 +277,7 @@ void bts_initialize(const char *pd_name, bool on)
 	list_for_each_entry(bts, &bts_list, list)
 		if (pd_name && bts->pd_name && !strcmp(bts->pd_name, pd_name)) {
 			if (on && (bts->id & BTS_CPU))
-				set_fbm();
+					set_fbm();
 
 			if (on)
 				set_bts_ip_table(bts);

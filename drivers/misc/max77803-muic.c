@@ -44,7 +44,9 @@
 
 //#undef REGARD_442K_AS_523K
 
+#if 0 /* Max77836 bringup */
 extern unsigned int lpcharge;
+#endif /* Max77836 bringup */
 
 /* for providing API */
 static struct max77803_muic_info *gInfo;
@@ -195,7 +197,17 @@ __setup("pmic_info=", get_if_pmic_inifo);
 
 int get_switch_sel(void)
 {
+	/*
+	 * 2013.12.24 tyung.kim:
+	 *		Temporarily ignore bootloader cmdline 'switch_sel'
+	 *		Set default UART path: AP
+	 *		Set default USB  path: AP
+	 */
+#if 0
 	return switch_sel;
+#endif
+	return (MAX77803_SWITCH_SEL_1st_BIT_USB
+			| MAX77803_SWITCH_SEL_2nd_BIT_UART);
 }
 
 int g_usbvbus;
@@ -3329,7 +3341,8 @@ static int __devinit max77803_muic_probe(struct platform_device *pdev)
 			info->muic_data->uart_path = UART_PATH_CP;
 		}
 #endif
-		pr_info("%s: switch_sel: %x\n", __func__, switch_sel);
+		pr_info("%s: switch_sel: %x, sw_path:%d, uart_path:%d\n", __func__,
+			switch_sel, info->muic_data->sw_path, info->muic_data->uart_path);
 	}
 	/* create sysfs group */
 	ret = sysfs_create_group(&switch_dev->kobj, &max77803_muic_group);
@@ -3384,12 +3397,14 @@ static int __devinit max77803_muic_probe(struct platform_device *pdev)
 	CONFIG_MUIC_MAX77803_SUPPORT_OTG_AUDIO_DOCK */
 
 	INIT_DELAYED_WORK(&info->init_work, max77803_muic_init_detect);
-
+#if 0 /* Max77836 bringup */
 	if(lpcharge) {
 		schedule_delayed_work(&info->init_work, msecs_to_jiffies(1800));
 	} else {
 		schedule_delayed_work(&info->init_work, msecs_to_jiffies(2400));
 	}
+#endif /* Max77836 bringup */
+	schedule_delayed_work(&info->init_work, msecs_to_jiffies(2400));
 
 	INIT_DELAYED_WORK(&info->usb_work, max77803_muic_usb_detect);
 	schedule_delayed_work(&info->usb_work, msecs_to_jiffies(10000));

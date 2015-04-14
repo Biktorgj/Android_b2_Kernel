@@ -1,9 +1,9 @@
 /*
  * Copyright (C) 2011-2012 ARM Limited. All rights reserved.
- * 
+ *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
@@ -31,7 +31,7 @@ static u32 mali_global_num_pp_cores = 0;
 static void mali_pp_irq_probe_trigger(void *data);
 static _mali_osk_errcode_t mali_pp_irq_probe_ack(void *data);
 
-struct mali_pp_core *mali_pp_create(const _mali_osk_resource_t *resource, struct mali_group *group, mali_bool is_virtual, u32 bcast_id)
+struct mali_pp_core *mali_pp_create(const _mali_osk_resource_t *resource, struct mali_group *group, mali_bool is_virtual)
 {
 	struct mali_pp_core* core = NULL;
 
@@ -48,7 +48,6 @@ struct mali_pp_core *mali_pp_create(const _mali_osk_resource_t *resource, struct
 	if (NULL != core)
 	{
 		core->core_id = mali_global_num_pp_cores;
-		core->bcast_id = bcast_id;
 		core->counter_src0_used = MALI_HW_CORE_NO_COUNTER;
 		core->counter_src1_used = MALI_HW_CORE_NO_COUNTER;
 
@@ -270,15 +269,14 @@ _mali_osk_errcode_t mali_pp_reset_wait(struct mali_pp_core *core)
 	int i;
 	u32 rawstat = 0;
 
+	/* TODO: For virtual Mali-450 core, check that PP active in STATUS is 0 (this must be initiated from group) */
+
 	for (i = 0; i < MALI_REG_POLL_COUNT_FAST; i++)
 	{
-		if (!(mali_pp_read_status(core) & MALI200_REG_VAL_STATUS_RENDERING_ACTIVE))
+		rawstat = mali_hw_core_register_read(&core->hw_core, MALI200_REG_ADDR_MGMT_INT_RAWSTAT);
+		if (rawstat & MALI400PP_REG_VAL_IRQ_RESET_COMPLETED)
 		{
-			rawstat = mali_hw_core_register_read(&core->hw_core, MALI200_REG_ADDR_MGMT_INT_RAWSTAT);
-			if (rawstat == MALI400PP_REG_VAL_IRQ_RESET_COMPLETED)
-			{
-				break;
-			}
+			break;
 		}
 	}
 
@@ -473,30 +471,33 @@ void mali_pp_print_state(struct mali_pp_core *core)
 }
 #endif
 
-void mali_pp_update_performance_counters(struct mali_pp_core *parent, struct mali_pp_core *child, struct mali_pp_job *job, u32 subjob)
+void mali_pp_update_performance_counters(struct mali_pp_core *core, struct mali_pp_job *job, u32 subjob)
 {
 	u32 val0 = 0;
 	u32 val1 = 0;
 #if defined(CONFIG_MALI400_PROFILING)
-	int counter_index = COUNTER_FP0_C0 + (2 * child->core_id);
+	int counter_index = COUNTER_FP0_C0 + (2 * core->core_id);
 #endif
 
-	if (MALI_HW_CORE_NO_COUNTER != parent->counter_src0_used)
+	if (MALI_HW_CORE_NO_COUNTER != core->counter_src0_used)
 	{
-		val0 = mali_hw_core_register_read(&child->hw_core, MALI200_REG_ADDR_MGMT_PERF_CNT_0_VALUE);
+		val0 = mali_hw_core_register_read(&core->hw_core, MALI200_REG_ADDR_MGMT_PERF_CNT_0_VALUE);
+
 		mali_pp_job_set_perf_counter_value0(job, subjob, val0);
 
 #if defined(CONFIG_MALI400_PROFILING)
+		/*todo: check if the group is virtual - in such case, does it make sense to send a HW counter ?*/
 		_mali_osk_profiling_report_hw_counter(counter_index, val0);
 #endif
 	}
 
-	if (MALI_HW_CORE_NO_COUNTER != parent->counter_src1_used)
+	if (MALI_HW_CORE_NO_COUNTER != core->counter_src1_used)
 	{
-		val1 = mali_hw_core_register_read(&child->hw_core, MALI200_REG_ADDR_MGMT_PERF_CNT_1_VALUE);
+		val1 = mali_hw_core_register_read(&core->hw_core, MALI200_REG_ADDR_MGMT_PERF_CNT_1_VALUE);
 		mali_pp_job_set_perf_counter_value1(job, subjob, val1);
 
 #if defined(CONFIG_MALI400_PROFILING)
+		/*todo: check if the group is virtual - in such case, does it make sense to send a HW counter ?*/
 		_mali_osk_profiling_report_hw_counter(counter_index + 1, val1);
 #endif
 	}

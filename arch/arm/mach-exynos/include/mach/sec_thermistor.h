@@ -39,4 +39,9 @@ struct sec_therm_platform_data {
 	struct sec_therm_adc_table *adc_table;
 };
 
+enum {
+	ADC_CHANNEL_BATT_THERM = 0,
+	ADC_CHANNEL_AP_THERM,
+};
+
 #endif /* __MACH_SEC_THERMISTOR_H */

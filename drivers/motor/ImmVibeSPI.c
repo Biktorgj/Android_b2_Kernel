@@ -26,69 +26,40 @@
 ** under the License.
 ** =========================================================================
 */
-#include <linux/pwm.h>
-#include <plat/gpio-cfg.h>
-#include <linux/delay.h>
-#include <linux/gpio.h>
-#include <linux/mfd/max8997.h>
-#include <linux/mfd/max8997-private.h>
-
-#include "tspdrv.h"
 
 #ifdef IMMVIBESPIAPI
 #undef IMMVIBESPIAPI
 #endif
 #define IMMVIBESPIAPI static
 
+#if defined(CONFIG_DC_MOTOR)
+#include <linux/dc_motor.h>
+#endif
+
 /*
 ** This SPI supports only one actuator.
 */
-#define NUM_ACTUATORS	1
+#define NUM_ACTUATORS 1
+#define SET_BIT_NUM 127
 
 #define PWM_DUTY_MAX    579 /* 13MHz / (579 + 1) = 22.4kHz */
 
-static bool g_bAmpEnabled;
-
-extern void vibtonz_en(bool en);
-extern void vibtonz_pwm(int nForce);
+static bool g_bAmpEnabled = false;
+static bool g_bStarted;
 
 /*
 ** Called to disable amp (disable output force)
 */
 IMMVIBESPIAPI VibeStatus ImmVibeSPI_ForceOut_AmpDisable(VibeUInt8 nActuatorIndex)
 {
-    /*printk(KERN_ERR"[VIBRATOR] ImmVibeSPI_ForceOut_AmpDisable is called\n");*/
-#if 0
-	if (g_bAmpEnabled) {
-		DbgOut((KERN_DEBUG "ImmVibeSPI_ForceOut_AmpDisable.\n"));
+    if (g_bAmpEnabled)
+    {
+        DbgOut((DBL_INFO, "ImmVibeSPI_ForceOut_AmpDisable.\n"));
+        vibtonz_enable(0);
+        g_bAmpEnabled = false;
+    }
 
-		g_bAmpEnabled = false;
-
-		/* Disable amp */
-
-
-		/* Disable PWM CLK */
-
-	}
-#endif
-
-	if (g_bAmpEnabled) {
-
-		g_bAmpEnabled = false;
-#if !defined(CONFIG_MACH_P4NOTE)
-		vibtonz_pwm(0);
-		vibtonz_en(false);
-#endif
-		if (regulator_hapticmotor_enabled == 1) {
-			regulator_hapticmotor_enabled = 0;
-/*
-			printk(KERN_DEBUG "tspdrv: %s (%d)\n", __func__,
-						regulator_hapticmotor_enabled);
-*/
-		}
-	}
-
-	return VIBE_S_SUCCESS;
+    return VIBE_S_SUCCESS;
 }
 
 /*
@@ -96,35 +67,15 @@ IMMVIBESPIAPI VibeStatus ImmVibeSPI_ForceOut_AmpDisable(VibeUInt8 nActuatorIndex
 */
 IMMVIBESPIAPI VibeStatus ImmVibeSPI_ForceOut_AmpEnable(VibeUInt8 nActuatorIndex)
 {
-    /*printk(KERN_ERR"[VIBRATOR]ImmVibeSPI_ForceOut_AmpEnable is called\n");*/
-#if 0
-	if (!g_bAmpEnabled)	{
-		DbgOut((KERN_DEBUG "ImmVibeSPI_ForceOut_AmpEnable.\n"));
+    if (!g_bAmpEnabled)
+    {
+        DbgOut((DBL_INFO, "ImmVibeSPI_ForceOut_AmpEnable.\n"));
+	pr_info("tspdrv :enable call!!\n");
+        vibtonz_enable(1);
+        g_bAmpEnabled = true;
+    }
 
-		g_bAmpEnabled = true;
-
-		/* Generate PWM CLK with proper frequency(ex. 22400Hz) and 50% duty cycle.*/
-
-
-		/* Enable amp */
-
-	}
-#endif
-
-	if (!g_bAmpEnabled) {
-#if !defined(CONFIG_MACH_P4NOTE)
-		vibtonz_en(true);
-#endif
-
-		g_bAmpEnabled = true;
-		regulator_hapticmotor_enabled = 1;
-/*
-		printk(KERN_DEBUG "tspdrv: %s (%d)\n", __func__,
-					regulator_hapticmotor_enabled);
-*/
-	}
-
-	return VIBE_S_SUCCESS;
+    return VIBE_S_SUCCESS;
 }
 
 /*
@@ -132,23 +83,19 @@ IMMVIBESPIAPI VibeStatus ImmVibeSPI_ForceOut_AmpEnable(VibeUInt8 nActuatorIndex)
 */
 IMMVIBESPIAPI VibeStatus ImmVibeSPI_ForceOut_Initialize(void)
 {
-    /*printk(KERN_ERR"[VIBRATOR]ImmVibeSPI_ForceOut_Initialize is called\n");*/
-	DbgOut((KERN_DEBUG "ImmVibeSPI_ForceOut_Initialize.\n"));
+    DbgOut((DBL_INFO, "ImmVibeSPI_ForceOut_Initialize.\n"));
 
-	g_bAmpEnabled = true;   /* to force ImmVibeSPI_ForceOut_AmpDisable disabling the amp */
+    g_bAmpEnabled = true;   /* to force ImmVibeSPI_ForceOut_AmpDisable disabling the amp */
 
-	/*
-	** Disable amp.
-	** If multiple actuators are supported, please make sure to call
-	** ImmVibeSPI_ForceOut_AmpDisable for each actuator (provide the actuator index as
-	** input argument).
-	*/
+    /*
+    ** Disable amp.
+    ** If multiple actuators are supported, please make sure to call
+    ** ImmVibeSPI_ForceOut_AmpDisable for each actuator (provide the actuator index as
+    ** input argument).
+    */
+    ImmVibeSPI_ForceOut_AmpDisable(0);
 
-	ImmVibeSPI_ForceOut_AmpDisable(0);
-
-	regulator_hapticmotor_enabled = 0;
-
-	return VIBE_S_SUCCESS;
+    return VIBE_S_SUCCESS;
 }
 
 /*
@@ -156,112 +103,89 @@ IMMVIBESPIAPI VibeStatus ImmVibeSPI_ForceOut_Initialize(void)
 */
 IMMVIBESPIAPI VibeStatus ImmVibeSPI_ForceOut_Terminate(void)
 {
-	DbgOut((KERN_DEBUG "ImmVibeSPI_ForceOut_Terminate.\n"));
+    DbgOut((DBL_INFO, "ImmVibeSPI_ForceOut_Terminate.\n"));
 
-	/*
-	** Disable amp.
-	** If multiple actuators are supported, please make sure to call
-	** ImmVibeSPI_ForceOut_AmpDisable for each actuator (provide the actuator index as
-	** input argument).
-	*/
-	ImmVibeSPI_ForceOut_AmpDisable(0);
+    /*
+    ** Disable amp.
+    ** If multiple actuators are supported, please make sure to call
+    ** ImmVibeSPI_ForceOut_AmpDisable for each actuator (provide the actuator index as
+    ** input argument).
+    */
+    ImmVibeSPI_ForceOut_AmpDisable(0);
 
-	return VIBE_S_SUCCESS;
+    return VIBE_S_SUCCESS;
 }
 
 /*
 ** Called by the real-time loop to set PWM duty cycle
 */
-IMMVIBESPIAPI VibeStatus ImmVibeSPI_ForceOut_SetSamples(VibeUInt8 nActuatorIndex,
-							VibeUInt16 nOutputSignalBitDepth,
-							VibeUInt16 nBufferSizeInBytes,
-							VibeInt8 * pForceOutputBuffer)
+IMMVIBESPIAPI VibeStatus ImmVibeSPI_ForceOut_SetSamples(VibeUInt8 nActuatorIndex, VibeUInt16 nOutputSignalBitDepth, VibeUInt16 nBufferSizeInBytes, VibeInt8* pForceOutputBuffer)
 {
-#if 0
-	VibeInt8 nForce;
+    VibeInt8 nForce;
+    unsigned int calc_value;
 
-	switch (nOutputSignalBitDepth) {
-	case 8:
-		/* pForceOutputBuffer is expected to contain 1 byte */
-		if (nBufferSizeInBytes != 1) {
-			DbgOut((KERN_ERR "[ImmVibeSPI] ImmVibeSPI_ForceOut_SetSamples nBufferSizeInBytes =  %d\n", nBufferSizeInBytes));
-			return VIBE_E_FAIL;
-		}
-		nForce = pForceOutputBuffer[0];
-		break;
-	case 16:
-		/* pForceOutputBuffer is expected to contain 2 byte */
-		if (nBufferSizeInBytes != 2)
-			return VIBE_E_FAIL;
+    g_bStarted = true;
 
-		/* Map 16-bit value to 8-bit */
-		nForce = ((VibeInt16 *)pForceOutputBuffer)[0] >> 8;
-		break;
-	default:
-		/* Unexpected bit depth */
-		return VIBE_E_FAIL;
-	}
+    switch (nOutputSignalBitDepth)
+    {
+        case 8:
+            /* pForceOutputBuffer is expected to contain 1 byte */
+            if (nBufferSizeInBytes != 1) return VIBE_E_FAIL;
 
-	if (nForce == 0)
-		/* Set 50% duty cycle or disable amp */
-	else
-		/* Map force from [-127, 127] to [0, PWM_DUTY_MAX] */
+            nForce = pForceOutputBuffer[0];
+            break;
+        case 16:
+            /* pForceOutputBuffer is expected to contain 2 byte */
+            if (nBufferSizeInBytes != 2) return VIBE_E_FAIL;
 
+            /* Map 16-bit value to 8-bit */
+            nForce = ((VibeInt16*)pForceOutputBuffer)[0] >> 8;
+            break;
+        default:
+            /* Unexpected bit depth */
+            return VIBE_E_FAIL;
+    }
 
-#endif
+    if (nForce <= 0)
+    {
+        vibtonz_set_voltage(0);
+    }
+    else
+    {
+	calc_value = (nForce * DC_MOTOR_VOL_MAX) / SET_BIT_NUM;
+	if(calc_value < DC_MOTOR_VOL_MIN)
+		calc_value = DC_MOTOR_VOL_MIN;
 
-	VibeInt8 nForce;
+	if(calc_value > DC_MOTOR_VOL_LIMIT)
+		calc_value = DC_MOTOR_VOL_LIMIT;
 
-	switch (nOutputSignalBitDepth) {
-	case 8:
-		/* pForceOutputBuffer is expected to contain 1 byte */
-		if (nBufferSizeInBytes != 1) {
-			DbgOut((KERN_ERR "[ImmVibeSPI] ImmVibeSPI_ForceOut_SetSamples nBufferSizeInBytes =  %d\n", nBufferSizeInBytes));
-			return VIBE_E_FAIL;
-		}
-		nForce = pForceOutputBuffer[0];
-		break;
-	case 16:
-		/* pForceOutputBuffer is expected to contain 2 byte */
-		if (nBufferSizeInBytes != 2)
-			return VIBE_E_FAIL;
-
-		/* Map 16-bit value to 8-bit */
-		nForce = ((VibeInt16 *)pForceOutputBuffer)[0] >> 8;
-		break;
-	default:
-		/* Unexpected bit depth */
-		return VIBE_E_FAIL;
-	}
-
-	if (nForce == 0) {
-		/* Set 50% duty cycle or disable amp */
-		ImmVibeSPI_ForceOut_AmpDisable(0);
-	} else {
-		/* Map force from [-127, 127] to [0, PWM_DUTY_MAX] */
-		ImmVibeSPI_ForceOut_AmpEnable(0);
-#if !defined(CONFIG_MACH_P4NOTE)
-		vibtonz_pwm(nForce);
-#endif
-	}
-
-	return VIBE_S_SUCCESS;
+        /* 0 ~ 27 */
+        vibtonz_set_voltage(calc_value);
+    }
+    return VIBE_S_SUCCESS;
 }
 
-#if 0	/* Unused */
 /*
 ** Called to set force output frequency parameters
 */
 IMMVIBESPIAPI VibeStatus ImmVibeSPI_ForceOut_SetFrequency(VibeUInt8 nActuatorIndex, VibeUInt16 nFrequencyParameterID, VibeUInt32 nFrequencyParameterValue)
 {
-	return VIBE_S_SUCCESS;
+    /* This function is not called for ERM device */
+
+    return VIBE_S_SUCCESS;
 }
-#endif
 
 /*
 ** Called to get the device name (device name must be returned as ANSI char)
 */
 IMMVIBESPIAPI VibeStatus ImmVibeSPI_Device_GetName(VibeUInt8 nActuatorIndex, char *szDevName, int nSize)
 {
-	return VIBE_S_SUCCESS;
+    if ((!szDevName) || (nSize < 1)) return VIBE_E_FAIL;
+
+    DbgOut((DBL_INFO, "ImmVibeSPI_Device_GetName.\n"));
+    pr_info("tspdrv : %s  : name = %s\n", __func__, szDevName);
+    strncpy(szDevName, "Project B", nSize-1);
+    szDevName[nSize - 1] = '\0';    /* make sure the string is NULL terminated */
+
+    return VIBE_S_SUCCESS;
 }

@@ -1,9 +1,9 @@
 /*
- * Copyright (C) 2010-2012 ARM Limited. All rights reserved.
- * 
+ * Copyright (C) 2011-2012 ARM Limited. All rights reserved.
+ *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
@@ -66,11 +66,8 @@ typedef enum
 	MALI_PROFILING_EVENT_REASON_SINGLE_SW_FB_EVENT              = 4,
 	MALI_PROFILING_EVENT_REASON_SINGLE_SW_GP_ENQUEUE            = 5,
 	MALI_PROFILING_EVENT_REASON_SINGLE_SW_PP_ENQUEUE            = 6,
-	MALI_PROFILING_EVENT_REASON_SINGLE_SW_READBACK              = 7,
-	MALI_PROFILING_EVENT_REASON_SINGLE_SW_WRITEBACK             = 8,
     MALI_PROFILING_EVENT_REASON_SINGLE_SW_ENTER_API_FUNC        = 10,
     MALI_PROFILING_EVENT_REASON_SINGLE_SW_LEAVE_API_FUNC        = 11,
-	MALI_PROFILING_EVENT_REASON_SINGLE_SW_DISCARD_ATTACHMENTS     = 13,
     MALI_PROFILING_EVENT_REASON_SINGLE_SW_UMP_TRY_LOCK          = 53,
 	MALI_PROFILING_EVENT_REASON_SINGLE_SW_UMP_LOCK              = 54,
 	MALI_PROFILING_EVENT_REASON_SINGLE_SW_UMP_UNLOCK            = 55,
@@ -121,8 +118,6 @@ typedef enum
 	MALI_PROFILING_EVENT_REASON_SUSPEND_RESUME_SW_X11_GLOBAL_LOCK        = 37, /* Not currently used */
 	MALI_PROFILING_EVENT_REASON_SUSPEND_RESUME_SW_X11_SWAP               = 38, /* Not currently used */
 	MALI_PROFILING_EVENT_REASON_SUSPEND_RESUME_SW_MALI_EGL_IMAGE_SYNC_WAIT = 39, /* USED */
-	MALI_PROFILING_EVENT_REASON_SUSPEND_RESUME_SW_GP_JOB_HANDLING         =40, /* USED */
-	MALI_PROFILING_EVENT_REASON_SUSPEND_RESUME_SW_PP_JOB_HANDLING         =41, /* USED */
 } cinstr_profiling_event_reason_suspend_resume_sw_t;
 
 /**

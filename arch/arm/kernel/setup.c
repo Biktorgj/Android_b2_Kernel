@@ -741,18 +741,65 @@ __tagtable(ATAG_REVISION, parse_tag_revision);
 
 static int __init parse_tag_cmdline(const struct tag *tag)
 {
-#if defined(CONFIG_CMDLINE_EXTEND)
-	strlcat(default_command_line, " ", COMMAND_LINE_SIZE);
-	strlcat(default_command_line, tag->u.cmdline.cmdline,
-		COMMAND_LINE_SIZE);
-#elif defined(CONFIG_CMDLINE_FORCE)
-	pr_warning("Ignoring tag cmdline (using the default kernel command line)\n");
-#else
-	strlcpy(default_command_line, tag->u.cmdline.cmdline,
-		COMMAND_LINE_SIZE);
-#endif
+	char recoverymode[]="systemd.unit=recovery-mode.target";
+	char chargemode[]="systemd.unit=charging-mode.target";
+	char normalboot[]="root=/dev/mmcblk0p9"; //9 modules
+	char recoveryboot[]="root=/dev/mmcblk0p8"; // ramdisk recovery
+	char fsoptions[]=" ro rootfstype=ext4 rootwait ";
+	char sec_options[]="sec_debug.enable=0 sec_debug.enable_user=0  sec_watchdog.sec_pet=5 sec_log=0x200000@0x46000000  lcdtype=0 oops=panic pmic_info=1875  sysscope=0xee000000  cordon=224b9a60bc1c844275150b8275305f0b androidboot.";
+	char console_settings[]="console=ram loglevel=4 g_ffs.idVendor=0x18d1 g_ffs.idProduct=0x4e26 ";
+	char cmdline_end[256]="\0";
+	char *serialnumber;
+/* Defs end */
+	 memset(default_command_line, 0, sizeof default_command_line);
+	/* HIJACK THE COMMAND LINE! */
+
+	serialnumber=strstr(tag->u.cmdline.cmdline, "serialno");
+	if (serialnumber!=NULL) // If you can read the serialnumber, pick it
+		{ 	//always dest, source, size
+			strlcpy(cmdline_end, serialnumber, sizeof(cmdline_end));
+			printk ("\n Serial -- %s", cmdline_end);
+		}
+	else // If you don't, act like you did
+		{
+			strlcpy(cmdline_end, "serialno=012345678", sizeof(cmdline_end));
+			printk ("\n Serial -- %s", cmdline_end);
+		}
+	if (strstr(tag->u.cmdline.cmdline,recoverymode)!=NULL)
+		{
+			printk("\nRECOVERY MODE  ***\n");
+			// boot in recovery mode
+			strlcpy(default_command_line, console_settings, COMMAND_LINE_SIZE);
+			strlcat(default_command_line, recoveryboot, COMMAND_LINE_SIZE);
+			strlcat(default_command_line, fsoptions, COMMAND_LINE_SIZE);
+			strlcat(default_command_line, sec_options, COMMAND_LINE_SIZE);
+			strlcat(default_command_line, cmdline_end, COMMAND_LINE_SIZE);
+		}
+	else if (strstr(tag->u.cmdline.cmdline,chargemode)!=NULL)
+		{
+			printk ("\nCHARGE MODE!! ****\n"); 
+			// boot in charge mode
+			strlcpy(default_command_line, console_settings, COMMAND_LINE_SIZE);
+			strlcat(default_command_line, recoveryboot, COMMAND_LINE_SIZE);
+			strlcat(default_command_line, fsoptions, COMMAND_LINE_SIZE);
+			strlcat(default_command_line, sec_options, COMMAND_LINE_SIZE);
+			strlcat(default_command_line, cmdline_end, COMMAND_LINE_SIZE);
+		}
+	else 
+		{
+			printk ("\n NORMAL BOOT***\n");
+			// Normal boot
+			strlcpy(default_command_line, console_settings, COMMAND_LINE_SIZE);
+			strlcat(default_command_line, normalboot, COMMAND_LINE_SIZE);
+			strlcat(default_command_line, fsoptions, COMMAND_LINE_SIZE);
+			strlcat(default_command_line, sec_options, COMMAND_LINE_SIZE);
+			strlcat(default_command_line, cmdline_end, COMMAND_LINE_SIZE);
+		}
+//	strlcpy(tag->u.cmdline.cmdline, default_command_line, COMMAND_LINE_SIZE);
+	/* END HIJACK THE COMMAND LINE */
+
 	return 0;
-}
+	}
 
 __tagtable(ATAG_CMDLINE, parse_tag_cmdline);
 

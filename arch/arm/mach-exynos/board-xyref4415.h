@@ -23,6 +23,5 @@ void exynos4_xyref4415_display_init(void);
 void exynos4_xyref4415_input_init(void);
 void exynos4_xyref4415_media_init(void);
 void exynos4_xyref4415_audio_init(void);
-void exynos4_xyref4415_camera_init(void);
 
 #endif

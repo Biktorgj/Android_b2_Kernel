@@ -32,9 +32,6 @@
 #include "jpeg_mem.h"
 
 #define INT_TIMEOUT		1000
-#define DCTSIZE			16
-#define NUM_QUANT_TBLS		2
-#define NUM_HUFF_TBLS		2
 
 #define JPEG_NUM_INST		4
 #define JPEG_MAX_PLANE		3
@@ -66,9 +63,7 @@ enum  jpeg_img_quality_level {
 	QUALITY_LEVEL_1 = 0,	/* high */
 	QUALITY_LEVEL_2,
 	QUALITY_LEVEL_3,
-	QUALITY_LEVEL_4,
-	QUALITY_LEVEL_5,
-	QUALITY_LEVEL_6,	/* low */
+	QUALITY_LEVEL_4,	/* low */
 };
 
 /* raw data image format */

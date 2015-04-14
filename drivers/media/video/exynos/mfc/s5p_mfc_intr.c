@@ -54,16 +54,26 @@ void s5p_mfc_clean_dev_int_flags(struct s5p_mfc_dev *dev)
 	dev->int_err = 0;
 }
 
-int s5p_mfc_wait_for_done_ctx(struct s5p_mfc_ctx *ctx, int command)
+int s5p_mfc_wait_for_done_ctx(struct s5p_mfc_ctx *ctx,
+				    int command, int interrupt)
 {
 	int ret;
 
-	ret = wait_event_timeout(ctx->queue,
-			wait_condition(ctx, command),
-			msecs_to_jiffies(MFC_INT_TIMEOUT));
+	if (interrupt) {
+		ret = wait_event_interruptible_timeout(ctx->queue,
+				wait_condition(ctx, command),
+				msecs_to_jiffies(MFC_INT_TIMEOUT));
+	} else {
+		ret = wait_event_timeout(ctx->queue,
+				wait_condition(ctx, command),
+				msecs_to_jiffies(MFC_INT_TIMEOUT));
+	}
 	if (ret == 0) {
 		mfc_err("Interrupt (ctx->int_type:%d, command:%d) timed out.\n",
 							ctx->int_type, command);
+		return 1;
+	} else if (ret == -ERESTARTSYS) {
+		mfc_err("Interrupted by a signal.\n");
 		return 1;
 	} else if (ret > 0) {
 		if (is_err_cond(ctx)) {

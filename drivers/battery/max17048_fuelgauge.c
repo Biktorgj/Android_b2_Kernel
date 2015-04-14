@@ -17,7 +17,7 @@
  */
 
 #include <linux/battery/sec_fuelgauge.h>
-extern unsigned int lpcharge;
+extern int lpcharge;
 #if 0
 static int max17048_write_reg(struct i2c_client *client, int reg, u8 value)
 {
@@ -184,6 +184,45 @@ static int max17048_get_soc(struct i2c_client *client)
 	return soc;
 }
 
+static int max17048_get_current(struct i2c_client *client)
+{
+	union power_supply_propval value;
+
+	psy_do_property("sec-charger", get,
+		POWER_SUPPLY_PROP_CURRENT_NOW, value);
+
+	return value.intval;
+}
+
+/* judge power off or not by current_avg */
+static int max17048_get_current_average(struct i2c_client *client)
+{
+	union power_supply_propval value_bat;
+	union power_supply_propval value_chg;
+	int vcell, soc, curr_avg;
+
+	psy_do_property("sec-charger", get,
+		POWER_SUPPLY_PROP_CURRENT_NOW, value_chg);
+	psy_do_property("battery", get,
+		POWER_SUPPLY_PROP_HEALTH, value_bat);
+	vcell = max17048_get_vcell(client);
+	soc = max17048_get_soc(client) / 100;
+
+	/* if 0% && under 3.4v && low power charging(1000mA), power off */
+	if (!lpcharge && (soc <= 0) && (vcell < 3400) &&
+			((value_chg.intval < 1000) ||
+			((value_bat.intval == POWER_SUPPLY_HEALTH_OVERHEAT) ||
+			(value_bat.intval == POWER_SUPPLY_HEALTH_COLD)))) {
+		pr_info("%s: SOC(%d), Vnow(%d), Inow(%d)\n",
+			__func__, soc, vcell, value_chg.intval);
+		curr_avg = -1;
+	} else {
+		curr_avg = value_chg.intval;
+	}
+
+	return curr_avg;
+}
+
 static void max17048_get_version(struct i2c_client *client)
 {
 	u16 w_data;
@@ -284,78 +323,6 @@ static void fg_read_regs(struct i2c_client *client, char *str)
 		data = max17048_read_word(client, addr);
 		sprintf(str + strlen(str), "0x%04x, ", data);
 	}
-}
-
-static int max17048_get_current(struct i2c_client *client)
-{
-	union power_supply_propval value;
-
-	psy_do_property("sec-charger", get,
-		POWER_SUPPLY_PROP_CURRENT_NOW, value);
-
-	return value.intval;
-}
-
-#define DISCHARGE_SAMPLE_CNT 20
-static int discharge_cnt=0;
-static int all_vcell[20] = {0,};
-
-/* if ret < 0, discharge */
-static int sec_bat_check_discharge(int vcell)
-{
-	int i, cnt, ret = 0;
-
-	all_vcell[discharge_cnt++] = vcell;
-	if (discharge_cnt >= DISCHARGE_SAMPLE_CNT)
-		discharge_cnt = 0;
-
-	cnt = discharge_cnt;
-
-	/* check after last value is set */
-	if (all_vcell[cnt] == 0)
-		return 0;
-
-	for (i = 0; i < DISCHARGE_SAMPLE_CNT; i++) {
-		if (cnt == i)
-			continue;
-		if (all_vcell[cnt] > all_vcell[i])
-			ret--;
-		else
-			ret++;
-	}
-	return ret;
-}
-
-/* judge power off or not by current_avg */
-static int max17048_get_current_average(struct i2c_client *client)
-{
-	union power_supply_propval value_bat;
-	union power_supply_propval value_chg;
-	int vcell, soc, curr_avg;
-	int check_discharge;
-
-	psy_do_property("sec-charger", get,
-		POWER_SUPPLY_PROP_CURRENT_NOW, value_chg);
-	psy_do_property("battery", get,
-		POWER_SUPPLY_PROP_HEALTH, value_bat);
-	vcell = max17048_get_vcell(client);
-	soc = max17048_get_soc(client) / 100;
-	check_discharge = sec_bat_check_discharge(vcell);
-
-	/* if 0% && under 3.4v && low power charging(1000mA), power off */
-	if (!lpcharge && (soc <= 0) && (vcell < 3400) &&
-			(check_discharge < 0) &&
-			((value_chg.intval < 1000) ||
-			((value_bat.intval == POWER_SUPPLY_HEALTH_OVERHEAT) ||
-			(value_bat.intval == POWER_SUPPLY_HEALTH_COLD)))) {
-		pr_info("%s: SOC(%d), Vnow(%d), Inow(%d)\n",
-			__func__, soc, vcell, value_chg.intval);
-		curr_avg = -1;
-	} else {
-		curr_avg = value_chg.intval;
-	}
-
-	return curr_avg;
 }
 
 bool sec_hal_fg_init(struct i2c_client *client)
@@ -573,3 +540,13 @@ ssize_t sec_hal_fg_store_attrs(struct device *dev,
 
 	return ret;
 }
+
+void sec_hibernation_setting(struct i2c_client *client)
+{
+	u16 temp, val16;
+
+	temp = 0x8030;                              /* 0x8030: default hibernation value */
+	val16 = swab16(temp);                       /* convert little endian to big endian */
+	max17048_write_word(client, 0x0a, val16);   /* addr 0x0a: HIBRT_H */
+}
+

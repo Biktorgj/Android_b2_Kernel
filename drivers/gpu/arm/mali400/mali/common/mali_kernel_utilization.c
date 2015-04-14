@@ -1,9 +1,9 @@
 /*
- * Copyright (C) 2010-2012 ARM Limited. All rights reserved.
- * 
+ * Copyright (C) 2011-2012 ARM Limited. All rights reserved.
+ *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
@@ -22,25 +22,17 @@ static u64 period_start_time = 0;
 static u64 work_start_time = 0;
 static u64 accumulated_work_time = 0;
 
-#ifndef CONFIG_PM_DEVFREQ	/* MALI_SEC */
 static _mali_osk_timer_t *utilization_timer = NULL;
-#endif
 static mali_bool timer_running = MALI_FALSE;
 
 static u32 last_utilization = 0 ;
 
-#ifndef CONFIG_PM_DEVFREQ
 static u32 mali_utilization_timeout = 1000;
-#endif
+static int gpu_entry_count = 0;
 void (*mali_utilization_callback)(unsigned int) = NULL;
 
-#ifndef CONFIG_PM_DEVFREQ
 static void calculate_gpu_utilization(void* arg)
 {
-#else
-void calculate_gpu_utilization(void *arg)
-{
-#endif
 	u64 time_now;
 	u64 time_period;
 	u32 leading_zeroes;
@@ -119,9 +111,12 @@ void calculate_gpu_utilization(void *arg)
 
 	_mali_osk_lock_signal(time_data_lock, _MALI_OSK_LOCKMODE_RW);
 
-#ifndef CONFIG_PM_DEVFREQ
-	_mali_osk_timer_add(utilization_timer, _mali_osk_time_mstoticks(mali_utilization_timeout));
-#endif
+	if (gpu_entry_count <= 3) {
+		gpu_entry_count++;
+		_mali_osk_timer_add(utilization_timer, _mali_osk_time_mstoticks((mali_utilization_timeout/2)));
+	} else {
+		_mali_osk_timer_add(utilization_timer, _mali_osk_time_mstoticks(mali_utilization_timeout));
+	}
 
 	if (NULL != mali_utilization_callback)
 	{
@@ -136,12 +131,10 @@ _mali_osk_errcode_t mali_utilization_init(void)
 	if (_MALI_OSK_ERR_OK == _mali_osk_device_data_get(&data))
 	{
 		/* Use device specific settings (if defined) */
-#ifndef CONFIG_PM_DEVFREQ
 		if (0 != data.utilization_interval)
 		{
 			mali_utilization_timeout = data.utilization_interval;
 		}
-#endif
 		if (NULL != data.utilization_handler)
 		{
 			mali_utilization_callback = data.utilization_handler;
@@ -151,9 +144,7 @@ _mali_osk_errcode_t mali_utilization_init(void)
 
 	if (NULL != mali_utilization_callback)
 	{
-#ifndef CONFIG_PM_DEVFREQ
 		MALI_DEBUG_PRINT(2, ("Mali GPU Utilization: Utilization handler installed with interval %u\n", mali_utilization_timeout));
-#endif
 	}
 	else
 	{
@@ -169,7 +160,7 @@ _mali_osk_errcode_t mali_utilization_init(void)
 	}
 
 	_mali_osk_atomic_init(&num_running_cores, 0);
-#ifndef CONFIG_PM_DEVFREQ
+
 	utilization_timer = _mali_osk_timer_init();
 	if (NULL == utilization_timer)
 	{
@@ -177,12 +168,10 @@ _mali_osk_errcode_t mali_utilization_init(void)
 		return _MALI_OSK_ERR_FAULT;
 	}
 	_mali_osk_timer_setcallback(utilization_timer, calculate_gpu_utilization, NULL);
-#endif
 
 	return _MALI_OSK_ERR_OK;
 }
 
-#ifndef CONFIG_PM_DEVFREQ
 void mali_utilization_suspend(void)
 {
 	if (NULL != utilization_timer)
@@ -191,11 +180,9 @@ void mali_utilization_suspend(void)
 		timer_running = MALI_FALSE;
 	}
 }
-#endif
 
 void mali_utilization_term(void)
 {
-#ifndef CONFIG_PM_DEVFREQ
 	if (NULL != utilization_timer)
 	{
 		_mali_osk_timer_del(utilization_timer);
@@ -203,7 +190,6 @@ void mali_utilization_term(void)
 		_mali_osk_timer_term(utilization_timer);
 		utilization_timer = NULL;
 	}
-#endif
 
 	_mali_osk_atomic_term(&num_running_cores);
 
@@ -237,9 +223,9 @@ void mali_utilization_core_start(u64 time_now)
 			period_start_time = work_start_time; /* starting a new period */
 
 			_mali_osk_lock_signal(time_data_lock, _MALI_OSK_LOCKMODE_RW);
-#ifndef CONFIG_PM_DEVFREQ
-			_mali_osk_timer_add(utilization_timer, _mali_osk_time_mstoticks(mali_utilization_timeout));
-#endif
+
+			gpu_entry_count = 0;
+			_mali_osk_timer_add(utilization_timer, _mali_osk_time_mstoticks((mali_utilization_timeout/2)));
 		}
 		else
 		{

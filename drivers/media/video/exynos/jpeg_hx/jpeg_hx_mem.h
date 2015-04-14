@@ -31,6 +31,8 @@
 extern const struct jpeg_vb2 jpeg_hx_vb2_cma;
 #elif defined(CONFIG_VIDEOBUF2_ION)
 extern const struct jpeg_vb2 jpeg_hx_vb2_ion;
+#elif defined(CONFIG_VIDEOBUF2_DMA_CMA)
+extern const struct jpeg_vb2 jpeg_hx_vb2_dma_contig;
 #endif
 
 #define MAX_JPEG_WIDTH	5000

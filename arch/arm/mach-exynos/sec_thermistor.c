@@ -15,6 +15,7 @@
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
+#include <linux/err.h>
 #include <plat/adc.h>
 #include <mach/sec_thermistor.h>
 
@@ -152,6 +153,10 @@ static __devinit int sec_therm_probe(struct platform_device *pdev)
 	mutex_init(&info->therm_mutex);
 
 	info->padc = s3c_adc_register(pdev, NULL, NULL, 0);
+	if (IS_ERR_OR_NULL(info->padc)) {
+		pr_err("%s: Failed to register s3c adc\n", __func__);
+		return -EINVAL;
+	}
 
 	ret = sysfs_create_group(&info->dev->kobj, &sec_therm_group);
 

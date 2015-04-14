@@ -1,9 +1,9 @@
 /*
- * Copyright (C) 2010, 2012 ARM Limited. All rights reserved.
- * 
+ * Copyright (C) 2011-2012 ARM Limited. All rights reserved.
+ *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
@@ -29,6 +29,16 @@
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,4,0)
 typedef struct sync_timeline mali_sync_tl;
 typedef struct sync_pt mali_sync_pt;
+
+MALI_STATIC_INLINE mali_sync_pt *_mali_osk_sync_pt_create(mali_sync_tl *parent)
+{
+	return (mali_sync_pt*)mali_sync_pt_alloc(parent);
+}
+
+MALI_STATIC_INLINE void _mali_osk_sync_pt_signal(mali_sync_pt *pt)
+{
+	mali_sync_signal_pt(pt, 0);
+}
 #endif
 #endif /* CONFIG_SYNC */
 

@@ -1,9 +1,9 @@
 /*
  * Copyright (C) 2011-2012 ARM Limited. All rights reserved.
- * 
+ *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
@@ -514,16 +514,6 @@ void mali_group_reset(struct mali_group *group)
 
 	group->session = NULL;
 
-	if (NULL != group->dlbu_core)
-	{
-		mali_dlbu_reset(group->dlbu_core);
-	}
-
-	if (NULL != group->bcast_core)
-	{
-		mali_bcast_reset(group->bcast_core);
-	}
-
 	if (NULL != group->mmu)
 	{
 		mali_mmu_reset(group->mmu);
@@ -752,9 +742,13 @@ static void mali_group_reset_pp(struct mali_group *group)
 	struct mali_group *child;
 	struct mali_group *temp;
 
+	/* TODO: If we *know* that the group is idle, this could be faster. */
+
 	mali_pp_reset_async(group->pp_core);
 
-	if (!mali_group_is_virtual(group) || NULL == group->pp_running_job)
+//	if (!mali_group_is_virtual(group) || NULL == group->pp_running_job) //LWJ
+/* MALI_SEC */
+	if (!mali_group_is_virtual(group) || NULL != group->pp_running_job)
 	{
 		/* This is a physical group or an idle virtual group -- simply wait for
 		 * the reset to complete. */
@@ -783,12 +777,7 @@ static void mali_group_complete_pp(struct mali_group *group, mali_bool success)
 
 	mali_group_post_process_job_pp(group);
 
-	if (success)
-	{
-		/* Only do soft reset for successful jobs, a full recovery
-		 * reset will be done for failed jobs. */
-		mali_pp_reset_async(group->pp_core);
-	}
+	mali_pp_reset_async(group->pp_core);
 
 	pp_job_to_return = group->pp_running_job;
 	pp_sub_job_to_return = group->pp_running_sub_job;
@@ -797,8 +786,7 @@ static void mali_group_complete_pp(struct mali_group *group, mali_bool success)
 
 	mali_group_deactivate_page_directory(group, group->session);
 
-	/* Do hard reset if the job failed, or if soft reset fails */
-	if (!success || _MALI_OSK_ERR_OK != mali_pp_reset_wait(group->pp_core))
+	if (_MALI_OSK_ERR_OK != mali_pp_reset_wait(group->pp_core))
 	{
 		MALI_DEBUG_PRINT(3, ("Mali group: Failed to reset PP, need to reset entire group\n"));
 
@@ -840,7 +828,7 @@ void mali_group_abort_gp_job(struct mali_group *group, u32 job_id)
 {
 	MALI_ASSERT_GROUP_LOCKED(group);
 
-	if (MALI_GROUP_STATE_IDLE == group->state ||
+	if (group->state == MALI_GROUP_STATE_IDLE ||
 	    mali_gp_job_get_id(group->gp_running_job) != job_id)
 	{
 		return; /* No need to cancel or job has already been aborted or completed */
@@ -853,7 +841,7 @@ static void mali_group_abort_pp_job(struct mali_group *group, u32 job_id)
 {
 	MALI_ASSERT_GROUP_LOCKED(group);
 
-	if (MALI_GROUP_STATE_IDLE == group->state ||
+	if (group->state == MALI_GROUP_STATE_IDLE ||
 	    mali_pp_job_get_id(group->pp_running_job) != job_id)
 	{
 		return; /* No need to cancel or job has already been aborted or completed */
@@ -899,10 +887,12 @@ void mali_group_abort_session(struct mali_group *group, struct mali_session_data
 		abort_pp = MALI_TRUE;
 	}
 
+//	if (0 != abort_gp) //LWJ ORG
 	if (abort_gp)
 	{
 		mali_group_abort_gp_job(group, gp_job_id);
 	}
+//	if (0 != abort_pp) //LWJ ORG
 	if (abort_pp)
 	{
 		mali_group_abort_pp_job(group, pp_job_id);
@@ -1014,8 +1004,7 @@ void mali_group_power_on(void)
 	{
 		struct mali_group *group = mali_global_groups[i];
 		mali_group_lock(group);
-		MALI_DEBUG_ASSERT(MALI_GROUP_STATE_IDLE == group->state
-		                  || MALI_GROUP_STATE_IN_VIRTUAL == group->state);
+		MALI_DEBUG_ASSERT(MALI_GROUP_STATE_IDLE == group->state);
 		group->power_is_on = MALI_TRUE;
 
 		if (NULL != group->l2_cache_core[0])
@@ -1048,8 +1037,7 @@ void mali_group_power_off(void)
 	{
 		struct mali_group *group = mali_global_groups[i];
 		mali_group_lock(group);
-		MALI_DEBUG_ASSERT(MALI_GROUP_STATE_IDLE == group->state
-		                  || MALI_GROUP_STATE_IN_VIRTUAL == group->state);
+		MALI_DEBUG_ASSERT(MALI_GROUP_STATE_IDLE == group->state);
 		group->session = NULL;
 		group->power_is_on = MALI_FALSE;
 
@@ -1094,16 +1082,11 @@ static void mali_group_recovery_reset(struct mali_group *group)
 		{
 			struct mali_group *child, *temp;
 
-			/* Disable the broadcast unit while we do reset directly on the member cores. */
-			mali_bcast_disable(group->bcast_core);
-
 			_MALI_OSK_LIST_FOREACHENTRY(child, temp, &group->group_list, struct mali_group, group_list)
 			{
 				mali_pp_stop_bus_wait(child->pp_core);
 				mali_pp_hard_reset(child->pp_core);
 			}
-
-			mali_bcast_enable(group->bcast_core);
 		}
 		else
 		{
@@ -1224,13 +1207,16 @@ static void mali_group_bottom_half_mmu(void * data)
 	struct mali_group *group = (struct mali_group *)data;
 	struct mali_mmu_core *mmu = group->mmu;
 	u32 rawstat;
-	MALI_DEBUG_CODE(u32 status);
+	u32 status;
 
 	MALI_DEBUG_ASSERT_POINTER(mmu);
 
 	mali_group_lock(group);
 
+	/* TODO: Remove some of these asserts? Will we ever end up in
+	 * "physical" bottom half for a member of the virtual group? */
 	MALI_DEBUG_ASSERT(NULL == group->parent_group);
+	MALI_DEBUG_ASSERT(!mali_group_is_in_virtual(group));
 
 	if ( MALI_FALSE == mali_group_power_is_on(group) )
 	{
@@ -1240,7 +1226,7 @@ static void mali_group_bottom_half_mmu(void * data)
 	}
 
 	rawstat = mali_mmu_get_rawstat(mmu);
-	MALI_DEBUG_CODE(status = mali_mmu_get_status(mmu));
+	status = mali_mmu_get_status(mmu);
 
 	MALI_DEBUG_PRINT(4, ("Mali MMU: Bottom half, interrupt 0x%08X, status 0x%08X\n", rawstat, status));
 
@@ -1390,6 +1376,7 @@ static void mali_group_post_process_job_gp(struct mali_group *group, mali_bool s
 #if defined(CONFIG_MALI400_PROFILING)
 	if (suspend)
 	{
+		/* @@@@ todo: test this case and see if it is still working*/
 		_mali_osk_profiling_add_event(MALI_PROFILING_EVENT_TYPE_SUSPEND|MALI_PROFILING_MAKE_EVENT_CHANNEL_GP(0),
 		                              mali_gp_job_get_perf_counter_value0(group->gp_running_job),
 		                              mali_gp_job_get_perf_counter_value1(group->gp_running_job),
@@ -1465,8 +1452,7 @@ _mali_osk_errcode_t mali_group_upper_half_pp(void *data)
 #endif
 
 #if defined(MALI_UPPER_HALF_SCHEDULING)
-		/* Check if job is complete without errors */
-		if (MALI200_REG_VAL_IRQ_END_OF_FRAME == irq_readout)
+		if (irq_readout & MALI200_REG_VAL_IRQ_END_OF_FRAME)
 		{
 			_mali_osk_profiling_add_event(MALI_PROFILING_EVENT_TYPE_START |
 			                              MALI_PROFILING_EVENT_CHANNEL_SOFTWARE |
@@ -1477,33 +1463,14 @@ _mali_osk_errcode_t mali_group_upper_half_pp(void *data)
 
 			mali_group_lock(group);
 
-			/* Check if job is complete without errors, again, after taking the group lock */
+			/* Read int stat again */
 			irq_readout = mali_pp_read_rawstat(core);
-			if (MALI200_REG_VAL_IRQ_END_OF_FRAME != irq_readout)
+			if (!(irq_readout & MALI200_REG_VAL_IRQ_END_OF_FRAME))
 			{
+				/* There was nothing to do */
 				mali_pp_enable_interrupts(core);
 				mali_group_unlock(group);
-				_mali_osk_profiling_add_event(MALI_PROFILING_EVENT_TYPE_STOP |
-							      MALI_PROFILING_EVENT_CHANNEL_SOFTWARE |
-							      MALI_PROFILING_EVENT_REASON_START_STOP_SW_UPPER_HALF,
-							      0, 0, MALI_PROFILING_MAKE_EVENT_DATA_CORE_PP(core->core_id), 0, 0);
 				return _MALI_OSK_ERR_OK;
-			}
-
-			if (mali_group_is_virtual(group))
-			{
-				u32 status_readout = mali_pp_read_status(group->pp_core);
-				if (status_readout & MALI200_REG_VAL_STATUS_RENDERING_ACTIVE)
-				{
-					MALI_DEBUG_PRINT(6, ("Mali PP: Not all cores in broadcast completed\n"));
-					mali_pp_enable_interrupts(core);
-					mali_group_unlock(group);
-					_mali_osk_profiling_add_event(MALI_PROFILING_EVENT_TYPE_STOP |
-								      MALI_PROFILING_EVENT_CHANNEL_SOFTWARE |
-								      MALI_PROFILING_EVENT_REASON_START_STOP_SW_UPPER_HALF,
-								      0, 0, MALI_PROFILING_MAKE_EVENT_DATA_CORE_PP(core->core_id), 0, 0);
-					return _MALI_OSK_ERR_OK;
-				}
 			}
 
 			if (mali_group_is_in_virtual(group))
@@ -1518,16 +1485,15 @@ _mali_osk_errcode_t mali_group_upper_half_pp(void *data)
 				return _MALI_OSK_ERR_FAULT;
 			}
 
-			group->core_timed_out = MALI_FALSE;
-			mali_group_complete_pp(group, MALI_TRUE);
-			/* No need to enable interrupts again, since the core will be reset while completing the job */
-
-			mali_group_unlock(group);
-
 			_mali_osk_profiling_add_event(MALI_PROFILING_EVENT_TYPE_STOP |
 			                              MALI_PROFILING_EVENT_CHANNEL_SOFTWARE |
 			                              MALI_PROFILING_EVENT_REASON_START_STOP_SW_UPPER_HALF,
 			                              0, 0, MALI_PROFILING_MAKE_EVENT_DATA_CORE_PP(core->core_id), 0, 0);
+
+			mali_group_complete_pp(group, MALI_TRUE);
+			/* No need to enable interrupts again, since the core will be reset while completing the job */
+
+			mali_group_unlock(group);
 
 			return _MALI_OSK_ERR_OK;
 		}
@@ -1582,36 +1548,16 @@ static void mali_group_bottom_half_pp(void *data)
 
 	MALI_DEBUG_PRINT(4, ("Mali PP: Bottom half IRQ 0x%08X from core %s\n", irq_readout, mali_pp_get_hw_core_desc(group->pp_core)));
 
-	/* Check if job is complete without errors */
-	if (MALI200_REG_VAL_IRQ_END_OF_FRAME == irq_readout)
+	if (irq_readout & MALI200_REG_VAL_IRQ_END_OF_FRAME)
 	{
-		if (mali_group_is_virtual(group))
-		{
-			u32 status_readout = mali_pp_read_status(group->pp_core);
-
-			if (status_readout & MALI200_REG_VAL_STATUS_RENDERING_ACTIVE)
-			{
-				MALI_DEBUG_PRINT(6, ("Mali PP: Not all cores in broadcast completed\n"));
-				mali_pp_enable_interrupts(core);
-				mali_group_unlock(group);
-
-				_mali_osk_profiling_add_event(MALI_PROFILING_EVENT_TYPE_STOP |
-							      MALI_PROFILING_EVENT_CHANNEL_SOFTWARE |
-							      MALI_PROFILING_EVENT_REASON_START_STOP_SW_BOTTOM_HALF,
-							      0, _mali_osk_get_tid(), 0, 0, 0);
-				return;
-			}
-		}
-
 		MALI_DEBUG_PRINT(3, ("Mali PP: Job completed, calling group handler\n"));
 		group->core_timed_out = MALI_FALSE;
+		_mali_osk_profiling_add_event(MALI_PROFILING_EVENT_TYPE_STOP |
+		                              MALI_PROFILING_EVENT_CHANNEL_SOFTWARE |
+		                              MALI_PROFILING_EVENT_REASON_START_STOP_SW_BOTTOM_HALF,
+		                              0, _mali_osk_get_tid(), 0, 0, 0);
 		mali_group_complete_pp(group, MALI_TRUE);
 		mali_group_unlock(group);
-
-		_mali_osk_profiling_add_event(MALI_PROFILING_EVENT_TYPE_STOP |
-					      MALI_PROFILING_EVENT_CHANNEL_SOFTWARE |
-					      MALI_PROFILING_EVENT_REASON_START_STOP_SW_BOTTOM_HALF,
-					      0, _mali_osk_get_tid(), 0, 0, 0);
 		return;
 	}
 
@@ -1622,21 +1568,24 @@ static void mali_group_bottom_half_pp(void *data)
 	irq_errors = irq_readout & ~(MALI200_REG_VAL_IRQ_END_OF_FRAME|MALI200_REG_VAL_IRQ_HANG);
 	if (0 != irq_errors)
 	{
-		MALI_PRINT_ERROR(("Mali PP: Unexpected interrupt 0x%08X from core %s, aborting job\n",
+		MALI_PRINT_ERROR(("Mali PP: Unknown interrupt 0x%08X from core %s, aborting job\n",
 		                  irq_readout, mali_pp_get_hw_core_desc(group->pp_core)));
 		group->core_timed_out = MALI_FALSE;
-		mali_group_complete_pp(group, MALI_FALSE);
-		mali_group_unlock(group);
-
 		_mali_osk_profiling_add_event(MALI_PROFILING_EVENT_TYPE_STOP |
 		                              MALI_PROFILING_EVENT_CHANNEL_SOFTWARE |
 		                              MALI_PROFILING_EVENT_REASON_START_STOP_SW_BOTTOM_HALF,
 		                              0, _mali_osk_get_tid(), 0, 0, 0);
+		mali_group_complete_pp(group, MALI_FALSE);
+		mali_group_unlock(group);
 		return;
 	}
 	else if (group->core_timed_out) /* SW timeout */
 	{
 		group->core_timed_out = MALI_FALSE;
+		_mali_osk_profiling_add_event(MALI_PROFILING_EVENT_TYPE_STOP |
+		                              MALI_PROFILING_EVENT_CHANNEL_SOFTWARE |
+		                              MALI_PROFILING_EVENT_REASON_START_STOP_SW_BOTTOM_HALF,
+		                              0, _mali_osk_get_tid(), 0, 0, 0);
 		if (!_mali_osk_timer_pending(group->timeout_timer) && NULL != group->pp_running_job)
 		{
 			MALI_PRINT(("Mali PP: Job %d timed out on core %s\n",
@@ -1648,11 +1597,6 @@ static void mali_group_bottom_half_pp(void *data)
 		{
 			mali_group_unlock(group);
 		}
-
-		_mali_osk_profiling_add_event(MALI_PROFILING_EVENT_TYPE_STOP |
-		                              MALI_PROFILING_EVENT_CHANNEL_SOFTWARE |
-		                              MALI_PROFILING_EVENT_REASON_START_STOP_SW_BOTTOM_HALF,
-		                              0, _mali_osk_get_tid(), 0, 0, 0);
 		return;
 	}
 
@@ -1685,6 +1629,8 @@ static void mali_group_post_process_job_pp(struct mali_group *group)
 	/* Stop the timeout timer. */
 	_mali_osk_timer_del_async(group->timeout_timer);
 
+	/*todo add stop SW counters profiling*/
+
 	if (NULL != group->pp_running_job)
 	{
 		if (MALI_TRUE == mali_group_is_virtual(group))
@@ -1695,7 +1641,7 @@ static void mali_group_post_process_job_pp(struct mali_group *group)
 			/* update performance counters from each physical pp core within this virtual group */
 			_MALI_OSK_LIST_FOREACHENTRY(child, temp, &group->group_list, struct mali_group, group_list)
 			{
-				mali_pp_update_performance_counters(group->pp_core, child->pp_core, group->pp_running_job, mali_pp_core_get_id(child->pp_core));
+				mali_pp_update_performance_counters(child->pp_core, group->pp_running_job, group->pp_running_sub_job);
 			}
 
 #if defined(CONFIG_MALI400_PROFILING)
@@ -1732,7 +1678,7 @@ static void mali_group_post_process_job_pp(struct mali_group *group)
 		else
 		{
 			/* update performance counters for a physical group's pp core */
-			mali_pp_update_performance_counters(group->pp_core, group->pp_core, group->pp_running_job, group->pp_running_sub_job);
+			mali_pp_update_performance_counters(group->pp_core, group->pp_running_job, group->pp_running_sub_job);
 
 #if defined(CONFIG_MALI400_PROFILING)
 			_mali_osk_profiling_add_event(MALI_PROFILING_EVENT_TYPE_STOP|

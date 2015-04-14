@@ -21,7 +21,7 @@
 #include <linux/cpumask.h>
 #include <asm/div64.h>
 
-#define CPUFREQ_NAME_LEN 20
+#define CPUFREQ_NAME_LEN 16
 
 
 /*********************************************************************
@@ -356,10 +356,6 @@ static inline unsigned int cpufreq_quick_get_max(unsigned int cpu)
 #ifdef CONFIG_CPU_FREQ_GOV_PERFORMANCE
 extern struct cpufreq_governor cpufreq_gov_performance;
 #endif
-#ifdef CONFIG_CPU_FREQ_GOV_INTERACTIVE
-extern unsigned int cpufreq_interactive_get_hispeed_freq(void);
-extern unsigned int cpufreq_interactive_eagle_get_hispeed_freq(void);
-#endif
 #ifdef CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE
 #define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_performance)
 #elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_POWERSAVE)
@@ -377,7 +373,12 @@ extern struct cpufreq_governor cpufreq_gov_conservative;
 #elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_INTERACTIVE)
 extern struct cpufreq_governor cpufreq_gov_interactive;
 extern struct cpufreq_governor cpufreq_gov_interactive_eagle;
+extern unsigned int cpufreq_interactive_get_hispeed_freq(void);
+extern unsigned int cpufreq_interactive_eagle_get_hispeed_freq(void);
 #define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_interactive)
+#elif defined(CONFIG_CPU_FREQ_GOV_TIZEN_B2)
+extern struct cpufreq_governor cpufreq_gov_tizen_b2;
+#define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_tizen_b2)
 #endif
 
 

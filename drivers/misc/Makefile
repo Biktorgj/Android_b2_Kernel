@@ -49,20 +49,15 @@ obj-y				+= lis3lv02d/
 obj-y				+= carma/
 obj-$(CONFIG_USB_SWITCH_FSA9480) += fsa9480.o
 obj-$(CONFIG_MUIC_TSU6721)	+= tsu6721-muic.o
-obj-$(CONFIG_MUIC_SM5502)   += sm5502-muic.o
 obj-$(CONFIG_ALTERA_STAPL)	+=altera-stapl/
 obj-$(CONFIG_MAX8997_MUIC)	+= max8997-muic.o
 obj-$(CONFIG_WL127X_RFKILL)	+= wl127x-rfkill.o
 obj-$(CONFIG_SENSORS_AK8975)	+= akm8975.o
-obj-$(CONFIG_MFD_MAX77803)  += max77803-muic.o
+obj-$(CONFIG_MFD_MAX77803)	+= max77803-muic.o
+obj-$(CONFIG_MUIC_MAX14577)	+= max14577-muic.o
 obj-$(CONFIG_MCU_IPC)		+= mcu_ipc/
 obj-$(CONFIG_SEC_MODEM_V2)	+= modem_v2/
 obj-$(CONFIG_SEC_MODEM_V1)	+= modem_v1/
 obj-$(CONFIG_SEC_MODEM_IF)	+= modem_if/
-
-# Secure OS Mobicore Interface
-obj-$(CONFIG_MOBICORE_DRIVER)  += tzic.o
-
-ifeq ($(TIMA_ENABLED),1)
-obj-$(CONFIG_TIMA_LOG)		+= tima_debug_log.o
-endif
+obj-$(CONFIG_SLP_GLOBAL_LOCK)	+= slp_global_lock.o
+obj-$(CONFIG_CLK_MON)                   += clkmon/

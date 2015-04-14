@@ -40,7 +40,7 @@
 #include "mali_profiling_internal.h"
 #endif
 /* MALI_SEC */
-#include <exynos4_pmm.h>
+#include "../platform/exynos3250/exynos3_pmm.h"
 
 /* Streamline support for the Mali driver */
 #if defined(CONFIG_TRACEPOINTS) && defined(CONFIG_MALI400_PROFILING)
@@ -620,10 +620,6 @@ static int mali_ioctl(struct inode *inode, struct file *filp, unsigned int cmd, 
 			err = mem_term_wrapper(session_data, (_mali_uk_term_mem_s __user *)arg);
 			break;
 
-		case MALI_IOC_MEM_WRITE_SAFE:
-			err = mem_write_safe_wrapper(session_data, (_mali_uk_mem_write_safe_s __user *)arg);
-			break;
-
 		case MALI_IOC_MEM_MAP_EXT:
 			err = mem_map_ext_wrapper(session_data, (_mali_uk_map_external_mem_s __user *)arg);
 			break;
@@ -725,11 +721,6 @@ static int mali_ioctl(struct inode *inode, struct file *filp, unsigned int cmd, 
 #else
 			err = -ENOTTY;
 #endif
-			break;
-#endif
-		case MALI_IOC_FENCE_CREATE_EMPTY:
-#if defined(CONFIG_SYNC)
-			err = sync_fence_create_empty_wrapper(session_data, (_mali_uk_fence_create_empty_s __user *)arg);
 			break;
 #endif
 		case MALI_IOC_FENCE_VALIDATE:

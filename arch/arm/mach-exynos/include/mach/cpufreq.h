@@ -32,7 +32,6 @@ struct exynos_dvfs_info {
 	unsigned int	boot_cpu_max_qos;
 	int		boot_freq_idx;
 	int		*bus_table;
-	int             *int_bus_table;
 	bool		blocked;
 	struct clk	*cpu_clk;
 	unsigned int	*volt_table;
@@ -52,29 +51,11 @@ struct cpufreq_clkdiv {
 	unsigned int    clkdiv1;
 };
 
-#if defined(CONFIG_ARM_EXYNOS3470_CPUFREQ)
-#define EMA_VOLT		900000
-/* EMA_UP_VALUE is target volt upper than 0.9V */
-#define EMA_UP_VALUE		(0x3)
-/* EMA_DOWN_VALUE is target volt lower than 0.9V */
-#define EMA_DOWN_VALUE		(0x4)
-#define EMA_HD_SHIFT		(3)
-#define EMA_SHIFT		(0)
-#define EMA_MASK		(0x7)
-#define COLD_VOLT_OFFSET	50000
-#endif
-
-#if defined(CONFIG_ARM_EXYNOS4415_CPUFREQ)
-#define EMA_VOLT		900000
-#define COLD_VOLT_OFFSET	50000
-#endif
-
 #if defined(CONFIG_ARCH_EXYNOS3)
 #if defined(CONFIG_ARM_EXYNOS3250_CPUFREQ)
 #define COLD_VOLT_OFFSET        50000
 #endif
 extern int exynos3250_cpufreq_init(struct exynos_dvfs_info *);
-extern int exynos3472_cpufreq_init(struct exynos_dvfs_info *);
 static inline int exynos3470_cpufreq_init(struct exynos_dvfs_info *info)
 {
 	return 0;
@@ -112,10 +93,6 @@ extern int exynos4210_cpufreq_init(struct exynos_dvfs_info *);
 extern int exynos4x12_cpufreq_init(struct exynos_dvfs_info *);
 extern int exynos4415_cpufreq_init(struct exynos_dvfs_info *);
 
-static inline int exynos3472_cpufreq_init(struct exynos_dvfs_info *info)
-{
-	return 0;
-}
 static inline int exynos3250_cpufreq_init(struct exynos_dvfs_info *info)
 {
 	return 0;
@@ -218,7 +195,7 @@ typedef enum {
 #define EGL_L2_EMA_SHIFT	12
 #define COLD_VOLT_OFFSET        50000
 #define ENABLE_MIN_COLD         1
-#define LIMIT_COLD_VOLTAGE      1300000
+#define LIMIT_COLD_VOLTAGE      1250000
 #define MIN_COLD_VOLTAGE        950000
 #define NR_CA7		4
 #define NR_CA15		2
@@ -272,20 +249,8 @@ static inline void exynos_lowpower_for_cluster(cluster_type cluster, bool on) {}
 #endif
 #if defined(CONFIG_SCHED_HMP) && defined(CONFIG_EXYNOS5_DYNAMIC_CPU_HOTPLUG)
 int big_cores_hotplug(bool out_flag);
-void event_hotplug_in(void);
-bool is_big_hotpluged(void);
 #else
 static inline int big_cores_hotplug(bool out_flag)
-{
-	return 0;
-}
-
-static inline void event_hotplug_in(void)
-{
-	return;
-}
-
-static inline bool is_big_hotpluged(void)
 {
 	return 0;
 }

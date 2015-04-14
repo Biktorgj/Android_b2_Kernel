@@ -1,13 +1,12 @@
-/**
+/*
  * Copyright (C) 2011-2012 ARM Limited. All rights reserved.
- * 
+ *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
-
 
 /**
  * @file mali_kernel_sysfs.c
@@ -583,8 +582,8 @@ static ssize_t l2_all_counter_srcx_write(struct file *filp, const char __user *u
 			{
 				return 0;
 			}
-		}				
-		
+		}
+
 		/* try next L2 */
 		l2_id++;
 		l2_cache = mali_l2_cache_core_get_glob_l2_core(l2_id);
@@ -725,7 +724,7 @@ static ssize_t power_power_events_write(struct file *filp, const char __user *ub
 		if (!power_on)
 		{
 			virtual_power_status_register = 2;
-			mali_dev_resume();		
+			mali_dev_resume();
 		}
 		else
 		{
@@ -738,7 +737,6 @@ static ssize_t power_power_events_write(struct file *filp, const char __user *ub
 		mali_dev_resume();
 		/*  @@@@ assuming currently resume is successful later on to tune as per previous */
 		virtual_power_status_register = 1;
-                
 	}
 	*ppos += cnt;
 	sprintf(pwr_buf, "%d",virtual_power_status_register);
@@ -1369,14 +1367,14 @@ int mali_sysfs_register(const char *mali_dev_name)
 						debugfs_create_file("counter_src0", 0600, mali_l2_l2x_dir, l2_cache, &l2_l2x_counter_src0_fops);
 						debugfs_create_file("counter_src1", 0600, mali_l2_l2x_dir, l2_cache, &l2_l2x_counter_src1_fops);
 					}
-					
+
 					/* try next L2 */
 					l2_id++;
 					l2_cache = mali_l2_cache_core_get_glob_l2_core(l2_id);
 				}
 			}
 
-			debugfs_create_file("memory_usage", 0404, mali_debugfs_dir, NULL, &memory_usage_fops);
+			debugfs_create_file("memory_usage", 0400, mali_debugfs_dir, NULL, &memory_usage_fops);
 
 			debugfs_create_file("utilization_gp_pp", 0400, mali_debugfs_dir, NULL, &utilization_gp_pp_fops);
 			debugfs_create_file("utilization_gp", 0400, mali_debugfs_dir, NULL, &utilization_gp_fops);

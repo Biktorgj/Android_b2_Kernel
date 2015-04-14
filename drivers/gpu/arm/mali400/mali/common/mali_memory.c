@@ -1,9 +1,9 @@
 /*
- * Copyright (C) 2010-2012 ARM Limited. All rights reserved.
- * 
+ * Copyright (C) 2011-2012 ARM Limited. All rights reserved.
+ *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
@@ -754,20 +754,6 @@ static void external_memory_release(void * ctx, void * handle)
 	_mali_osk_free( allocation );
 
 	return;
-}
-
-_mali_osk_errcode_t _mali_ukk_mem_write_safe(_mali_uk_mem_write_safe_s *args)
-{
-	MALI_DEBUG_ASSERT_POINTER(args);
-
-	if (NULL == args->ctx)
-	{
-		return _MALI_OSK_ERR_INVALID_ARGS;
-	}
-
-	/* Return number of bytes actually copied */
-	args->size = _mali_osk_mem_write_safe(args->dest, args->src, args->size);
-	return _MALI_OSK_ERR_OK;
 }
 
 _mali_osk_errcode_t _mali_ukk_map_external_mem( _mali_uk_map_external_mem_s *args )

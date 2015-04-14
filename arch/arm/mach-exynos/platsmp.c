@@ -92,9 +92,6 @@ void __cpuinit platform_secondary_init(unsigned int cpu)
 	 */
 	write_pen_release(-1);
 
-#ifdef CONFIG_EXYNOS5_MP
-	cpu = cpu ^ 0x4;
-#endif
 #ifdef CONFIG_ARM_TRUSTZONE
 	clear_boot_flag(cpu, HOTPLUG);
 #endif
@@ -181,7 +178,6 @@ static int exynos_power_up_cpu(unsigned int cpu)
 		}
 	}
 
-#if !defined(CONFIG_MACH_GARDA)
 	/*
 	 * Check Power down cpu wait on WFE, and occur SW reset
 	 */
@@ -199,7 +195,6 @@ static int exynos_power_up_cpu(unsigned int cpu)
 		printk("cpu%d: SWRESET\n", cpu);
 		__raw_writel(((1 << 4) << cpu), EXYNOS_PMUREG(0x0400));
 	}
-#endif
 
 	return 0;
 }
@@ -224,13 +219,7 @@ static int exynos_power_up_cpu(unsigned int cpu)
 		if (val & 0x40000)
 			enabled = 1;
 		else {
-			val = __raw_readl(power_base + 0x8);
-			if (val & EXYNOS5_USE_SC_COUNTER) {
-				val &= ~EXYNOS5_USE_SC_COUNTER;
-				val |= EXYNOS5_USE_SC_FEEDBACK;
-				__raw_writel(val, power_base + 0x8);
-			}
-			lpe_bits = 0x800F000F;
+			lpe_bits = 0x000F000F;
 			lpe_bits_status = 0x4000F;
 #ifndef CONFIG_ARM_TRUSTZONE
 			__raw_writel(0, cpu_boot_info[cpu].boot_base);
@@ -253,7 +242,7 @@ static int exynos_power_up_cpu(unsigned int cpu)
 		while (timeout) {
 			val = __raw_readl(power_base + 0x4);
 
-			if ((val & lpe_bits_status) ==
+			if ((val & lpe_bits) ==
 			     lpe_bits_status)
 				break;
 

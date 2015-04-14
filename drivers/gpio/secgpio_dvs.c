@@ -41,8 +41,6 @@ EXPORT_SYMBOL(secgpio_dotest);
 /* extern GPIOMAP_RESULT GpioMap_result; */
 static struct gpio_dvs_t *gdvs_info;
 
-static ssize_t checked_info_secgpio_file_read(
-	struct device *dev, struct device_attribute *attr, char *buf);
 static ssize_t checked_init_secgpio_file_read(
 	struct device *dev, struct device_attribute *attr, char *buf);
 static ssize_t checked_sleep_secgpio_file_read(
@@ -56,23 +54,29 @@ static ssize_t secgpio_sleep_debug_write(
 	struct device *dev, struct device_attribute *attr,
 	const char *buf, size_t size);
 #endif
+static ssize_t secgpio_checked_sleepgpio_read(
+	struct device *dev, struct device_attribute *attr, char *buf);
+static ssize_t checked_secgpio_info(
+        struct device *dev, struct device_attribute *attr, char *buf);
 
-static DEVICE_ATTR(gpioinfo_check, 0440,
-	checked_info_secgpio_file_read, NULL);
-static DEVICE_ATTR(gpioinit_check, 0440,
+static DEVICE_ATTR(gpioinit_check, 0660,
 	checked_init_secgpio_file_read, NULL);
-static DEVICE_ATTR(gpiosleep_check, 0440,
+static DEVICE_ATTR(gpiosleep_check, 0660,
 	checked_sleep_secgpio_file_read, NULL);
-static DEVICE_ATTR(check_init_detail, 0440,
+static DEVICE_ATTR(check_init_detail, 0660,
 	checked_secgpio_init_read_details, NULL);
-static DEVICE_ATTR(check_sleep_detail, 0440,
+static DEVICE_ATTR(check_sleep_detail, 0660,
 	checked_secgpio_sleep_read_details, NULL);
 #ifdef SECGPIO_SLEEP_DEBUGGING
-static DEVICE_ATTR(gpio_sleep_debug, 0220 , NULL, secgpio_sleep_debug_write);
+static DEVICE_ATTR(gpio_sleep_debug, 0660 , NULL, secgpio_sleep_debug_write);
 #endif
+static DEVICE_ATTR(checked_sleepGPIO, 0660,
+	secgpio_checked_sleepgpio_read, NULL);
+
+static DEVICE_ATTR(gpioinfo_check, 0664,
+        checked_secgpio_info, NULL);
 
 static struct attribute *secgpio_dvs_attributes[] = {
-		&dev_attr_gpioinfo_check.attr,
 		&dev_attr_gpioinit_check.attr,
 		&dev_attr_gpiosleep_check.attr,
 		&dev_attr_check_init_detail.attr,
@@ -80,6 +84,8 @@ static struct attribute *secgpio_dvs_attributes[] = {
 #ifdef SECGPIO_SLEEP_DEBUGGING
 		&dev_attr_gpio_sleep_debug.attr,
 #endif
+		&dev_attr_checked_sleepGPIO.attr,
+		&dev_attr_gpioinfo_check.attr,
 		NULL,
 };
 
@@ -87,7 +93,6 @@ static struct attribute_group secgpio_dvs_attr_group = {
 		.attrs = secgpio_dvs_attributes,
 };
 
-#ifdef SECGPIO_SLEEP_DEBUGGING
 static int atoi(const char *str)
 {
 	int result = 0;
@@ -163,18 +168,16 @@ strtok(char *s, const char *delim)
 
 	return strtok_r(s, delim, &last);
 }
-#endif
 
-static ssize_t checked_info_secgpio_file_read(
-	struct device *dev, struct device_attribute *attr, char *buf)
+static ssize_t checked_secgpio_info(
+        struct device *dev, struct device_attribute *attr, char *buf)
 {
-	struct gpio_dvs_t *gdvs = dev_get_drvdata(dev);
-
-	snprintf(buf, PAGE_SIZE, "%d %d %d ",
-		gdvs->count, gdvs->check_init, gdvs->check_sleep);
-
-	return strlen(buf);
+        int ret=0;
+        struct gpio_dvs_t *gdvs = dev_get_drvdata(dev);
+        ret+=snprintf(buf,20,"%d %d %d ", gdvs->count, gdvs->check_init, gdvs->check_sleep);
+        return ret;
 }
+
 
 static ssize_t checked_init_secgpio_file_read(
 	struct device *dev, struct device_attribute *attr, char *buf)
@@ -342,14 +345,22 @@ static ssize_t secgpio_sleep_debug_write(
 }
 #endif
 
+static ssize_t secgpio_checked_sleepgpio_read(
+	struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct gpio_dvs_t *gdvs = dev_get_drvdata(dev);
+
+	if (gdvs->check_sleep)
+		return snprintf(buf, PAGE_SIZE, "1");
+	else
+		return snprintf(buf, PAGE_SIZE, "0");
+}
 
 void gpio_dvs_check_initgpio(void)
 {
 	if (gdvs_info && gdvs_info->check_gpio_status)
-	{
 		gdvs_info->check_gpio_status(PHONE_INIT);
-		gdvs_info->check_init = true;
-	}
+	gdvs_info->check_init=true;
 }
 
 void gpio_dvs_check_sleepgpio(void)

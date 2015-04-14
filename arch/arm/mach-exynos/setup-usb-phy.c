@@ -747,7 +747,7 @@ static int exynos5_usb_phy_host_resume(struct platform_device *pdev)
 static int exynos5_usb_phy20_init(struct platform_device *pdev)
 {
 	u32 refclk_freq;
-	u32 hostphy_ctrl0, otgphy_sys, hsic_ctrl, ohcictrl;
+	u32 hostphy_ctrl0, otgphy_sys, hsic_ctrl, ehcictrl, ohcictrl;
 
 	atomic_inc(&host_usage);
 
@@ -822,6 +822,12 @@ static int exynos5_usb_phy20_init(struct platform_device *pdev)
 
 	udelay(80);
 
+	/* Enable DMA burst bus configuration */
+	ehcictrl = readl(EXYNOS5_PHY_HOST_EHCICTRL);
+	ehcictrl |= (EHCICTRL_ENAINCRXALIGN | EHCICTRL_ENAINCR4 |
+			EHCICTRL_ENAINCR8 | EHCICTRL_ENAINCR16);
+	writel(ehcictrl, EXYNOS5_PHY_HOST_EHCICTRL);
+
 	/* set ohci_suspend_on_n */
 	ohcictrl = readl(EXYNOS5_PHY_HOST_OHCICTRL);
 	ohcictrl |= OHCICTRL_SUSPLGCY;
@@ -890,13 +896,11 @@ static int exynos_usb_dev_phy20_init(struct platform_device *pdev)
 static int exynos_usb_dev_phy20_exit(struct platform_device *pdev)
 {
 	if (soc_is_exynos4212() || soc_is_exynos4412() || soc_is_exynos4415() ||
-			soc_is_exynos3470() || soc_is_exynos3250()) {
-
-		if (exynos4_usb_phy20_exit(pdev) && !usb_phy_control.flags)
-			exynos4_usb_phy1_suspend(pdev);
-	} else {
+	    soc_is_exynos3470() || soc_is_exynos3250())
+		exynos4_usb_phy20_exit(pdev);
+	else
 		exynos5_usb_phy20_exit(pdev);
-	}
+
 	/* usb mode change from device to host */
 	exynos_usb_mux_change(pdev, 1);
 
@@ -1134,10 +1138,10 @@ static int s5p_usb_otg_phy_tune(struct s3c_hsotg_plat *pdata, int def_mode)
 				__func__, pdata->def_phytune);
 	}
 
-	pr_debug("usb: %s original tune=0x%x\n",
+	pr_info("usb: %s original tune=0x%x\n",
 			__func__, phytune);
 
-	pr_debug("usb: %s tune_mask=0x%x, tune=0x%x\n",
+	pr_info("usb: %s tune_mask=0x%x, tune=0x%x\n",
 			__func__, pdata->phy_tune_mask, pdata->phy_tune);
 
 	if (pdata->phy_tune_mask) {
@@ -1154,7 +1158,7 @@ static int s5p_usb_otg_phy_tune(struct s3c_hsotg_plat *pdata, int def_mode)
 			writel(phytune, EXYNOS5_PHY_OTG_TUNE);
 		}
 		phytune = readl(EXYNOS5_PHY_OTG_TUNE);
-		pr_debug("usb: %s modified tune=0x%x\n",
+		pr_info("usb: %s modified tune=0x%x\n",
 				__func__, phytune);
 	} else {
 		pr_debug("usb: %s default tune\n", __func__);

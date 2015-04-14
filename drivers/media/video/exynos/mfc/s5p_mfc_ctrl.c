@@ -151,7 +151,7 @@ int s5p_mfc_alloc_firmware(struct s5p_mfc_dev *dev)
 				dev->port_a, s5p_mfc_bitproc_phys,
 						firmware_size);
 	}
-#elif defined(CONFIG_VIDEOBUF2_ION)
+#elif defined(CONFIG_VIDEOBUF2_ION) || defined(CONFIG_VIDEOBUF2_DMA_CMA)
 	dev->port_b = s5p_mfc_bitproc_phys;
 
 	mfc_debug(2, "Port A: %08x Port B: %08x (FW: %08x size: %08x)\n",
@@ -209,6 +209,8 @@ int s5p_mfc_load_firmware(struct s5p_mfc_dev *dev)
 					     FIRMWARE_CODE_SIZE,
 					     DMA_TO_DEVICE);
 	*/
+	s5p_mfc_mem_clean_priv(s5p_mfc_bitproc_buf, s5p_mfc_bitproc_virt, 0,
+			fw_blob->size);
 	release_firmware(fw_blob);
 	mfc_debug_leave();
 	return 0;
@@ -403,7 +405,6 @@ int s5p_mfc_init_hw(struct s5p_mfc_dev *dev)
 		mfc_err("Failed to load firmware.\n");
 		s5p_mfc_clean_dev_int_flags(dev);
 		ret = -EIO;
-		dev->skip_bus_waiting = 1;
 		goto err_init_hw;
 	}
 
@@ -458,9 +459,6 @@ int s5p_mfc_init_hw(struct s5p_mfc_dev *dev)
 err_init_hw:
 	s5p_mfc_clock_off();
 	mfc_debug_leave();
-
-	if (dev->skip_bus_waiting)
-		dev->skip_bus_waiting = 0;
 
 	return ret;
 }

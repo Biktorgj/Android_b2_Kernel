@@ -21,10 +21,5 @@
 #endif
 
 #endif
-
-#if defined(CONFIG_SOC_EXYNOS3470)
-#include "gpio-shannon222ap.h"
-#endif
-
 extern void (*exynos_config_sleep_gpio)(void);
 #endif

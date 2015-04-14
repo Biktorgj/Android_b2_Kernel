@@ -41,6 +41,7 @@
 #include <linux/of.h>
 #include <linux/reboot.h>
 #include <linux/suspend.h>
+#include <linux/delay.h>
 #include <plat/cpu.h>
 #include <mach/tmu.h>
 #include <mach/cpufreq.h>
@@ -67,9 +68,16 @@ extern unsigned int g_g3dfreq;
 #ifdef CONFIG_ARM_EXYNOS5420_BUS_DEVFREQ
 extern bool mif_is_probed;
 #endif
+#ifdef CONFIG_ARM_EXYNOS3250_BUS_DEVFREQ
+extern bool mif_is_probed;
+extern bool int_is_probed;
+#endif
 /*****************************************************************************/
 /* 	        	      Function prototypes 		             */
 /*****************************************************************************/
+#ifdef CONFIG_ARM_EXYNOS3250_BUS_DEVFREQ
+static bool check_mif_int_probed(void);
+#endif
 #ifdef CONFIG_ARM_EXYNOS5420_BUS_DEVFREQ
 static bool check_mif_probed(void);
 #endif
@@ -140,6 +148,13 @@ static BLOCKING_NOTIFIER_HEAD(exynos_gpu_notifier);
 static bool check_mif_probed(void)
 {
 	return mif_is_probed;
+}
+#endif
+
+#ifdef CONFIG_ARM_EXYNOS3250_BUS_DEVFREQ
+static bool check_mif_int_probed(void)
+{
+	return (mif_is_probed && int_is_probed);
 }
 #endif
 
@@ -856,6 +871,9 @@ static int exynos_tmu_initialize(struct platform_device *pdev, int id)
 	struct exynos_tmu_platform_data *pdata = data->pdata;
 	unsigned int status, rising_threshold, falling_threshold;
 	int ret = 0, threshold_code;
+#ifdef CONFIG_SOC_EXYNOS3250
+	int timeout = 1000;
+#endif
 
 	mutex_lock(&data->lock);
 	clk_enable(data->clk);
@@ -886,6 +904,23 @@ static int exynos_tmu_initialize(struct platform_device *pdev, int id)
 		writel(EXYNOS4_TMU_INTCLEAR_VAL,
 			data->base[id] + EXYNOS_TMU_REG_INTCLEAR);
 	} else if (data->soc == SOC_ARCH_EXYNOS3) {
+
+#ifdef CONFIG_SOC_EXYNOS3250
+		__raw_writel(EXYNOS_TRIMINFO_RELOAD1,
+				data->base[id] + EXYNOS_TMU_TRIMINFO_CON1);
+		__raw_writel(EXYNOS_TRIMINFO_RELOAD2,
+				data->base[id] + EXYNOS_TMU_TRIMINFO_CON2);
+
+		while(readl(data->base[id] + EXYNOS_TMU_TRIMINFO_CON2) & EXYNOS_TRIMINFO_RELOAD1) {
+			if(!timeout) {
+				pr_err("Thermal TRIMINFO register reload failed\n");
+				break;
+			}
+			timeout--;
+			cpu_relax();
+			usleep_range(5,10);
+		}
+#endif
 		/* Write temperature code for threshold */
 		threshold_code = temp_to_code(data, pdata->trigger_levels[0], id);
 		if (threshold_code < 0) {
@@ -965,24 +1000,53 @@ static void exynos_tmu_get_efuse(struct platform_device *pdev, int id)
 {
 	struct exynos_tmu_data *data = platform_get_drvdata(pdev);
 	struct exynos_tmu_platform_data *pdata = data->pdata;
-	unsigned int trim_info, trim_info_ctl;
+	unsigned int trim_info;
+#ifdef CONFIG_SOC_EXYNOS3250
+	int timeout = 1000;
+#endif
 
 	mutex_lock(&data->lock);
 	clk_enable(data->clk);
 
+#ifdef CONFIG_SOC_EXYNOS3250
+	__raw_writel(EXYNOS_TRIMINFO_RELOAD1,
+			data->base[id] + EXYNOS_TMU_TRIMINFO_CON1);
+	__raw_writel(EXYNOS_TRIMINFO_RELOAD2,
+			data->base[id] + EXYNOS_TMU_TRIMINFO_CON2);
+
+	while(readl(data->base[id] + EXYNOS_TMU_TRIMINFO_CON2) & EXYNOS_TRIMINFO_RELOAD1) {
+		if(!timeout) {
+			pr_err("%s: Thermal TRIMINFO register reload failed\n", __func__);
+			break;
+		}
+		timeout--;
+		cpu_relax();
+		usleep_range(5,10);
+	}
+#else
 	/* Reload trimming info before get the value */
 	trim_info_ctl = readl(data->base[id] + EXYNOS_TMU_TRIMINFO_CON);
 	trim_info_ctl |= EXYNOS5_TRIMINFO_RELOAD;
 	writel(trim_info_ctl, data->base[id] + EXYNOS_TMU_TRIMINFO_CON);
 	__raw_writel(EXYNOS5_TRIMINFO_RELOAD,
 			data->base[id] + EXYNOS_TMU_TRIMINFO_CON);
+#endif
 	/* Save trimming info in order to perform calibration */
 	trim_info = readl(data->base[id] + EXYNOS_TMU_REG_TRIMINFO);
 	data->temp_error1[id] = trim_info & EXYNOS_TMU_TRIM_TEMP_MASK;
 	data->temp_error2[id] = ((trim_info >> 8) & EXYNOS_TMU_TRIM_TEMP_MASK);
+
+	pr_info("%s: [%d] triminfo:0x%02x, trim_25: %d, trim_85: %d\n",
+		__func__, id, trim_info, data->temp_error1[id], data->temp_error2[id]);
+
 	if ((EFUSE_MIN_VALUE > data->temp_error1[id]) ||
-			(data->temp_error1[id] > EFUSE_MAX_VALUE))
+			(data->temp_error1[id] > EFUSE_MAX_VALUE)) {
+		pr_err("%s: [%d] INVALID EFUSE VALUE(%d)!!!\n",
+			__func__, id, data->temp_error1[id]);
+		data->efuse_valid = data->temp_error1[id];
 		data->temp_error1[id] = pdata->efuse_value;
+		data->calibration_valid = TMU_INVALID_EFUSE;
+	}
 
 	clk_disable(data->clk);
 	mutex_unlock(&data->lock);
@@ -1120,6 +1184,13 @@ static int exynos_tmu_read(struct exynos_tmu_data *data)
 	exynos_tmu_call_notifier(cur_state);
 #endif
 
+	if (soc_is_exynos3250()) {
+		if (!check_mif_int_probed())
+			goto out;
+
+		exynos_check_tmu_noti_state(min, max);
+	}
+
 	if (soc_is_exynos5420()) {
 		/* check temperature state */
 		exynos_check_tmu_noti_state(min, max);
@@ -1137,8 +1208,7 @@ static int exynos_tmu_read(struct exynos_tmu_data *data)
 		exynos_check_gpu_noti_state(gpu_temp);
 		exynos_check_mif_noti_state(max);
 	}
-
-#ifdef CONFIG_ARM_EXYNOS5420_BUS_DEVFREQ
+#if defined(CONFIG_ARM_EXYNOS5420_BUS_DEVFREQ) || defined(CONFIG_ARM_EXYNOS3250_BUS_DEVFREQ)
 out:
 #endif
 	th_zone->therm_dev->last_temperature = max * MCELSIUS;
@@ -1263,8 +1333,10 @@ static int exynos_pm_notifier(struct notifier_block *notifier,
 		is_suspending = true;
 		exynos_tmu_call_notifier(TMU_COLD);
 		exynos_tmu_call_notifier(tmu_old_state);
+#ifndef CONFIG_SOC_EXYNOS3250
 		exynos_check_mif_noti_state(MEM_TH_TEMP2 - 1);
 		exynos_gpu_call_notifier(GPU_COLD);
+#endif
 		break;
 	case PM_POST_SUSPEND:
 		is_suspending = false;
@@ -1325,13 +1397,40 @@ exynos_thermal_sensor_temp(struct device *dev,
 	clk_disable(data->clk);
 	mutex_unlock(&data->lock);
 
-	for (i = 0; i < EXYNOS_TMU_COUNT; i++)
+	for (i = 0; i < EXYNOS_TMU_COUNT; i++) {
 		len += snprintf(&buf[len], PAGE_SIZE, "sensor%d : %ld\n", i, temp[i]);
+		if (data->calibration_valid != TMU_CALIBRATION_OK)
+			len += snprintf(&buf[len], PAGE_SIZE, " (INVALID)\n");
+	}
 
 	return len;
 }
 
+static ssize_t exynos_thermal_show_calibration_valid(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct exynos_tmu_data *data = th_zone->sensor_conf->private_data;
+	int sz = 0;
+
+	switch (data->calibration_valid) {
+		case TMU_CALIBRATION_OK:
+			sz = sprintf(buf, "calibration ok\n");
+			break;
+		case TMU_CHIP_UNCALIBRATED:
+			sz = sprintf(buf, "chip id %s is uncalibrated\n", data->lot_name);
+			break;
+		case TMU_INVALID_EFUSE:
+			sz = sprintf(buf, "invalid efuse value: %d\n", data->efuse_valid);
+			break;
+	}
+
+	return sz;
+}
+
+
 static DEVICE_ATTR(temp, S_IRUSR | S_IRGRP, exynos_thermal_sensor_temp, NULL);
+static DEVICE_ATTR(calibration_valid, S_IRUSR | S_IRGRP,
+	exynos_thermal_show_calibration_valid, NULL);
 
 #ifdef CONFIG_SEC_PM
 /* sysfs interface : /sys/devices/platform/exynos5-tmu/curr_temp */
@@ -1378,6 +1477,7 @@ static DEVICE_ATTR(curr_temp, S_IRUGO, exynos_thermal_curr_temp, NULL);
 
 static struct attribute *exynos_thermal_sensor_attributes[] = {
 	&dev_attr_temp.attr,
+	&dev_attr_calibration_valid.attr,
 #ifdef CONFIG_SEC_PM
 	&dev_attr_curr_temp.attr,
 #endif
@@ -1477,6 +1577,59 @@ static int exynos5_tmu_cpufreq_notifier(struct notifier_block *notifier, unsigne
 }
 #endif
 
+/* Print starting temperature of CPU */
+static void exynos_tmu_start_temp_work(struct work_struct *work)
+{
+	struct exynos_tmu_data *data = container_of(work,
+		struct exynos_tmu_data, start_temp_work.work);
+	int temp = exynos_tmu_read(data);
+
+	pr_info("%s: t: %d\n", __func__, temp);
+}
+
+static void exynos_tmu_check_calibration(struct exynos_tmu_data *data)
+{
+	struct exynos_tmu_platform_data *pdata = data->pdata;
+	char **uncalibrated_chips = pdata->uncalibrated_chips;
+	unsigned int lid_reg = 0;
+	unsigned int lid_reg2 = 0;
+	unsigned int rev_lid = 0;
+	unsigned int tmp;
+	int i;
+
+	/* read LOT ID from chipid reg*/
+	lid_reg = __raw_readl(S5P_VA_CHIPID + 0x14);
+	lid_reg2 = __raw_readl(S5P_VA_CHIPID + 0x18);
+
+	pr_info("%s: lot_id reg: 0x%x, 0x%x\n", __func__, lid_reg, lid_reg2);
+
+	for (i = 0; i < 32; i++) {
+		tmp = (lid_reg >> i) & 0x1;
+		rev_lid += tmp << (31 - i);
+	}
+
+	lid_reg = (rev_lid >> 11) & 0x1FFFFF;
+
+	data->lot_name[0] = 'N';
+
+	for (i = 4; i >= 1; i--) {
+		tmp = lid_reg % 36;
+		lid_reg /= 36;
+		data->lot_name[i] = (tmp < 10) ? (tmp + '0') : ((tmp - 10) + 'A');
+	}
+
+	for (i = 0; uncalibrated_chips[i] != NULL; i++) {
+		if (strncmp(data->lot_name, uncalibrated_chips[i],
+				strlen(data->lot_name)) == 0) {
+			pr_err("%s: lot_id %s is uncalibrated chip!,"
+				"temperature value may wrong\n", __func__, data->lot_name);
+			data->calibration_valid = TMU_CHIP_UNCALIBRATED;
+		}
+	}
+
+	pr_info("%s: calibration_valid: %d\n", __func__, data->calibration_valid);
+}
+
 static int __devinit exynos_tmu_probe(struct platform_device *pdev)
 {
 	struct exynos_tmu_data *data;
@@ -1565,6 +1718,8 @@ static int __devinit exynos_tmu_probe(struct platform_device *pdev)
 	for (i = 0; i < EXYNOS_TMU_COUNT; i++)
 		exynos_tmu_get_efuse(pdev, i);
 
+	exynos_tmu_check_calibration(data);
+
 	/*TMU initialization*/
 	for (i = 0; i < EXYNOS_TMU_COUNT; i++) {
 		ret = exynos_tmu_initialize(pdev, i);
@@ -1643,7 +1798,14 @@ static int __devinit exynos_tmu_probe(struct platform_device *pdev)
 
 	/* For low temperature compensation when boot time */
 	exynos_tmu_call_notifier(TMU_COLD);
+#ifndef CONFIG_SOC_EXYNOS3250
 	exynos_gpu_call_notifier(GPU_COLD);
+#endif
+	{
+		/* Print starting temperature of CPU */
+		INIT_DELAYED_WORK(&data->start_temp_work, exynos_tmu_start_temp_work);
+		schedule_delayed_work(&data->start_temp_work, msecs_to_jiffies(2000));
+	}
 
 	return 0;
 err_clk:

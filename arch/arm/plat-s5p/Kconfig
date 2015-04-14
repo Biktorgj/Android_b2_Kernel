@@ -103,7 +103,6 @@ config S5P_DEV_USB_EHCI
 
 config S5P_SETUP_MIPIPHY
 	bool
-	depends on (VIDEO_S5P_MIPI_CSIS || VIDEO_EXYNOS_MIPI_CSIS)
 	default y
 	help
 	  Compile in common setup code for MIPI-CSIS and MIPI-DSIM devices

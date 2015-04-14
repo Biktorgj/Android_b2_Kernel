@@ -41,9 +41,18 @@
 /* Target SRP/BUS clock rate */
 #define TARGET_SRPCLK_RATE	(100000000)
 #define TARGET_BUSCLK_RATE	(100000000)
-#else
+
+#elif defined(CONFIG_SOC_EXYNOS4415)
 /* Initialize divider value to avoid over-clock */
 #define EXYNOS_AUDSS_DIV_INIT_VAL	(0xF17)
+
+/* Target SRP/BUS clock rate */
+#define TARGET_SRPCLK_RATE	(100000000)
+#define TARGET_BUSCLK_RATE	(TARGET_SRPCLK_RATE >> 1)
+
+#else	/* by default */
+/* Initialize divider value to avoid over-clock */
+#define EXYNOS_AUDSS_DIV_INIT_VAL	(0xF84)
 
 /* Target SRP/BUS clock rate */
 #define TARGET_SRPCLK_RATE	(100000000)

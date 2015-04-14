@@ -920,6 +920,13 @@ config TOUCHSCREEN_MMS134S
 	  To compile this driver as a module, choose M here: the
 	  module will be called melfas-ts.
 
+config TOUCHSCREEN_ZINITIX_BT432
+	tristate "ZINITIX BT432 I2C touchscreen driver"
+	depends on I2C
+	default n
+	help
+	  Say Y here to enable BT432 I2C touchscreen support
+
 config TOUCHSCREEN_MELFAS_W
 	tristate "W model MELFAS touchscreen driver"
 	depends on I2C
@@ -932,5 +939,3 @@ config TOUCHSCREEN_MELFAS_W
 	  module will be called W model MMS.
 
 endif
-
-source "drivers/input/touchscreen/zinitix/Kconfig"

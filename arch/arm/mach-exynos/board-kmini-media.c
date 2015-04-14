@@ -84,18 +84,11 @@ static struct s5p_mfc_qos smdk4270_mfc_qos_table[] = {
 	[2] = {
 		.thrd_mb	= 162792,
 		.freq_int	= 160000,
-		.freq_mif	= 267000,
+		.freq_mif	= 400000,
 		.freq_cpu	= 0,
 	},
 	[3] = {
 		.thrd_mb	= 195840,
-		.freq_int	= 200000,
-		.freq_mif	= 267000,
-		.freq_cpu	= 0,
-	},
-	[4] = {
-		/* Over spec, but for WFD */
-		.thrd_mb	= 244800,
 		.freq_int	= 200000,
 		.freq_mif	= 400000,
 		.freq_cpu	= 0,

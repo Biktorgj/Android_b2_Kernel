@@ -97,4 +97,3 @@ config MMC_BKOPS_NODE_GID
 	help
 	  Owner group ID of BKOPS sysfs node.
 	  Default is 0. Do not touch the value if unsure.
-

@@ -48,7 +48,11 @@ static const struct snd_pcm_hardware dma_hardware = {
 	.channels_max		= 2,
 	.buffer_bytes_max	= 128*1024,
 	.period_bytes_min	= 128,
+#ifdef CONFIG_SND_SOC_SAMSUNG_B2_YMU831
+	.period_bytes_max	= 20*1024,
+#else
 	.period_bytes_max	= 64*1024,
+#endif
 	.periods_min		= 2,
 	.periods_max		= 128,
 	.fifo_size		= 32,
@@ -144,20 +148,23 @@ static void audio_buffdone(void *data)
 	if (!substream)
 		return;
 
+	if (!substream->runtime) {
+		pr_err("%s: PCM handle is already released\n", __func__);
+		return;
+	}
+
 	prtd = substream->runtime->private_data;
 
 	if (prtd->state & ST_RUNNING) {
 		snd_pcm_period_elapsed(substream);
 
+		spin_lock(&prtd->lock);
 		if (!samsung_dma_has_circular()) {
-			spin_lock(&prtd->lock);
-
 			prtd->dma_loaded--;
 			if (!samsung_dma_has_infiniteloop())
 				dma_enqueue(substream);
-
-			spin_unlock(&prtd->lock);
 		}
+		spin_unlock(&prtd->lock);
 	}
 }
 
@@ -222,7 +229,7 @@ static int dma_hw_params(struct snd_pcm_substream *substream,
 		prtd->dram_used = false;
 	spin_unlock_irq(&prtd->lock);
 
-	pr_debug("ADMA:%s:DmaAddr=@%x Total=%d PrdSz=%d #Prds=%d dma_area=0x%x\n",
+	pr_info("ADMA:%s:DmaAddr=@%x Total=%d PrdSz=%d #Prds=%d dma_area=0x%x\n",
 		(substream->stream == SNDRV_PCM_STREAM_PLAYBACK) ? "P" : "C",
 		prtd->dma_start, runtime->dma_bytes,
 		params_period_bytes(params), params_periods(params),

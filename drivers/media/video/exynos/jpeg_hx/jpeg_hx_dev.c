@@ -868,6 +868,8 @@ static int jpeg_hx_probe(struct platform_device *pdev)
 	jpeg->vb2 = &jpeg_hx_vb2_cma;
 #elif defined(CONFIG_VIDEOBUF2_ION)
 	jpeg->vb2 = &jpeg_hx_vb2_ion;
+#elif defined(CONFIG_VIDEOBUF2_DMA_CMA)
+	jpeg->vb2 = &jpeg_hx_vb2_dma_contig;
 #endif
 
 	jpeg->alloc_ctx = jpeg->vb2->init(jpeg);
@@ -878,7 +880,10 @@ static int jpeg_hx_probe(struct platform_device *pdev)
 	}
 
 	exynos_create_iovmm(&pdev->dev, 3, 3);
+
+#if !defined(CONFIG_VIDEOBUF2_DMA_CMA)
 	jpeg->vb2->resume(jpeg->alloc_ctx);
+#endif
 
 	pm_runtime_enable(&pdev->dev);
 #ifndef CONFIG_PM_RUNTIME

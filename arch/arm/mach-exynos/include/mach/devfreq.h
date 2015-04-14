@@ -71,7 +71,7 @@ extern int exynos5_mif_bpll_unregister_notifier(struct notifier_block *nb);
 
 extern spinlock_t int_div_lock;
 
-#if defined(CONFIG_ARM_EXYNOS5420_BUS_DEVFREQ) || defined(CONFIG_ARM_EXYNOS5260_BUS_DEVFREQ) || defined(CONFIG_ARM_EXYNOS3470_BUS_DEVFREQ)
+#if defined(CONFIG_ARM_EXYNOS5420_BUS_DEVFREQ) || defined(CONFIG_ARM_EXYNOS5260_BUS_DEVFREQ)
 void exynos5_update_media_layers(enum devfreq_media_type media_type, unsigned int value);
 void exynos5_disp_update_pixelclk(unsigned long pixelclk);
 #else

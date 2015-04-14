@@ -58,7 +58,7 @@ int s5p_mfc_init_pm(struct s5p_mfc_dev *dev)
 	ret = clk_set_parent(sclk, parent);
 	if (ret) {
 		printk(KERN_ERR "Unable to set parent clock\n");
-		goto err_g_clk;
+		goto err_p_clk;
 	}
 
 	clk_set_rate(sclk, 200 * 1000000);
@@ -116,7 +116,7 @@ int s5p_mfc_init_pm(struct s5p_mfc_dev *dev)
 	ret = clk_set_parent(sclk, parent);
 	if (ret) {
 		printk(KERN_ERR "Unable to set parent clock\n");
-		goto err_g_clk;
+		goto err_p_clk;
 	}
 
 	clk_set_rate(sclk, 200 * 1000000);
@@ -348,8 +348,7 @@ void s5p_mfc_clock_off(void)
 	if (IS_MFCV6(dev)) {
 		spin_lock_irqsave(&pm->clklock, flags);
 		if ((atomic_dec_return(&clk_ref) == 0) &&
-				FW_HAS_BUS_RESET(dev) &&
-				!dev->skip_bus_waiting) {
+				FW_HAS_BUS_RESET(dev)) {
 			s5p_mfc_write_reg(0x1, S5P_FIMV_MFC_BUS_RESET_CTRL);
 
 			timeout = jiffies + msecs_to_jiffies(MFC_BW_TIMEOUT);

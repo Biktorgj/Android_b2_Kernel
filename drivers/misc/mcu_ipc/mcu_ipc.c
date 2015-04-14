@@ -17,56 +17,39 @@
 #include <linux/platform_device.h>
 
 #include <mach/regs-mcu_ipc.h>
-#include <mach/mcu_ipc.h>
 
-static struct mcu_ipc_drv_data mcu_dat;
-
-static inline void mcu_ipc_writel(u32 val, int reg)
-{
-	writel(val, mcu_dat.ioaddr + reg);
-}
-
-static inline u32 mcu_ipc_readl(int reg)
-{
-	return readl(mcu_dat.ioaddr + reg);
-}
+#include "mcu_ipc.h"
 
 static irqreturn_t mcu_ipc_handler(int irq, void *data)
 {
-	int i;
-	u32 irq_stat;
+	u32 irq_stat, i;
 
 	irq_stat = mcu_ipc_readl(EXYNOS_MCU_IPC_INTSR0) & 0xFFFF0000;
-	if (!irq_stat) {
-		pr_err("mif: %s: ERR! FALSE interrupt\n", __func__);
-		goto exit;
-	}
 
 	for (i = 0; i < 16; i++) {
-		u32 mask = 1 << (i + 16);
+		if (irq_stat & (1 << (i + 16))) {
+			if ((1 << (i + 16)) & mcu_dat.registered_irq)
+				mcu_dat.hd[i].handler(mcu_dat.hd[i].data);
+			else
+				dev_err(mcu_dat.mcu_ipc_dev,
+					"Unregistered INT received.\n");
 
-		if (irq_stat & mask) {
-			/* Clear interrupt */
-			mcu_ipc_writel(mask, EXYNOS_MCU_IPC_INTCR0);
-			irq_stat &= ~mask;
-
-			if (mask & mcu_dat.registered_irq) {
-				struct mcu_ipc_irq_handler *hd = &mcu_dat.hd[i];
-				hd->handler(hd->data);
-			} else {
-				pr_err("mif: %s: ERR! no ISR for IRQ%d\n",
-					__func__, i);
-			}
+			/* Interrupt Clear */
+			mcu_ipc_writel(1 << (i + 16), EXYNOS_MCU_IPC_INTCR0);
+			irq_stat &= ~(1 << (i + 16));
 		}
+
+		if (!irq_stat)
+			break;
 	}
 
-exit:
 	return IRQ_HANDLED;
 }
 
-int mbox_request_irq(u32 int_num, void (*handler)(void *), void *data)
+int mbox_request_irq(u32 int_num, void (*handler)(void *),
+							void *data)
 {
-	if (int_num > 15 || !handler || !data)
+	if ((!handler) || (int_num > 15))
 		return -EINVAL;
 
 	mcu_dat.hd[int_num].data = data;
@@ -77,9 +60,9 @@ int mbox_request_irq(u32 int_num, void (*handler)(void *), void *data)
 }
 EXPORT_SYMBOL(mbox_request_irq);
 
-static int mcu_ipc_unregister_handler(u32 int_num, void (*handler)(void *))
+int mcu_ipc_unregister_handler(u32 int_num, void (*handler)(void *))
 {
-	if (!handler || handler != mcu_dat.hd[int_num].handler)
+	if (!handler || (mcu_dat.hd[int_num].handler != handler))
 		return -EINVAL;
 
 	mcu_dat.hd[int_num].data = NULL;
@@ -88,16 +71,7 @@ static int mcu_ipc_unregister_handler(u32 int_num, void (*handler)(void *))
 
 	return 0;
 }
-
-int mbox_free_irq(u32 int_num, void *data)
-{
-	if (int_num > 15 || !data || data != mcu_dat.hd[int_num].data)
-		return -EINVAL;
-
-	mcu_ipc_unregister_handler(int_num, mcu_dat.hd[int_num].handler);
-	return 0;
-}
-EXPORT_SYMBOL(mbox_free_irq);
+EXPORT_SYMBOL(mcu_ipc_unregister_handler);
 
 void mbox_set_interrupt(u32 int_num)
 {
@@ -107,7 +81,7 @@ void mbox_set_interrupt(u32 int_num)
 }
 EXPORT_SYMBOL(mbox_set_interrupt);
 
-void mbox_send_command(u32 int_num, u16 cmd)
+void mcu_ipc_send_command(u32 int_num, u16 cmd)
 {
 	/* write command */
 	if (int_num < 16)
@@ -116,7 +90,12 @@ void mbox_send_command(u32 int_num, u16 cmd)
 	/* generate interrupt */
 	mbox_set_interrupt(int_num);
 }
-EXPORT_SYMBOL(mbox_send_command);
+EXPORT_SYMBOL(mcu_ipc_send_command);
+
+void mcu_ipc_clear_all_interrupt(void)
+{
+	mcu_ipc_writel(0xFFFF, EXYNOS_MCU_IPC_INTCR1);
+}
 
 u32 mbox_get_value(u32 mbx_num)
 {
@@ -133,11 +112,6 @@ void mbox_set_value(u32 mbx_num, u32 msg)
 		mcu_ipc_writel(msg, EXYNOS_MCU_IPC_ISSR0 + (4 * mbx_num));
 }
 EXPORT_SYMBOL(mbox_set_value);
-
-static void mcu_ipc_clear_all_interrupt(void)
-{
-	mcu_ipc_writel(0xFFFF, EXYNOS_MCU_IPC_INTCR1);
-}
 
 static int __devinit mcu_ipc_probe(struct platform_device *pdev)
 {
@@ -158,7 +132,7 @@ static int __devinit mcu_ipc_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "failded to request memory resource\n");
 		return -ENOENT;
 	}
-	mcu_dat.ioaddr = ioremap_nocache(res->start, resource_size(res));
+	mcu_dat.ioaddr = ioremap(res->start, resource_size(res));
 	if (!mcu_dat.ioaddr) {
 		dev_err(&pdev->dev, "failded to request memory resource\n");
 		err = -ENXIO;
@@ -242,5 +216,4 @@ module_exit(mcu_ipc_exit);
 
 MODULE_DESCRIPTION("MCU IPC driver");
 MODULE_AUTHOR("Hyuk Lee <hyuk1.lee@samsung.com>");
-MODULE_AUTHOR("Hankook Jang <hankook.jang@samsung.com>");
 MODULE_LICENSE("GPL");

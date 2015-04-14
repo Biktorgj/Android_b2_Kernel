@@ -32,6 +32,9 @@
 #include <linux/switch.h>
 #include <linux/types.h>
 #include <linux/workqueue.h>
+#if defined(CONFIG_SND_SOC_SAMSUNG_B2_YMU831)
+#include <linux/pm_qos.h>
+#endif
 #include <sound/hwdep.h>
 #include <sound/initval.h>
 #include <sound/pcm.h>
@@ -40,7 +43,6 @@
 #include <sound/soc-dapm.h>
 #include <sound/tlv.h>
 #include <sound/jack.h>
-#include <mach/exynos5-audio.h>
 
 #include "ymu831_cfg.h"
 #include "ymu831_path_cfg.h"
@@ -55,6 +57,13 @@
 #include <linux/spi/spi.h>
 #elif (BUS_SELECT == BUS_SEL_SLIM)
 #include <linux/slimbus/slimbus.h>
+#endif
+#ifdef CONFIG_ARCH_EXYNOS5
+#include <mach/exynos5-audio.h>
+#define exynos_audio_set_mclk	exynos5_audio_set_mclk
+#else
+#define exynos_audio_set_mclk(x, y) \
+			pr_info("ymu831 mclk ctrl trace %d %d", x, y)
 #endif
 
 #define MC_ASOC_DRIVER_VERSION	"2.0.1"
@@ -1113,6 +1122,120 @@ static const struct soc_enum	mic4_bias_param_enum =
 		mic_bias_param_text);
 #endif
 
+struct snd_soc_codec		*mc_asoc_codec;
+
+#ifdef CONFIG_SND_SOC_SAMSUNG_B2_YMU831
+static int codec_suspend_status_get(struct snd_kcontrol *kcontrol,
+			struct snd_ctl_elem_value *ucontrol)
+{
+	int status = ymu831_get_codec_suspend_status(mc_asoc_codec);
+	pr_info("%s: ymu831 codec status 0x%04X\n", __func__, status);
+	ucontrol->value.integer.value[0] = status;
+	return 0;
+}
+
+static int codec_suspend_status_put(struct snd_kcontrol *kcontrol,
+			struct snd_ctl_elem_value *ucontrol)
+{
+	return 1;
+}
+#endif
+
+#ifdef CONFIG_SND_SOC_YAMAHA_YMU831_SEC_CDSP
+
+#define CDSP_PARAM_MAX_SIZE	12
+#define AECPOS_CDSP_FUNCTION_ID	44
+#define AECPOS_CDSP_CMD_ID	61
+#define AECPOS_CDSP_CMD_PARAM	62
+#define VOICE_VOLUME_CDSP_CMD_ID	0x42
+
+#define HFP_VOL_MAX	5
+#define HFP_VOL_MIN	0
+
+static char sec_cdsp_volume;
+
+static int set_cdsp_param(int func, UINT8 cmd, const void *buffer, size_t length)
+{
+	int err = 0;
+	int size;
+	int i;
+
+	UINT8 bAEC[] = {
+		/* Head */
+		0x41, 0x45, 0x43, 0x05,
+		0x00, 0x00, 0x00, 0x46,
+		0x00, 0xfd, 0x00, 0x00,
+		/* D7 */
+		0x44, 0x37,
+		0x00, 0x00, 0x00, 0x3c,
+		/* V-BOX */
+		0x03, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x34,
+		0x02, 0x02, 0x02,
+		0xff,
+		0xff, 0xff, 0xff,
+		0xff, 0xff, 0xff,
+		0xff, 0xff, 0xff, 0xff, 0xff,
+		/* C-DSP FuncA */
+		0x00, 0x03, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x1d,
+		/* C-DSP Parameter */
+		0x00, 0x00, 0x11, 0x00,
+		0x00, 0x00, 0x00, 0x15,
+		0x00, 0x00, 0x00, 0x11,
+		0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	};
+
+	if (func == 1)
+		bAEC[AECPOS_CDSP_CMD_ID] = 0x01;
+
+	bAEC[AECPOS_CDSP_CMD_ID] = cmd;
+
+	size = (length > CDSP_PARAM_MAX_SIZE) ? CDSP_PARAM_MAX_SIZE : length;
+	if ((size > 0) && (buffer == NULL))
+		return -EINVAL;
+
+	for (i = 0; i < size; i++)
+		bAEC[AECPOS_CDSP_CMD_PARAM + i] = *((unsigned char*)buffer + i);
+
+	err	= _McDrv_Ctrl(MCDRV_SET_DSP, bAEC, NULL, sizeof(bAEC));
+	if (err != MCDRV_SUCCESS) {
+		dbg_info("%d: Error in MCDRV_SET_DSP\n", err);
+	}
+
+	return err;
+}
+
+static int sec_cdsp_volume_get(struct snd_kcontrol *kcontrol,
+			struct snd_ctl_elem_value *ucontrol)
+{
+	pr_info("%s: last ymu831 CDSP volume %d\n", __func__, sec_cdsp_volume);
+	ucontrol->value.integer.value[0] = sec_cdsp_volume;
+	return 0;
+}
+
+static int sec_cdsp_volume_put(struct snd_kcontrol *kcontrol,
+			struct snd_ctl_elem_value *ucontrol)
+{
+	int err;
+	sec_cdsp_volume = (char) ucontrol->value.integer.value[0];
+	if (sec_cdsp_volume > HFP_VOL_MAX)
+		sec_cdsp_volume = HFP_VOL_MAX;
+	else if (sec_cdsp_volume < HFP_VOL_MIN)
+		sec_cdsp_volume = HFP_VOL_MIN;
+
+	pr_info("%s: set ymu831 CDSP volume %d\n", __func__, sec_cdsp_volume);
+	err = set_cdsp_param(0, VOICE_VOLUME_CDSP_CMD_ID,
+			&sec_cdsp_volume, sizeof(sec_cdsp_volume));
+	if (err != MCDRV_SUCCESS)
+		dbg_info("%d: Can't set C-DSP volume\n", err);
+
+	return 1;
+}
+#endif
+
 static const struct snd_kcontrol_new	mc_asoc_snd_controls[]	= {
 	SOC_DOUBLE_TLV("Music Input Volume",
 		MC_ASOC_DVOL_MUSICIN, 0, 8, 114, 0, mc_asoc_tlv_digital),
@@ -1373,9 +1496,15 @@ static const struct snd_kcontrol_new	mc_asoc_snd_controls[]	= {
 	, SOC_ENUM("MIC3 BIAS", mic3_bias_param_enum)
 	, SOC_ENUM("MIC4 BIAS", mic4_bias_param_enum)
 #endif
+#ifdef CONFIG_SND_SOC_YAMAHA_YMU831_SEC_CDSP
+	, SOC_SINGLE_EXT("CDSP Volume", SND_SOC_NOPM, 0, 5, 0,
+			sec_cdsp_volume_get, sec_cdsp_volume_put)
+#endif
+#ifdef CONFIG_SND_SOC_SAMSUNG_B2_YMU831
+	, SOC_SINGLE_EXT("Suspend Status", SND_SOC_NOPM, 0, 512, 0,
+			codec_suspend_status_get, codec_suspend_status_put)
+#endif
 };
-
-struct snd_soc_codec		*mc_asoc_codec;
 
 #if (BUS_SELECT == BUS_SEL_I2C)
 static struct i2c_client	*mc_asoc_i2c_d;
@@ -1470,9 +1599,9 @@ void mc_asoc_enable_clock(int enable)
 {
 #ifdef FEATURE_MCLK_CONTROL_BY_YMU831
 	if (enable)
-		exynos5_audio_set_mclk(1, 0);
+		exynos_audio_set_mclk(1, 0);
 	else
-		exynos5_audio_set_mclk(0, 1);
+		exynos_audio_set_mclk(0, 1);
 #endif
 }
 
@@ -1559,7 +1688,7 @@ static UINT8 *get_dsp_mem(int size)
 	if ((dsp_mem_pt+size) < DSP_MEM_SIZE) {
 		p	= dsp_mem + dsp_mem_pt;
 		dsp_mem_pt	+= size;
-		dbg_info("dsp_mem_pt:%d\n", dsp_mem_pt);
+		/* dbg_info("dsp_mem_pt:%d\n", dsp_mem_pt); */
 	} else {
 		pr_info("mem alloc failed!\n");
 	}
@@ -1786,6 +1915,61 @@ static int get_mixer_path_ctl_info(
 		return -EIO;
 
 	return 0;
+}
+
+int ymu831_get_codec_suspend_status(struct snd_soc_codec *codec)
+{
+	struct mc_asoc_data     *mc_asoc        = NULL;
+	struct mc_asoc_mixer_path_ctl_info	mixer_ctl_info;
+	int check_codec_suspend = 0;
+
+	mc_asoc	= mc_asoc_get_mc_asoc(codec);
+	if (mc_asoc == NULL) {
+		pr_err("%s: Can not mc_asoc", __func__);
+		return -1;
+	}
+
+	if (get_mixer_path_ctl_info(codec, &mixer_ctl_info) < 0) {
+		pr_err("%s: get_mixer_path_ctl_info failed", __func__);
+		return -EIO;
+	}
+
+/*
+	if ((mixer_ctl_info.audio_mode_play == 0)
+	&& (mixer_ctl_info.audio_mode_cap == 0)
+	&& (mixer_ctl_info.mainmic_play == 0)
+	&& (mixer_ctl_info.submic_play == 0)
+	&& (mixer_ctl_info.msmic_play == 0)
+	&& (mixer_ctl_info.hsmic_play == 0)
+	&& (mixer_ctl_info.btmic_play == 0)
+	&& (mixer_ctl_info.lin1_play == 0)
+	&& (mixer_ctl_info.dtmf_control == 0))
+		check_codec_suspend = 1;
+	else
+		check_codec_suspend = 0;
+*/
+	if (mixer_ctl_info.audio_mode_play)
+		check_codec_suspend |= (0x01 << 0);
+	if (mixer_ctl_info.audio_mode_cap)
+		check_codec_suspend |= (0x01 << 1);
+	if (mixer_ctl_info.mainmic_play)
+		check_codec_suspend |= (0x01 << 2);
+	if (mixer_ctl_info.submic_play)
+		check_codec_suspend |= (0x01 << 3);
+	if (mixer_ctl_info.msmic_play)
+		check_codec_suspend |= (0x01 << 4);
+	if (mixer_ctl_info.hsmic_play)
+		check_codec_suspend |= (0x01 << 5);
+	if (mixer_ctl_info.btmic_play)
+		check_codec_suspend |= (0x01 << 6);
+	if (mixer_ctl_info.lin1_play)
+		check_codec_suspend |= (0x01 << 7);
+	if (mixer_ctl_info.dtmf_control)
+		check_codec_suspend |= (0x01 << 8);
+
+	pr_info("%s: 0x%04X", __func__, check_codec_suspend);
+
+	return check_codec_suspend;
 }
 
 static int get_path_preset_idx(
@@ -6103,7 +6287,7 @@ static int add_dsp_prm(
 						i, j, dsp_prm->pabParam);
 	else
 		while (dsp_prm->pabParam != NULL) {
-			dbg_info("pabParam = %8p\n", dsp_prm->pabParam);
+			/* dbg_info("pabParam = %8p\n", dsp_prm->pabParam); */
 			if (dsp_prm->next == NULL) {
 				dsp_prm->next	= kzalloc(
 					sizeof(struct mc_asoc_dsp_param),
@@ -6111,13 +6295,13 @@ static int add_dsp_prm(
 				if (dsp_prm->next == NULL)
 					return -ENOMEM;
 				dsp_prm	= dsp_prm->next;
-				dbg_info("next = %8p\n", dsp_prm);
+				/* dbg_info("next = %8p\n", dsp_prm); */
 				break;
 			} else
 				dsp_prm	= dsp_prm->next;
 		}
 
-	dbg_info("param = %8p\n", param);
+	/* dbg_info("param = %8p\n", param); */
 
 	dsp_prm->pabParam	= param;
 	dsp_prm->dSize		= dSize;
@@ -6147,16 +6331,16 @@ static void del_dsp_prm(
 #endif
 			}
 			dsp_prm	= mc_asoc->param_store[i][j].next;
-			while (dsp_prm != NULL) {
+			while (dsp_prm != NULL) { /*
 				dbg_info("free(pabParam:%8p)\n",
-					dsp_prm->pabParam);
+					dsp_prm->pabParam); */
 #ifdef DSP_MEM_STATIC
 #else
 				vfree(dsp_prm->pabParam);
 #endif
 				next_prm	= dsp_prm->next;
-				dbg_info("free(dsp_prm:%8p)\n",
-					dsp_prm);
+			/*	dbg_info("free(dsp_prm:%8p)\n",
+					dsp_prm); */
 				kfree(dsp_prm);
 				dsp_prm	= next_prm;
 			}
@@ -8101,6 +8285,11 @@ EXIT:
 	return ret;
 }
 
+#if defined(CONFIG_SND_SOC_SAMSUNG_B2_YMU831)
+static struct pm_qos_request cpufreq_min_qos;
+#define YMU_CPUFREQ_VALUE 800000
+#endif
+
 static int mc_asoc_hwdep_ioctl(
 	struct snd_hwdep *hw,
 	struct file *file,
@@ -8117,6 +8306,15 @@ static int mc_asoc_hwdep_ioctl(
 		codec	= hw->private_data;
 
 	mc_asoc_lock("mc_asoc_hwdep_ioctl");
+
+#if defined(CONFIG_SND_SOC_SAMSUNG_B2_YMU831)
+	if (!pm_qos_request_active(&cpufreq_min_qos)) {
+		pm_qos_add_request(&cpufreq_min_qos,
+			PM_QOS_CPU_FREQ_MIN, YMU_CPUFREQ_VALUE);
+	} else {
+		pm_qos_update_request(&cpufreq_min_qos, YMU_CPUFREQ_VALUE);
+	}
+#endif
 
 	switch (cmd) {
 	case YMC_IOCTL_SET_CTRL:
@@ -8213,6 +8411,11 @@ static int mc_asoc_hwdep_ioctl(
 	default:
 		err	= -EINVAL;
 	}
+
+#if defined(CONFIG_SND_SOC_SAMSUNG_B2_YMU831)
+	if (pm_qos_request_active(&cpufreq_min_qos))
+		pm_qos_remove_request(&cpufreq_min_qos);
+#endif
 
 	mc_asoc_unlock("mc_asoc_hwdep_ioctl");
 	return err;
@@ -8453,6 +8656,8 @@ static void hsdet_cb(UINT32 dFlags, struct MCDRV_HSDET_RES *psRes)
 	bKey0OnDlyTim2	= stHSDetInfo_Default.bKey0OnDlyTim2;
 	bKey1OnDlyTim2	= stHSDetInfo_Default.bKey1OnDlyTim2;
 	bKey2OnDlyTim2	= stHSDetInfo_Default.bKey2OnDlyTim2;
+	bHsDetDbnc	= stHSDetInfo_Default.bHsDetDbnc;
+	bDbncNumPlug	= stHSDetInfo_Default.bDbncNumPlug;
 #endif
 	err	= _McDrv_Ctrl(MCDRV_GET_HSDET, (void *)&stHSDetInfo, NULL, 0);
 	if (err < MCDRV_SUCCESS) {
@@ -8901,6 +9106,12 @@ static int init_irq(struct snd_soc_codec *codec)
 	TRACE_FUNC();
 
 	mc_asoc	= mc_asoc_get_mc_asoc(codec);
+
+	if (!mc_asoc->pdata->irq) {
+		dev_err(codec->dev, "%s : No irq supported\n", __func__);
+		return 0;
+	}
+
 	my_wq	= create_workqueue("irq_queue");
 
 	err	= irq_set_irq_type(mc_asoc->pdata->irq, IRQ_TYPE);
@@ -8920,14 +9131,25 @@ static int term_irq(void)
 {
 	struct mc_asoc_data	*mc_asoc	= NULL;
 
+	TRACE_FUNC();
+
 	mc_asoc	= mc_asoc_get_mc_asoc(mc_asoc_codec);
+
+	if (!mc_asoc->pdata->irq) {
+		dev_err(mc_asoc_codec->dev, "%s : No irq supported\n", __func__);
+		return 0;
+	}
 
 	free_irq(mc_asoc->pdata->irq, NULL);
 	destroy_workqueue(my_wq);
-	if (workq_mb4)
+	if (workq_mb4) {
 		destroy_workqueue(workq_mb4);
-	if (workq_mkdeten)
+		workq_mb4 = NULL;
+	}
+	if (workq_mkdeten) {
 		destroy_workqueue(workq_mkdeten);
+		workq_mkdeten = NULL;
+	}
 
 	return 0;
 }
@@ -9508,7 +9730,7 @@ static int mc_asoc_suspend(
 	&& (mixer_ctl_info.btmic_play == 0)
 	&& (mixer_ctl_info.lin1_play == 0)
 	&& (mixer_ctl_info.dtmf_control == 0))
-		exynos5_audio_set_mclk(0, 1);
+		exynos_audio_set_mclk(0, 1);
 #endif
 	mc_asoc_suspended	= 1;
 
@@ -9532,16 +9754,19 @@ static int mc_asoc_resume(
 	int	output_path;
 	int	incall_mic;
 	struct mc_asoc_dsp_param	*dsp_prm	= NULL;
+	int	init_retry = 0;
 #endif
 	struct mc_asoc_mixer_path_ctl_info	mixer_ctl_info;
 
 	TRACE_FUNC();
 
-	if (mc_asoc_suspended != 1)
+	if (mc_asoc_suspended != 1) {
+		pr_info("%s: codec is alive. skip resuming\n", __func__);
 		return 0;
+	}
 
 #ifndef FEATURE_MCLK_CONTROL_BY_YMU831
-	exynos5_audio_set_mclk(1, 0);
+	exynos_audio_set_mclk(1, 0);
 #endif
 	mc_asoc	= mc_asoc_get_mc_asoc(codec);
 	if (mc_asoc == NULL)
@@ -9619,12 +9844,22 @@ static int mc_asoc_resume(
 		disable_irq_wake(mc_asoc->pdata->irq);
 
 #else
-	err	= _McDrv_Ctrl(MCDRV_INIT, &mc_asoc->setup.init,
+	while (init_retry++ < 5) {
+		err	= _McDrv_Ctrl(MCDRV_INIT, &mc_asoc->setup.init,
 					&mc_asoc->setup.init2, 0);
-	if (err != MCDRV_SUCCESS) {
-		dev_err(codec->dev, "%d: Error in MCDRV_INIT\n", err);
-		err	= -EIO;
+		if (err == MCDRV_SUCCESS) {
+			dev_info(codec->dev, "MCDRV_INIT success\n");
+			err = MCDRV_SUCCESS;
+			break;
+		} else {
+			dev_err(codec->dev, "%d: Error in MCDRV_INIT\n", err);
+			usleep_range(1000, 1100);
+			err	= -EIO;
+		}
+	}
+	if (err == -EIO) {
 		goto error;
+		panic("YMU831 MCDRV_INIT failed\n");
 	}
 
 	/* restore parameters */
@@ -9922,6 +10157,17 @@ static int spi_rw(u8 *tx, u8 *rx, int len)
 	struct spi_message	spi_msg;
 	struct spi_transfer	spi_xfer;
 
+	/* Change SPI bits_per_word */
+	if (len%4)
+	{
+		if (len%2)
+			mc_asoc_spi->bits_per_word = 8;
+		else
+			mc_asoc_spi->bits_per_word = 16;
+	}
+	else
+		mc_asoc_spi->bits_per_word = 32;
+
 	/* Initialize SPI ,message */
 	spi_message_init(&spi_msg);
 
@@ -10075,7 +10321,7 @@ static int __devinit mc_asoc_spi_probe(
 	TRACE_FUNC();
 
 #ifndef FEATURE_MCLK_CONTROL_BY_YMU831
-	exynos5_audio_set_mclk(1, 0);
+	exynos_audio_set_mclk(1, 0);
 #endif
 	mc_asoc_priv	= kzalloc(sizeof(struct mc_asoc_priv), GFP_KERNEL);
 	if (!mc_asoc_priv) {
@@ -10116,7 +10362,7 @@ static int __devexit mc_asoc_spi_remove(struct spi_device *spi)
 		kfree(mc_asoc_priv);
 	}
 #ifndef FEATURE_MCLK_CONTROL_BY_YMU831
-	exynos5_audio_set_mclk(0, 0);
+	exynos_audio_set_mclk(0, 0);
 #endif
 	return 0;
 }

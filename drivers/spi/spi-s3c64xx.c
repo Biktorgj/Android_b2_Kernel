@@ -23,10 +23,12 @@
 #include <linux/interrupt.h>
 #include <linux/delay.h>
 #include <linux/clk.h>
+#include <linux/dma-mapping.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/spi/spi.h>
 
+#include <mach/dma.h>
 #include <plat/s3c64xx-spi.h>
 #include <plat/cpu.h>
 
@@ -131,6 +133,52 @@
 
 #define RXBUSY    (1<<2)
 #define TXBUSY    (1<<3)
+
+struct s3c64xx_spi_dma_data {
+	unsigned		ch;
+	enum dma_transfer_direction direction;
+	enum dma_ch	dmach;
+};
+
+/**
+ * struct s3c64xx_spi_driver_data - Runtime info holder for SPI driver.
+ * @clk: Pointer to the spi clock.
+ * @src_clk: Pointer to the clock used to generate SPI signals.
+ * @master: Pointer to the SPI Protocol master.
+ * @cntrlr_info: Platform specific data for the controller this driver manages.
+ * @tgl_spi: Pointer to the last CS left untoggled by the cs_change hint.
+ * @queue: To log SPI xfer requests.
+ * @lock: Controller specific lock.
+ * @state: Set of FLAGS to indicate status.
+ * @rx_dmach: Controller's DMA channel for Rx.
+ * @tx_dmach: Controller's DMA channel for Tx.
+ * @sfr_start: BUS address of SPI controller regs.
+ * @regs: Pointer to ioremap'ed controller registers.
+ * @irq: interrupt
+ * @xfer_completion: To indicate completion of xfer task.
+ * @cur_mode: Stores the active configuration of the controller.
+ * @cur_bpw: Stores the active bits per word settings.
+ * @cur_speed: Stores the active xfer clock speed.
+ */
+struct s3c64xx_spi_driver_data {
+	void __iomem                    *regs;
+	struct clk                      *clk;
+	struct clk                      *src_clk;
+	struct platform_device          *pdev;
+	struct spi_master               *master;
+	struct s3c64xx_spi_info  *cntrlr_info;
+	struct spi_device               *tgl_spi;
+	struct list_head                queue;
+	spinlock_t                      lock;
+	unsigned long                   sfr_start;
+	struct completion               xfer_completion;
+	unsigned                        state;
+	unsigned                        cur_mode, cur_bpw;
+	unsigned                        cur_speed;
+	struct s3c64xx_spi_dma_data	rx_dma;
+	struct s3c64xx_spi_dma_data	tx_dma;
+	struct samsung_dma_ops		*ops;
+};
 
 static struct s3c2410_dma_client s3c64xx_spi_dma_client = {
 	.name = "samsung-spi-dma",
@@ -393,7 +441,12 @@ static int wait_for_xfer(struct s3c64xx_spi_driver_data *sdd,
 
 	/* millisecs to xfer 'len' bytes @ 'cur_speed' */
 	ms = xfer->len * 8 * 1000 / sdd->cur_speed;
-	ms += 10; /* some tolerance */
+	if (dma_mode) {
+		ms = (ms * 10) + 30; /* some tolerance */
+		ms = max(ms, 100); /* minimum timeout */
+	} else {
+		ms = ms + 10; /* some tolerance */
+	}
 
 	if (dma_mode) {
 		val = msecs_to_jiffies(ms) + 10;
@@ -509,8 +562,8 @@ static void s3c64xx_spi_config(struct s3c64xx_spi_driver_data *sdd)
 	case 32:
 		val |= S3C64XX_SPI_MODE_BUS_TSZ_WORD;
 		val |= S3C64XX_SPI_MODE_CH_TSZ_WORD;
-		if (soc_is_exynos5260() || soc_is_exynos5410() ||
-						soc_is_exynos5420()) {
+		if (soc_is_exynos3250() || soc_is_exynos5260() ||
+			soc_is_exynos5410() || soc_is_exynos5420()) {
 			writel(S3C64XX_SPI_SWAP_TX_EN |
 				S3C64XX_SPI_SWAP_TX_BYTE |
 				S3C64XX_SPI_SWAP_TX_HALF_WORD |
@@ -523,8 +576,8 @@ static void s3c64xx_spi_config(struct s3c64xx_spi_driver_data *sdd)
 	case 16:
 		val |= S3C64XX_SPI_MODE_BUS_TSZ_HALFWORD;
 		val |= S3C64XX_SPI_MODE_CH_TSZ_HALFWORD;
-		if (soc_is_exynos5260() || soc_is_exynos5410() ||
-						soc_is_exynos5420()) {
+		if (soc_is_exynos3250() || soc_is_exynos5260() ||
+			soc_is_exynos5410() || soc_is_exynos5420()) {
 			writel(S3C64XX_SPI_SWAP_TX_EN |
 				S3C64XX_SPI_SWAP_TX_BYTE |
 				S3C64XX_SPI_SWAP_RX_EN |
@@ -535,8 +588,8 @@ static void s3c64xx_spi_config(struct s3c64xx_spi_driver_data *sdd)
 	default:
 		val |= S3C64XX_SPI_MODE_BUS_TSZ_BYTE;
 		val |= S3C64XX_SPI_MODE_CH_TSZ_BYTE;
-		if (soc_is_exynos5260() || soc_is_exynos5410() ||
-						soc_is_exynos5420())
+		if (soc_is_exynos3250() || soc_is_exynos5260() ||
+			soc_is_exynos5410() || soc_is_exynos5420())
 			writel(0, regs + S3C64XX_SPI_SWAP_CFG);
 		break;
 	}
@@ -726,6 +779,7 @@ static int s3c64xx_spi_transfer_one_message(struct spi_master *master,
 			if (xfer->len > fifo_lvl)
 				xfer->len = fifo_lvl;
 		} else {
+			cs->cs_mode = AUTO_CS_MODE;
 			/* Polling method for xfers not bigger than FIFO capacity */
 			if (xfer->len <= fifo_lvl)
 				use_dma = 0;

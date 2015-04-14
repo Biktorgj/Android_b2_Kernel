@@ -125,5 +125,6 @@ struct ymc_dspdata_args {
 
 void	mc_asoc_set_enable_clock_func(
 		int (*penableclkfn)(struct snd_soc_codec *, int, bool));
+int ymu831_get_codec_suspend_status(struct snd_soc_codec *codec);
 
 #endif

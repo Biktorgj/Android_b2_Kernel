@@ -331,3 +331,7 @@ config BATTERY_SAMSUNG
 	  Say Y to enable support for batteries with samsung chip.
 
 endif # POWER_SUPPLY
+
+config SYSTEM_LOAD_ANALYZER
+        bool "monitor tool to analysis load"
+

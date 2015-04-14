@@ -1,9 +1,9 @@
 /*
- * Copyright (C) 2010-2012 ARM Limited. All rights reserved.
- * 
+ * Copyright (C) 2011-2012 ARM Limited. All rights reserved.
+ *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
@@ -107,33 +107,4 @@ _mali_osk_errcode_t _mali_osk_device_data_get(struct _mali_osk_device_data *data
 	}
 
 	return _MALI_OSK_ERR_ITEM_NOT_FOUND;
-}
-
-mali_bool _mali_osk_shared_interrupts(void)
-{
-	u32 irqs[128];
-	u32 i, j, irq, num_irqs_found = 0;
-
-	MALI_DEBUG_ASSERT_POINTER(mali_platform_device);
-	MALI_DEBUG_ASSERT(128 >= mali_platform_device->num_resources);
-
-	for (i = 0; i < mali_platform_device->num_resources; i++)
-	{
-		if (IORESOURCE_IRQ & mali_platform_device->resource[i].flags)
-		{
-			irq = mali_platform_device->resource[i].start;
-
-			for (j = 0; j < num_irqs_found; ++j)
-			{
-				if (irq == irqs[j])
-				{
-					return MALI_TRUE;
-				}
-			}
-
-			irqs[num_irqs_found++] = irq;
-		}
-	}
-
-	return MALI_FALSE;
 }

@@ -52,6 +52,9 @@ config SND_SOC_ES515_I2C
 config SND_SOC_ES515_I2S
         tristate
 
+config SND_SOC_SAMSUNG_B2_USE_CLK_FW
+	tristate
+
 config SND_SOC_SAMSUNG_NEO1973_WM8753
 	tristate "Audio support for Openmoko Neo1973 Smartphones (GTA01/GTA02)"
 	depends on SND_SOC_SAMSUNG && (MACH_NEO1973_GTA01 || MACH_NEO1973_GTA02)
@@ -114,16 +117,30 @@ config SND_SOC_SAMSUNG_ESPRESSO3250_WM5110
 	depends on I2C=y && GENERIC_HARDIRQS
 	default y
 	select SND_SAMSUNG_I2S
-	select SND_SAMSUNG_I2S_MASTER
 	select SND_SOC_DUMMY_CODEC
+	select SND_SOC_WM5110
+	select MFD_ARIZONA_SPI
+	select MFD_ARIZONA
+	select MFD_WM5110
+	select SWITCH_ARIZONA
 	help
 		Say Y if you want to add support for SoC audio on the ESPRESSO.
+
+config SND_SOC_SAMSUNG_B2_YMU831
+	tristate "SoC I2S Audio support for YMU831 on B2"
+	depends on SND_SOC_SAMSUNG && (MACH_B2)
+	default y
+	select SND_SAMSUNG_I2S
+	select SND_SOC_YAMAHA_YMU831
+	select SND_SOC_SAMSUNG_B2_USE_CLK_FW
+	help
+		Say Y if you want to add support for SoC audio on the B2.
 
 config SND_SOC_SAMSUNG_XYREF4415_ES515
 	tristate "SoC I2S Audio support for ES515 on XYREF4415"
 	depends on SND_SOC_SAMSUNG && (MACH_XYREF4415)
 	depends on I2C=y && GENERIC_HARDIRQS
-	default n
+	default y
 	select SND_SAMSUNG_I2S
 	select SND_SAMSUNG_AUDSS
 	select SND_SAMSUNG_XYREF
@@ -145,18 +162,6 @@ config SND_SOC_SAMSUNG_UNIVERSAL4415_WM1811_SLSI
 	help
 	  Say Y if you want to add support for SoC audio on the UNIVERSALs.
 
-config SND_SOC_SAMSUNG_UNIVERSAL222AP_WM1811
-	tristate "SoC I2S Audio support for WM1811 on UNIVERSAL222AP"
-	depends on SND_SOC_SAMSUNG && (MACH_UNIVERSAL222AP || \
-	MACH_GARDA || MACH_LT02 || MACH_KMINI || MACH_DEGAS)
-	depends on I2C=y && GENERIC_HARDIRQS
-	select MFD_WM8994
-	select SND_SAMSUNG_AUDSS
-	select SND_SOC_WM8994
-	select SND_SAMSUNG_I2S
-	help
-	  Say Y if you want to add support for SoC audio on the SMDKs.
-
 config SND_SOC_SAMSUNG_KMINI_WM1811
 	tristate "SoC I2S Audio support for WM1811 on KMINI"
 	depends on SND_SOC_SAMSUNG && (MACH_KMINI)
@@ -172,7 +177,7 @@ config SND_SOC_SAMSUNG_XYREF5260_ES515
 	tristate "SoC I2S Audio support for ES515 on XYREF5260"
 	depends on SND_SOC_SAMSUNG && (MACH_XYREF5260)
 	depends on I2C=y && GENERIC_HARDIRQS
-	default n
+	default y
 	select SND_SAMSUNG_I2S
 	select SND_SAMSUNG_LPASS
 	select SND_SAMSUNG_XYREF

@@ -1,0 +1,6 @@
+config CLK_MON
+	bool "Clock Gate Monitor"
+	default n
+	help
+		It is used to profiling clock gate and checking power domain.
+

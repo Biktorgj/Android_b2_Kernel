@@ -1,9 +1,9 @@
 /*
  * Copyright (C) 2011-2012 ARM Limited. All rights reserved.
- * 
+ *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
@@ -48,7 +48,7 @@ struct mali_group
 	int                         page_dir_ref_count;
 
 	mali_bool                   power_is_on;
-	enum mali_group_core_state  state;
+	enum mali_group_core_state  state; /* @@@@ TODO: include power_is_on in this state? */
 
 	struct mali_gp_core         *gp_core;
 	struct mali_gp_job          *gp_running_job;

@@ -62,8 +62,7 @@ enum FIMC_IS_SCENARIO_ID {
 	FIMC_IS_SN_REAR_PREVIEW_WHD,
 	FIMC_IS_SN_REAR_PREVIEW_UHD,
 	FIMC_IS_SN_REAR_CAPTURE,
-	FIMC_IS_SN_REAR_CAMCORDING_FHD,
-	FIMC_IS_SN_REAR_CAMCORDING_UHD,
+	FIMC_IS_SN_REAR_CAMCORDING,
 	FIMC_IS_SN_DUAL_PREVIEW,
 	FIMC_IS_SN_DUAL_CAPTURE,
 	FIMC_IS_SN_DUAL_CAMCORDING,
@@ -115,7 +114,6 @@ enum FIMC_IS_GRP {
 
 enum FIMC_IS_CLK_GATE_USR_SCENARIO {
 	CLK_GATE_NOT_FULL_BYPASS_SN = 1,
-	CLK_GATE_FULL_BYPASS_SN,
 	CLK_GATE_DIS_SN,
 };
 
@@ -199,7 +197,6 @@ struct exynos_platform_fimc_is {
 	int	(*clk_off)(struct platform_device *pdev);
 	int	(*print_clk)(struct platform_device *pdev);
 	int	(*print_cfg)(struct platform_device *pdev, u32 channel);
-	int	(*print_pwr)(struct platform_device *pdev);
 
 	/* These fields are to return qos value for dvfs scenario */
 	u32	*int_qos_table;
@@ -212,13 +209,6 @@ struct exynos_platform_fimc_is {
 
 	/* For host clock gating */
 	struct exynos_fimc_is_clk_gate_info *gate_info;
-#ifdef CONFIG_COMPANION_USE
-	u32	companion_spi_channel;
-	bool	use_two_spi_line;
-#endif
-#ifdef CONFIG_USE_VENDER_FEATURE
-	u32	use_sensor_dynamic_voltage_mode;
-#endif
 };
 
 extern void exynos_fimc_is_set_platdata(struct exynos_platform_fimc_is *pd);
@@ -231,18 +221,6 @@ int fimc_is_set_rate_dt(struct platform_device *pdev,
 	const char *conid, unsigned int rate);
 unsigned int  fimc_is_get_rate_dt(struct platform_device *pdev,
 	const char *conid);
-
-extern int exynos_fimc_is_cfg_clk(struct platform_device *pdev);
-extern int exynos_fimc_is_clk_on(struct platform_device *pdev);
-extern int exynos_fimc_is_clk_off(struct platform_device *pdev);
-extern int exynos_fimc_is_print_cfg(struct platform_device *pdev, u32 channel);
-extern int exynos_fimc_is_print_pwr(struct platform_device *pdev);
-extern int exynos_fimc_is_clk_gate(u32 clk_gate_id, bool is_on);
-extern int exynos_fimc_is_set_user_clk_gate(u32 group_id,
-		bool is_on,
-		u32 user_scenario_id,
-		unsigned long msk_state,
-		struct exynos_fimc_is_clk_gate_info *gate_info);
 
 /* platform specific clock functions */
 #if defined(CONFIG_ARCH_EXYNOS4)

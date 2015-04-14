@@ -8,10 +8,9 @@
 */
 #include <linux/delay.h>
 #include <linux/gpio.h>
-#include <linux/interrupt.h>
+
 #include <linux/input.h>
 #include <linux/i2c.h>
-#include <linux/i2c-gpio.h>
 #include <linux/gpio_keys.h>
 
 #include <plat/devs.h>
@@ -28,7 +27,10 @@
 #include "board-kmini.h"
 
 #ifdef CONFIG_TOUCHSCREEN_CYPRESS_CYTTSP5
+#include <linux/cyttsp5/cyttsp5_bus.h>
 #include <linux/cyttsp5/cyttsp5_core.h>
+#include <linux/cyttsp5/cyttsp5_btn.h>
+#include <linux/cyttsp5/cyttsp5_mt.h>
 #include <linux/cyttsp5/cyttsp5_platform.h>
 #endif
 #if defined(CONFIG_KEYBOARD_ABOV_TOUCH)
@@ -38,33 +40,21 @@
 #include <mach/sec_debug.h>
 #endif
 
-extern unsigned int system_rev;
-extern unsigned int lpcharge;
-
 #ifdef CONFIG_INPUT_TOUCHSCREEN
-bool tsp_connect;
 struct tsp_callbacks *tsp_callbacks;
 struct tsp_callbacks {
 	void (*inform_charger) (struct tsp_callbacks *, bool);
 };
 
-void tsp_charger_inform(bool en)
+void tsp_charger_infom(bool en)
 {
 	if (tsp_callbacks && tsp_callbacks->inform_charger)
 		tsp_callbacks->inform_charger(tsp_callbacks, en);
 }
-
-static int __init tsp_connect_check(char *str)
-{
-	tsp_connect = true;
-
-	return 0;
-}
-early_param("tspconnect", tsp_connect_check);
 #endif
 
 #ifdef CONFIG_TOUCHSCREEN_CYPRESS_CYTTSP5
-#define GPIO_TSP_TA EXYNOS4_GPM1(3)
+#define CYTTSP5_I2C_NAME "cyttsp5_i2c_adapter"
 #define CYTTSP5_I2C_TCH_ADR 0x24
 
 #define CYTTSP5_HID_DESC_REGISTER 1
@@ -88,12 +78,6 @@ early_param("tspconnect", tsp_connect_check);
 #define CY_ABS_MAX_T 15
 
 #define CY_IGNORE_VALUE 0xFFFF
-
-static void cyttsp5_charger_callback(void *cb)
-{
-	tsp_callbacks = cb;
-	pr_debug("[TSP] cyttsp5_charger_callback\n");
-}
 
 static struct cyttsp5_core_platform_data _cyttsp5_core_platform_data = {
 	.irq_gpio = GPIO_TSP_INT,
@@ -119,8 +103,15 @@ static struct cyttsp5_core_platform_data _cyttsp5_core_platform_data = {
 		NULL,	/* Config and Test Registers */
 		NULL, /* &cyttsp5_sett_btn_keys, */	/* button-to-keycode table */
 	},
-	.ta_gpio = GPIO_TSP_TA,
-	.register_cb = cyttsp5_charger_callback,
+	.loader_pdata = &_cyttsp5_loader_platform_data,
+	.flags = CY_FLAG_CORE_POWEROFF_ON_SLEEP,
+};
+
+static struct cyttsp5_core_info cyttsp5_core_info __initdata = {
+	.name = CYTTSP5_CORE_NAME,
+	.id = "main_ttsp_core",
+	.adap_id = CYTTSP5_I2C_NAME,
+	.platform_data = &_cyttsp5_core_platform_data,
 };
 
 static const uint16_t cyttsp5_abs[] = {
@@ -147,16 +138,16 @@ static struct cyttsp5_mt_platform_data _cyttsp5_mt_platform_data = {
 	.inp_dev_name = "sec_touchscreen",
 };
 
-static struct cyttsp5_platform_data _cyttsp5_platform_data = {
-	.core_pdata = &_cyttsp5_core_platform_data,
-	.mt_pdata = &_cyttsp5_mt_platform_data,
-	.loader_pdata = &_cyttsp5_loader_platform_data,
+static struct cyttsp5_device_info cyttsp5_mt_info __initdata = {
+	.name = CYTTSP5_MT_NAME,
+	.core_id = "main_ttsp_core",
+	.platform_data = &_cyttsp5_mt_platform_data,
 };
 
 void __init cypress_tsp_init(void)
 {
-	s3c_gpio_cfgpin(GPIO_TSP_INT, S3C_GPIO_INPUT);
-	s3c_gpio_setpull(GPIO_TSP_INT, S3C_GPIO_PULL_DOWN);
+	cyttsp5_register_core_device(&cyttsp5_core_info);
+	cyttsp5_register_device(&cyttsp5_mt_info);
 }
 #endif /* CONFIG_TOUCHSCREEN_CYPRESS_CYTTSP5 */
 
@@ -165,7 +156,7 @@ static struct i2c_board_info i2c_devs_touch[] = {
 #ifdef CONFIG_TOUCHSCREEN_CYPRESS_CYTTSP5
 	{
 		I2C_BOARD_INFO(CYTTSP5_I2C_NAME, CYTTSP5_I2C_TCH_ADR),
-		.platform_data = &_cyttsp5_platform_data,
+		.platform_data = CYTTSP5_I2C_NAME,
 	},
 #endif
 };
@@ -180,67 +171,21 @@ void __init kmini_tsp_init(void)
 	ret = gpio_request(gpio, "TSP_INT");
 	if (ret)
 		pr_err("failed to request gpio(TSP_INT)(%d)\n", ret);
-
-	if (tsp_connect == false) {
-		printk(KERN_ERR "%s tsp_connect : %d\n", __func__, tsp_connect);
-		s3c_gpio_cfgpin(GPIO_TSP_INT, S3C_GPIO_INPUT);
-		s3c_gpio_setpull(GPIO_TSP_INT, S3C_GPIO_PULL_DOWN);
-		return;
-	}
-
-	if (lpcharge) {
-		printk(KERN_DEBUG "%s : lpcharge. tsp driver unload\n", __func__);
-		s3c_gpio_cfgpin(GPIO_TSP_INT, S3C_GPIO_INPUT);
-		s3c_gpio_setpull(GPIO_TSP_INT, S3C_GPIO_PULL_DOWN);
-		return;
-	}
-
 	s3c_gpio_cfgpin(gpio, S3C_GPIO_SFN(0xf));
 	s3c_gpio_setpull(gpio, S3C_GPIO_PULL_NONE);
 	s5p_register_gpio_interrupt(gpio);
 
 	i2c_devs_touch[0].irq = gpio_to_irq(gpio);
-	printk(KERN_ERR "%s touch : %d\n", __func__,
+	printk(KERN_ERR "%s touch : %d \n", __func__,
 		i2c_devs_touch[0].irq);
 #ifdef CONFIG_TOUCHSCREEN_CYPRESS_CYTTSP5
 	cypress_tsp_init();
-	gpio = GPIO_TSP_TA;
-	ret = gpio_request(gpio, "TSP_TA");
-	if (ret) {
-		pr_err("failed to request gpio(TSP_TA)(%d)\n", ret);
-	} else {
-		s3c_gpio_cfgpin(gpio, S3C_GPIO_OUTPUT);
-		s3c_gpio_setpull(gpio, S3C_GPIO_PULL_NONE);
-		gpio_set_value(gpio, 0);
-	}
 #endif
-
-	s3c_i2c3_set_platdata(NULL);
-	i2c_register_board_info(3, i2c_devs_touch, ARRAY_SIZE(i2c_devs_touch));
 }
 #endif
 
 #if defined(CONFIG_KEYBOARD_ABOV_TOUCH)
-static bool abov_key_enabled;
 static bool abov_keyled_enabled;
-#define GPIO_TK_SCL EXYNOS4_GPM2(4)
-#define GPIO_TK_SDA EXYNOS4_GPM3(0)
-#define GPIO_TK_RST EXYNOS4_GPF0(6)
-#define GPIO_TK_RST_04 EXYNOS4_GPK3(3)
-#define GPIO_TK_POWER EXYNOS4_GPF0(6)
-
-#define ABOV_TK_FW_VERSION 0xA
-#define ABOV_TK_FW_CHECKSUM_H 0xA2
-#define ABOV_TK_FW_CHECKSUM_L 0x50
-
-/* use FPCB 0.3 from hw rev0.2 board*/
-#define ABOV_TK_FW_VERSION_02 0x13
-#define ABOV_TK_FW_CHECKSUM_H_02 0x06
-#define ABOV_TK_FW_CHECKSUM_L_02 0x16
-
-#define ABOV_TK_FW_NAME "abov/abov_tk.fw"
-#define ABOV_TK_FW_NAME_02 "abov/abov_tk_r02.fw"
-
 int key_led_control(bool on)
 {
 	struct regulator *regulator;
@@ -270,119 +215,11 @@ int key_led_control(bool on)
 	return 0;
 }
 
-int touchkey_power_control_regulator(bool on)
-{
-	struct regulator *regulator;
-
-	if (abov_key_enabled == on) {
-		printk(KERN_ERR"%s command error %d\n", __func__, on);
-		return 0;
-	}
-
-	printk(KERN_DEBUG "[TK] %s %s\n",
-		__func__, on ? "on" : "off");
-
-	regulator = regulator_get(NULL, "sensor_2v8");
-	if (IS_ERR(regulator))
-		return PTR_ERR(regulator);
-
-	if (on)
-		regulator_enable(regulator);
-	else
-		regulator_disable(regulator);
-	regulator_put(regulator);
-
-	abov_key_enabled = on;
-
-	return 0;
-}
-
-int touchkey_power_control_gpio(bool on)
-{
-	if (abov_key_enabled == on) {
-		printk(KERN_ERR"%s command error %d\n", __func__, on);
-		return 0;
-	}
-
-	printk(KERN_DEBUG "[TK] %s %s\n",
-		__func__, on ? "on" : "off");
-
-	if (on)
-		gpio_direction_output(GPIO_TK_POWER, 1);
-	else
-		gpio_direction_output(GPIO_TK_POWER, 0);
-
-	abov_key_enabled = on;
-
-	return 0;
-}
-
 static struct abov_touchkey_platform_data abov_tk_pdata = {
-	.irq_flag = IRQF_TRIGGER_FALLING,
-	.gpio_scl = GPIO_TK_SCL,
-	.gpio_sda = GPIO_TK_SDA,
-	.gpio_rst = GPIO_TK_RST,
-	.gpio_int = GPIO_TOUCH_KEY_INT,
 	.keyled = key_led_control,
-	.fw_name = ABOV_TK_FW_NAME,
-	.fw_version = ABOV_TK_FW_VERSION,
-	.checksum_h = ABOV_TK_FW_CHECKSUM_H,
-	.checksum_l = ABOV_TK_FW_CHECKSUM_L,
 };
 
-static struct abov_touchkey_platform_data abov_tk_pdata_02 = {
-	.irq_flag = IRQF_TRIGGER_FALLING,
-	.gpio_scl = GPIO_TK_SCL,
-	.gpio_sda = GPIO_TK_SDA,
-	.gpio_rst = GPIO_TK_RST,
-	.gpio_int = GPIO_TOUCH_KEY_INT,
-	.keyled = key_led_control,
-	.fw_name = ABOV_TK_FW_NAME_02,
-	.fw_version = ABOV_TK_FW_VERSION_02,
-	.checksum_h = ABOV_TK_FW_CHECKSUM_H_02,
-	.checksum_l = ABOV_TK_FW_CHECKSUM_L_02,
-};
-
-static struct abov_touchkey_platform_data abov_tk_pdata_04 = {
-	.irq_flag = IRQF_TRIGGER_FALLING,
-	.gpio_scl = GPIO_TK_SCL,
-	.gpio_sda = GPIO_TK_SDA,
-	.gpio_rst = GPIO_TK_RST_04,
-	.gpio_int = GPIO_TOUCH_KEY_INT,
-	.keyled = key_led_control,
-	.power = touchkey_power_control_regulator,
-	.fw_name = ABOV_TK_FW_NAME_02,
-	.fw_version = ABOV_TK_FW_VERSION_02,
-	.checksum_h = ABOV_TK_FW_CHECKSUM_H_02,
-	.checksum_l = ABOV_TK_FW_CHECKSUM_L_02,
-};
-
-static struct abov_touchkey_platform_data abov_tk_pdata_05 = {
-	.irq_flag = IRQF_TRIGGER_FALLING,
-	.gpio_scl = GPIO_TK_SCL,
-	.gpio_sda = GPIO_TK_SDA,
-	.gpio_int = GPIO_TOUCH_KEY_INT,
-	.keyled = key_led_control,
-	.power = touchkey_power_control_gpio,
-	.fw_name = ABOV_TK_FW_NAME_02,
-	.fw_version = ABOV_TK_FW_VERSION_02,
-	.checksum_h = ABOV_TK_FW_CHECKSUM_H_02,
-	.checksum_l = ABOV_TK_FW_CHECKSUM_L_02,
-};
-
-static struct i2c_gpio_platform_data gpio_i2c_data9 = {
-	.sda_pin = GPIO_TK_SDA,
-	.scl_pin = GPIO_TK_SCL,
-	.udelay = 1,
-};
-
-struct platform_device s3c_device_i2c9 = {
-	.name = "i2c-gpio",
-	.id = 9,
-	.dev.platform_data = &gpio_i2c_data9,
-};
-
-static struct i2c_board_info i2c_devs9_emul[] = {
+static struct i2c_board_info i2c_devs_tk[] = {
 	{
 		I2C_BOARD_INFO(ABOV_TK_NAME, 0x20),
 		.platform_data = &abov_tk_pdata,
@@ -391,95 +228,19 @@ static struct i2c_board_info i2c_devs9_emul[] = {
 
 void __init kmini_touchkey_init(void)
 {
-	int gpio_int, gpio_rst, gpio_pwr;
-	int ret;
+	int gpio, ret;
 
-	printk(KERN_INFO "%s, systme_rev : %d\n", __func__, system_rev);
-
-	gpio_int = GPIO_TOUCH_KEY_INT;
-	ret = gpio_request(gpio_int, "TK_INT");
+	gpio = GPIO_TOUCH_KEY_INT;
+	ret = gpio_request(gpio, "TK_INT");
 	if (ret)
 		pr_err("failed to request gpio(TK_INT)(%d)\n", ret);
+	s3c_gpio_cfgpin(gpio, S3C_GPIO_SFN(0xf));
+	s3c_gpio_setpull(gpio, S3C_GPIO_PULL_NONE);
+	s5p_register_gpio_interrupt(gpio);
 
-	if (system_rev == 5) {
-		gpio_rst = GPIO_TK_RST_04;
-		abov_tk_pdata_02.gpio_rst = GPIO_TK_RST_04;
-	} else
-		gpio_rst = GPIO_TK_RST;
-
-	if (system_rev >= 6) {
-		gpio_pwr = GPIO_TK_POWER;
-		ret = gpio_request(gpio_pwr, "TK_PWR");
-		if (ret)
-			pr_err("failed to request gpio(TK_PWR)(%d)\n", ret);
-	} else {
-		ret = gpio_request(gpio_rst, "TK_RST");
-		if (ret)
-			pr_err("failed to request gpio(TK_RST)(%d)\n", ret);
-	}
-
-	if (lpcharge) {
-		printk(KERN_DEBUG "%s : lpcharge. touchkey driver unload\n", __func__);
-		s3c_gpio_cfgpin(gpio_int, S3C_GPIO_INPUT);
-		s3c_gpio_setpull(gpio_int, S3C_GPIO_PULL_DOWN);
-		if (system_rev >= 6) {
-			s3c_gpio_cfgpin(gpio_pwr, S3C_GPIO_OUTPUT);
-			s3c_gpio_setpull(gpio_pwr, S3C_GPIO_PULL_NONE);
-			gpio_direction_output(gpio_pwr, 0);
-		} else {
-			s3c_gpio_cfgpin(gpio_rst, S3C_GPIO_OUTPUT);
-			s3c_gpio_setpull(gpio_rst, S3C_GPIO_PULL_NONE);
-			gpio_direction_output(gpio_rst, 1);
-		}
-		return;
-	}
-
-#ifdef CONFIG_INPUT_TOUCHSCREEN
-	if (tsp_connect == false) {
-		printk(KERN_ERR "%s tsp_connect : %d\n", __func__, tsp_connect);
-		s3c_gpio_cfgpin(gpio_int, S3C_GPIO_INPUT);
-		s3c_gpio_setpull(gpio_int, S3C_GPIO_PULL_DOWN);
-		if (system_rev >= 6) {
-			s3c_gpio_cfgpin(gpio_pwr, S3C_GPIO_INPUT);
-			s3c_gpio_setpull(gpio_pwr, S3C_GPIO_PULL_DOWN);
-		} else {
-			s3c_gpio_cfgpin(gpio_rst, S3C_GPIO_INPUT);
-			s3c_gpio_setpull(gpio_rst, S3C_GPIO_PULL_DOWN);
-		}
-		return;
-	}
-#endif
-
-	s3c_gpio_cfgpin(gpio_int, S3C_GPIO_INPUT);
-	if (system_rev >= 1)
-		s3c_gpio_setpull(gpio_int, S3C_GPIO_PULL_UP);
-	else
-		s3c_gpio_setpull(gpio_int, S3C_GPIO_PULL_NONE);
-	s5p_register_gpio_interrupt(gpio_int);
-
-	i2c_devs9_emul[0].irq = gpio_to_irq(gpio_int);
+	i2c_devs_tk[0].irq = gpio_to_irq(gpio);
 	printk(KERN_ERR "%s touch : %d \n", __func__,
-		i2c_devs9_emul[0].irq);
-
-	if (system_rev >= 6) {
-		s3c_gpio_cfgpin(gpio_pwr, S3C_GPIO_OUTPUT);
-		s3c_gpio_setpull(gpio_pwr, S3C_GPIO_PULL_NONE);
-		gpio_direction_output(gpio_pwr, 0);
-	} else {
-		s3c_gpio_cfgpin(gpio_rst, S3C_GPIO_OUTPUT);
-		s3c_gpio_setpull(gpio_rst, S3C_GPIO_PULL_NONE);
-		gpio_direction_output(gpio_rst, 1);
-	}
-
-	if (system_rev >= 6)
-		i2c_devs9_emul[0].platform_data = &abov_tk_pdata_05;
-	else if (system_rev == 5)
-		i2c_devs9_emul[0].platform_data = &abov_tk_pdata_04;
-	else if ((system_rev < 5) && (system_rev >= 2))
-		i2c_devs9_emul[0].platform_data = &abov_tk_pdata_02;
-
-	i2c_register_board_info(9, i2c_devs9_emul,
-		ARRAY_SIZE(i2c_devs9_emul));
+		i2c_devs_tk[0].irq);
 };
 #endif
 
@@ -503,8 +264,13 @@ static void smdk4270_gpio_keys_config_setup(void)
 		return;
 	}
 	/* set pull up gpio key */
+#ifdef CONFIG_MACH_KMINI
 	s3c_gpio_setpull(GPIO_VOL_UP, S3C_GPIO_PULL_NONE);
 	s3c_gpio_setpull(GPIO_VOL_DOWN, S3C_GPIO_PULL_NONE);
+#else
+	s3c_gpio_setpull(GPIO_VOL_UP, S3C_GPIO_PULL_UP);
+	s3c_gpio_setpull(GPIO_VOL_DOWN, S3C_GPIO_PULL_UP);
+#endif
 	s3c_gpio_setpull(GPIO_HOME_KEY, S3C_GPIO_PULL_UP);
 }
 
@@ -514,7 +280,6 @@ static struct gpio_keys_button smdk4270_button[] = {
 		.gpio = GPIO_PMIC_ONOB,
 		.desc = "gpio-keys: KEY_POWER",
 		.active_low = 1,
-		.debounce_interval = 10,
 		.wakeup = 1,
 #ifdef CONFIG_SEC_DEBUG
 		.isr_hook = sec_debug_check_crash_key,
@@ -524,7 +289,6 @@ static struct gpio_keys_button smdk4270_button[] = {
 		.gpio = GPIO_VOL_UP,
 		.desc = "gpio-keys: KEY_VOLUP",
 		.active_low = 1,
-		.debounce_interval = 10,
 #ifdef CONFIG_SEC_DEBUG
 		.isr_hook = sec_debug_check_crash_key,
 #endif
@@ -533,7 +297,6 @@ static struct gpio_keys_button smdk4270_button[] = {
 		.gpio = GPIO_VOL_DOWN,
 		.desc = "gpio-keys: KEY_VOLDOWN",
 		.active_low = 1,
-		.debounce_interval = 10,
 #ifdef CONFIG_SEC_DEBUG
 		.isr_hook = sec_debug_check_crash_key,
 #endif
@@ -542,7 +305,6 @@ static struct gpio_keys_button smdk4270_button[] = {
 		.gpio = GPIO_HOME_KEY,
 		.desc = "gpio-keys: KEY_HOMEPAGE",
 		.active_low = 1,
-		.debounce_interval = 10,
 		.wakeup = 1,
 	},
 };
@@ -550,9 +312,6 @@ static struct gpio_keys_button smdk4270_button[] = {
 static struct gpio_keys_platform_data smdk4270_gpiokeys_platform_data = {
 	smdk4270_button,
 	ARRAY_SIZE(smdk4270_button),
-#ifdef CONFIG_SENSORS_HALL
-	.gpio_flip_cover = GPIO_HALL_SENSOR_INT,
-#endif
 };
 
 static struct platform_device smdk4270_gpio_keys = {
@@ -568,7 +327,7 @@ static struct platform_device *smdk4270_input_devices[] __initdata = {
 	&s3c_device_i2c3,
 #endif
 #if defined(CONFIG_KEYBOARD_ABOV_TOUCH)
-	&s3c_device_i2c9,
+	&s3c_device_i2c4,
 #endif
 };
 
@@ -577,18 +336,14 @@ void __init exynos4_smdk4270_input_init(void)
 	smdk4270_gpio_keys_config_setup();
 #if defined(CONFIG_INPUT_TOUCHSCREEN)
 	kmini_tsp_init();
+	s3c_i2c3_set_platdata(NULL);
+	i2c_register_board_info(3, i2c_devs_touch, ARRAY_SIZE(i2c_devs_touch));
 #endif
 #if defined(CONFIG_KEYBOARD_ABOV_TOUCH)
 	kmini_touchkey_init();
+	s3c_i2c4_set_platdata(NULL);
+	i2c_register_board_info(4, i2c_devs_tk, ARRAY_SIZE(i2c_devs_tk));
 #endif
-#ifdef CONFIG_SENSORS_HALL
-		s3c_gpio_setpull(GPIO_HALL_SENSOR_INT, S3C_GPIO_PULL_NONE);
-		gpio_request(GPIO_HALL_SENSOR_INT, "GPIO_HALL_SENSOR_INT");
-		s3c_gpio_cfgpin(GPIO_HALL_SENSOR_INT, S3C_GPIO_SFN(0xf));
-		s5p_register_gpio_interrupt(GPIO_HALL_SENSOR_INT);
-		gpio_direction_input(GPIO_HALL_SENSOR_INT);
-#endif
-
 	platform_add_devices(smdk4270_input_devices,
-		ARRAY_SIZE(smdk4270_input_devices));
+			ARRAY_SIZE(smdk4270_input_devices));
 }

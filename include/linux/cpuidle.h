@@ -228,6 +228,16 @@ static inline void cpuidle_unregister_governor(struct cpuidle_governor *gov) { }
 
 #endif
 
+const char *get_not_w_aftr_cause(void);
+void cpuidle_aftr_log_en(int onoff);
+
+void cpuidle_w_after_oneshot_log_en(void);
+void cpuidle_set_w_aftr_enable(bool enable);
+bool cpuidle_get_w_after_enable_state(void);
+void cpuidle_set_w_aftr_jig_check_enable(bool enable);
+bool cpuidle_get_w_aftr_jig_check_enable(void);
+
+
 #ifdef CONFIG_ARCH_HAS_CPU_RELAX
 #define CPUIDLE_DRIVER_STATE_START	1
 #else

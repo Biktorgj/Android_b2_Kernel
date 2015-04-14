@@ -491,9 +491,6 @@ static void process_ep_out_intr(struct s3c_udc *dev)
 static irqreturn_t s3c_udc_irq(int irq, void *_dev)
 {
 	struct s3c_udc *dev = _dev;
-#if defined(CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE)
-	struct usb_composite_dev *cdev = get_gadget_data(&dev->gadget);
-#endif
 	u32 intr_status;
 	u32 usb_status, gintmsk;
 	unsigned long flags;
@@ -581,13 +578,10 @@ static irqreturn_t s3c_udc_irq(int irq, void *_dev)
 			} else
 				reset_available = 1;
 		} else {
-#if defined(CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE)
-			cdev->mute_switch = 0;
-#endif
 			reset_available = 1;
 			DEBUG_ISR("\t\tRESET handling skipped\n");
 			wake_lock_timeout(&dev->usbd_wake_lock, HZ * 5);
-			printk(KERN_DEBUG "usb: reset\n");
+			printk(KERN_DEBUG "udb : reset \n");
 			/* report disconnect; the driver is already quiesced */
 			if (dev->driver) {
 				spin_unlock(&dev->lock);

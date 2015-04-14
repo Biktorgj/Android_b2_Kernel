@@ -117,10 +117,20 @@
 #define EXYNOS_GPU0_NUMBER		3
 #define EXYNOS_GPU1_NUMBER		4
 #endif
+#if defined(CONFIG_SOC_EXYNOS3250)
+#define EXYNOS_TRIMINFO_RELOAD1         0x01
+#define EXYNOS_TRIMINFO_RELOAD2         0x11
+#define EXYNOS_TMU_TRIMINFO_CON1        0x10
+#define EXYNOS_TMU_TRIMINFO_CON2        0x14
+#endif
 /*Definitions for thermal zone*/
 #define GET_ZONE(trip) (trip + 2)
 #define GET_TRIP(zone) (zone - 2)
+#ifdef CONFIG_SOC_EXYNOS3470
+#define EXYNOS_ZONE_COUNT		2
+#else
 #define EXYNOS_ZONE_COUNT		3
+#endif
 /* CPU Zone information */
 #define PANIC_ZONE      		4
 #define WARN_ZONE       		3
@@ -283,6 +293,7 @@ struct exynos_tmu_data {
 	int irq[EXYNOS_TMU_COUNT];
 	enum soc_type soc;
 	struct work_struct irq_work;
+	struct delayed_work start_temp_work;
 	struct mutex lock;
 	struct clk *clk;
 #ifdef CONFIG_SOC_EXYNOS3470
@@ -291,6 +302,10 @@ struct exynos_tmu_data {
 	u8 temp_error1[EXYNOS_TMU_COUNT];
 	u8 temp_error2[EXYNOS_TMU_COUNT];
 #endif
+
+	char lot_name[6];
+	int efuse_valid;
+	int calibration_valid;
 };
 
 struct	thermal_trip_point_conf {

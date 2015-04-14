@@ -56,6 +56,14 @@ struct exynos_pm_reg {
 	unsigned int value;
 };
 
+struct exynos_pm_seq_reg {
+	struct list_head node;
+	enum EXYNOS_PROCESS_TYPE reg_type;
+	void __iomem *reg;
+	const char *name;
+	unsigned int value;
+};
+
 struct exynos_pm_domain;
 
 struct exynos_pm_callback {
@@ -84,6 +92,8 @@ struct exynos_pm_domain {
 	rwlock_t callback_post_off_lock;
 	bool is_interrupt_domain;
 	spinlock_t interrupt_lock;
+	struct list_head power_seq_before_list;
+	struct list_head power_seq_after_list;
 };
 
 extern void exynos_pm_powerdomain_init(struct exynos_pm_domain *domain);
@@ -101,6 +111,12 @@ extern void exynos_pm_add_reg(struct exynos_pm_domain *domain,				\
 					enum EXYNOS_PROCESS_ORDER reg_order,		\
 					enum EXYNOS_PROCESS_TYPE reg_type,		\
 					void __iomem *reg,				\
+					unsigned int value);
+extern void exynos_pm_add_pwr_seq_reg(struct exynos_pm_domain *domain,				\
+					enum EXYNOS_PROCESS_ORDER reg_order,		\
+					enum EXYNOS_PROCESS_TYPE reg_type,		\
+					void __iomem *reg,		\
+					const char *name,		\
 					unsigned int value);
 extern void exynos_pm_add_callback(struct exynos_pm_domain *domain,			\
 					enum EXYNOS_PROCESS_ORDER callback_order,	\
@@ -140,6 +156,8 @@ struct exynos_pm_domain PD = {								\
 	.callback_post_off_list	=	LIST_HEAD_INIT((PD).callback_post_off_list),	\
 	.callback_post_off_lock	=	__RW_LOCK_UNLOCKED((PD).callback_post_off_lock),\
 	.is_interrupt_domain	=	INTERRUPT,					\
+	.power_seq_before_list	=	LIST_HEAD_INIT((PD).power_seq_before_list),		\
+	.power_seq_after_list	=	LIST_HEAD_INIT((PD).power_seq_after_list),		\
 }
 
 #define EXYNOS_COMMON_GPD(PD, BASE, NAME)						\
@@ -148,17 +166,6 @@ struct exynos_pm_domain PD = {								\
 		NAME,									\
 		exynos_pm_domain_power_control,						\
 		exynos_pm_domain_power_control,						\
-		exynos_pm_genpd_power_on,						\
-		exynos_pm_genpd_power_off,						\
-		false									\
-	)
-
-#define EXYNOS_COMMON_GPD_CUSTOM(PD, BASE, NAME, ON, OFF)				\
-	EXYNOS_GPD(PD,									\
-		BASE,									\
-		NAME,									\
-		ON,						\
-		OFF,						\
 		exynos_pm_genpd_power_on,						\
 		exynos_pm_genpd_power_off,						\
 		false									\

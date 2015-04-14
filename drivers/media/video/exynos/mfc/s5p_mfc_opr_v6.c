@@ -78,11 +78,15 @@ static inline void s5p_mfc_write_shm(struct s5p_mfc_dev *dev,
 {
 	mfc_debug(2, "SHM: write data(0x%x) to 0x%x\n", data, ofs);
 	writel(data, (dev->dis_shm_buf.virt + ofs));
+	s5p_mfc_mem_clean_priv(dev->dis_shm_buf.alloc, dev->dis_shm_buf.virt,
+								ofs, 4);
 }
 
 static inline u32 s5p_mfc_read_shm(struct s5p_mfc_dev *dev, unsigned int ofs)
 {
 	mfc_debug(2, "SHM: read data from 0x%x\n", ofs);
+	s5p_mfc_mem_inv_priv(dev->dis_shm_buf.alloc, dev->dis_shm_buf.virt,
+								ofs, 4);
 	return readl(dev->dis_shm_buf.virt + ofs);
 }
 
@@ -161,6 +165,7 @@ int s5p_mfc_alloc_codec_buffers(struct s5p_mfc_ctx *ctx)
 	switch (ctx->codec_mode) {
 	case S5P_FIMV_CODEC_H264_DEC:
 	case S5P_FIMV_CODEC_H264_MVC_DEC:
+		dec->mv_count = dec->total_dpb_count;
 		if (dec->is_dual_dpb && dec->mv_count < dec->tiled_buf_cnt)
 			dec->mv_count = dec->tiled_buf_cnt;
 		if (mfc_version(dev) == 0x61)
@@ -440,6 +445,8 @@ int alloc_dev_dis_shared_buffer(struct s5p_mfc_dev *dev, void *alloc_ctx)
 	}
 
 	memset((void *)dev->dis_shm_buf.virt, 0, PAGE_SIZE);
+	s5p_mfc_mem_clean_priv(dev->dis_shm_buf.alloc, dev->dis_shm_buf.virt, 0,
+			PAGE_SIZE);
 
 	return 0;
 }
@@ -2319,15 +2326,9 @@ static inline int s5p_mfc_run_dec_frame(struct s5p_mfc_ctx *ctx)
 	mfc_debug(2, "Temp vb: %p\n", temp_vb);
 	mfc_debug(2, "Src Addr: 0x%08lx\n",
 		(unsigned long)s5p_mfc_mem_plane_addr(ctx, &temp_vb->vb, 0));
-	if (dec->consumed) {
-		s5p_mfc_set_dec_stream_buffer(ctx,
-				s5p_mfc_mem_plane_addr(ctx, &temp_vb->vb, 0),
-				dec->consumed, dec->remained_size);
-	} else {
-		s5p_mfc_set_dec_stream_buffer(ctx,
-				s5p_mfc_mem_plane_addr(ctx, &temp_vb->vb, 0),
-				0, temp_vb->vb.v4l2_planes[0].bytesused);
-	}
+	s5p_mfc_set_dec_stream_buffer(ctx,
+			s5p_mfc_mem_plane_addr(ctx, &temp_vb->vb, 0),
+			0, temp_vb->vb.v4l2_planes[0].bytesused);
 
 	index = temp_vb->vb.v4l2_buf.index;
 	if (call_cop(ctx, set_buf_ctrls_val, ctx, &ctx->src_ctrls[index]) < 0)

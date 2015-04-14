@@ -1,14 +1,3 @@
-/*
- * Copyright (c) 2012-2013 Samsung Electronics Co., Ltd.
- *              http://www.samsung.com
- *
- * sec_debug.h - Samsung mobile debugging features
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- */
-
 #ifndef SEC_DEBUG_H
 #define SEC_DEBUG_H
 
@@ -51,9 +40,6 @@ struct input_debug_drv_data {
 };
 
 extern union sec_debug_level_t sec_debug_level;
-
-extern unsigned int get_sec_debug_level(void);
-extern void sec_debug_set_upload_magic(unsigned magic, char *str);
 
 extern int sec_debug_init(void);
 
@@ -258,10 +244,13 @@ static inline void debug_rwsemaphore_up_log(struct rw_semaphore *sem)
 {
 }
 #endif
+
+#ifdef CONFIG_SEC_DEBUG_SCHED_LOG
+void sched_log_clean_cache(void);
+#endif
+
 enum sec_debug_aux_log_idx {
 	SEC_DEBUG_AUXLOG_CPU_CLOCK_SWITCH_CHANGE,
-	SEC_DEBUG_AUXLOG_CPU_BUS_CLOCK_CHANGE,
-	SEC_DEBUG_AUXLOG_THERMAL_CHANGE,
 	SEC_DEBUG_AUXLOG_RUNTIME_PM_CHANGE,
 	SEC_DEBUG_AUXLOG_PM_CHANGE,
 	SEC_DEBUG_AUXLOG_NOTIFY_FAIL,

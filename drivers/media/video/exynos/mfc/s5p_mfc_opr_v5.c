@@ -207,7 +207,7 @@ int s5p_mfc_alloc_codec_buffers(struct s5p_mfc_ctx *ctx)
 		ctx->port_a_size =
 		    ALIGN(S5P_FIMV_DEC_OVERLAP_TRANSFORM_SIZE +
 			     S5P_FIMV_DEC_UPNB_MV_SIZE +
-			     S5P_FIMV_DEC_SUB_ANCHOR_MV_SIZE_VC1 +
+			     S5P_FIMV_DEC_SUB_ANCHOR_MV_SIZE +
 			     S5P_FIMV_DEC_NB_DCAC_SIZE +
 			     3 * S5P_FIMV_DEC_VC1_BITPLANE_SIZE,
 			     S5P_FIMV_DEC_BUF_ALIGN);
@@ -362,6 +362,8 @@ int s5p_mfc_alloc_instance_buffer(struct s5p_mfc_ctx *ctx)
 		}
 
 		memset(ctx->ctx.virt, 0, ctx->ctx_buf_size);
+		s5p_mfc_mem_clean_priv(ctx->ctx.alloc, ctx->ctx.virt, 0,
+				ctx->ctx_buf_size);
 	}
 	/*
 	ctx->ctx.dma = dma_map_single(ctx->dev->v4l2_dev.dev,
@@ -685,8 +687,8 @@ int s5p_mfc_set_dec_frame_buffer(struct s5p_mfc_ctx *ctx)
 		buf_addr1 += S5P_FIMV_DEC_UPNB_MV_SIZE;
 		buf_size1 -= S5P_FIMV_DEC_UPNB_MV_SIZE;
 		WRITEL(OFFSETA(buf_addr1), S5P_FIMV_VC1_SA_MV_ADR);
-		buf_addr1 += S5P_FIMV_DEC_SUB_ANCHOR_MV_SIZE_VC1;
-		buf_size1 -= S5P_FIMV_DEC_SUB_ANCHOR_MV_SIZE_VC1;
+		buf_addr1 += S5P_FIMV_DEC_SUB_ANCHOR_MV_SIZE;
+		buf_size1 -= S5P_FIMV_DEC_SUB_ANCHOR_MV_SIZE;
 		WRITEL(OFFSETA(buf_addr1), S5P_FIMV_VC1_BITPLANE3_ADR);
 		buf_addr1 += S5P_FIMV_DEC_VC1_BITPLANE_SIZE;
 		buf_size1 -= S5P_FIMV_DEC_VC1_BITPLANE_SIZE;
@@ -1746,50 +1748,6 @@ static inline int s5p_mfc_run_dec_last_frames(struct s5p_mfc_ctx *ctx)
 	return 0;
 }
 
-#define is_full_DPB(ctx, total)		(((ctx)->dst_queue_cnt == 1) && 	\
-					((total) >= (ctx->dpb_count + 5)))
-/* Try to search non-referenced DPB on ref-queue */
-static struct s5p_mfc_buf *search_for_DPB(struct s5p_mfc_ctx *ctx)
-{
-	struct s5p_mfc_dec *dec = ctx->dec_priv;
-	struct s5p_mfc_buf *dst_vb = NULL;
-	int found = 0, temp_index, sum_dpb;
-
-	mfc_debug(2, "Failed to find non-referenced DPB\n");
-
-	list_for_each_entry(dst_vb, &dec->ref_queue, list) {
-		temp_index = dst_vb->vb.v4l2_buf.index;
-		if ((dec->dynamic_used & (1 << temp_index)) == 0) {
-			found = 1;
-			break;
-		}
-	}
-
-	if (!found) {
-		dst_vb = list_entry(ctx->dst_queue.next,
-				struct s5p_mfc_buf, list);
-
-		sum_dpb = ctx->dst_queue_cnt + dec->ref_queue_cnt;
-
-		if (is_full_DPB(ctx, sum_dpb)) {
-			mfc_debug(2, "We should use this buffer.\n");
-		} else {
-			list_del(&dst_vb->list);
-			ctx->dst_queue_cnt--;
-
-			list_add_tail(&dst_vb->list, &dec->ref_queue);
-			dec->ref_queue_cnt++;
-
-			mfc_debug(2, "Failed to start, ref = %d, dst = %d\n",
-					dec->ref_queue_cnt, ctx->dst_queue_cnt);
-
-			return NULL;
-		}
-	}
-
-	return dst_vb;
-}
-
 static inline int s5p_mfc_run_dec_frame(struct s5p_mfc_ctx *ctx)
 {
 	struct s5p_mfc_dev *dev = ctx->dev;
@@ -1819,45 +1777,17 @@ static inline int s5p_mfc_run_dec_frame(struct s5p_mfc_ctx *ctx)
 	mfc_debug(2, "Src Addr: 0x%08lx\n",
 		(unsigned long)s5p_mfc_mem_plane_addr(ctx, &temp_vb->vb, 0));
 	s5p_mfc_set_dec_desc_buffer(ctx);
-	if (dec->consumed) {
-		s5p_mfc_set_dec_stream_buffer(ctx,
-				s5p_mfc_mem_plane_addr(ctx, &temp_vb->vb, 0),
-				dec->consumed, dec->remained_size);
-	} else {
-		s5p_mfc_set_dec_stream_buffer(ctx,
-				s5p_mfc_mem_plane_addr(ctx, &temp_vb->vb, 0),
-				0, temp_vb->vb.v4l2_planes[0].bytesused);
-	}
+	s5p_mfc_set_dec_stream_buffer(ctx,
+			s5p_mfc_mem_plane_addr(ctx, &temp_vb->vb, 0),
+			0, temp_vb->vb.v4l2_planes[0].bytesused);
 
 	index = temp_vb->vb.v4l2_buf.index;
 	if (call_cop(ctx, set_buf_ctrls_val, ctx, &ctx->src_ctrls[index]) < 0)
 		mfc_err("failed in set_buf_ctrls_val\n");
 
 	if (dec->is_dynamic_dpb) {
-		if (is_h264(ctx)) {
-			int found = 0, temp_index;
-
-			/* Try to use the non-referenced DPB on dst-queue */
-			list_for_each_entry(dst_vb, &ctx->dst_queue, list) {
-				temp_index = dst_vb->vb.v4l2_buf.index;
-				if ((dec->dynamic_used & (1 << temp_index)) == 0) {
-					found = 1;
-					break;
-				}
-			}
-
-			if (!found) {
-				dst_vb = search_for_DPB(ctx);
-				if (!dst_vb) {
-					spin_unlock_irqrestore(&dev->irqlock, flags);
-					return -EAGAIN;
-				}
-			}
-		} else {
-			dst_vb = list_entry(ctx->dst_queue.next,
-					struct s5p_mfc_buf, list);
-		}
-
+		dst_vb = list_entry(ctx->dst_queue.next,
+						struct s5p_mfc_buf, list);
 		mfc_set_dynamic_dpb(ctx, dst_vb);
 	}
 

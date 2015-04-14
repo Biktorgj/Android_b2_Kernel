@@ -160,10 +160,7 @@ static void exynos_power_down_cpu(unsigned int cpu)
 	__raw_writel((__raw_readl(power_base) & ~EXYNOS_CORE_LOCAL_PWR_EN),
 				power_base);
 #else
-	if (soc_is_exynos5260())
-		__raw_writel(0x80000000, power_base);
-	else
-		__raw_writel(0, power_base);
+	__raw_writel(0, power_base);
 #endif
 
 #ifdef CONFIG_EXYNOS5_MP

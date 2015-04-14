@@ -166,6 +166,32 @@ static struct pm_qos_object cpu_freq_max_pm_qos = {
 	.name = "cpu_freq_max",
 };
 
+static BLOCKING_NOTIFIER_HEAD(cpu_online_min_notifier);
+static struct pm_qos_constraints cpu_online_min_constraints = {
+	.list = PLIST_HEAD_INIT(cpu_online_min_constraints.list),
+	.target_value = PM_QOS_CPU_ONLINE_MIN_DEFAULT_VALUE,
+	.default_value = PM_QOS_CPU_ONLINE_MIN_DEFAULT_VALUE,
+	.type = PM_QOS_MAX,
+	.notifiers = &cpu_online_min_notifier,
+};
+static struct pm_qos_object cpu_online_min_pm_qos = {
+	.constraints = &cpu_online_min_constraints,
+	.name = "cpu_online_min",
+};
+
+static BLOCKING_NOTIFIER_HEAD(cpu_online_max_notifier);
+static struct pm_qos_constraints cpu_online_max_constraints = {
+	.list = PLIST_HEAD_INIT(cpu_online_max_constraints.list),
+	.target_value = PM_QOS_CPU_ONLINE_MAX_DEFAULT_VALUE,
+	.default_value = PM_QOS_CPU_ONLINE_MAX_DEFAULT_VALUE,
+	.type = PM_QOS_MIN,
+	.notifiers = &cpu_online_max_notifier,
+};
+static struct pm_qos_object cpu_online_max_pm_qos = {
+	.constraints = &cpu_online_max_constraints,
+	.name = "cpu_online_max",
+};
+
 static BLOCKING_NOTIFIER_HEAD(kfc_freq_min_notifier);
 static struct pm_qos_constraints kfc_freq_min_constraints = {
 	.list = PLIST_HEAD_INIT(kfc_freq_min_constraints.list),
@@ -192,6 +218,78 @@ static struct pm_qos_object kfc_freq_max_pm_qos = {
 	.name = "kfc_freq_max",
 };
 
+static BLOCKING_NOTIFIER_HEAD(touch_press_notifier);
+static struct pm_qos_constraints touch_press_constraints = {
+	.list = PLIST_HEAD_INIT(touch_press_constraints.list),
+	.target_value = PM_QOS_TOUCH_PRESS_DEFAULT_VALUE,
+	.default_value = PM_QOS_TOUCH_PRESS_DEFAULT_VALUE,
+	.type = PM_QOS_MAX,
+	.notifiers = &touch_press_notifier,
+};
+
+static struct pm_qos_object touch_press_pm_qos = {
+	.constraints = &touch_press_constraints,
+	.name = "touch_press",
+};
+
+static BLOCKING_NOTIFIER_HEAD(touch_move_notifier);
+static struct pm_qos_constraints touch_move_constraints = {
+	.list = PLIST_HEAD_INIT(touch_move_constraints.list),
+	.target_value = PM_QOS_TOUCH_MOVE_DEFAULT_VALUE,
+	.default_value = PM_QOS_TOUCH_MOVE_DEFAULT_VALUE,
+	.type = PM_QOS_MAX,
+	.notifiers = &touch_move_notifier,
+};
+
+static struct pm_qos_object touch_move_pm_qos = {
+	.constraints = &touch_move_constraints,
+	.name = "touch_move",
+};
+
+static BLOCKING_NOTIFIER_HEAD(touch_release_notifier);
+static struct pm_qos_constraints touch_release_constraints = {
+	.list = PLIST_HEAD_INIT(touch_release_constraints.list),
+	.target_value = PM_QOS_TOUCH_RELEASE_DEFAULT_VALUE,
+	.default_value = PM_QOS_TOUCH_RELEASE_DEFAULT_VALUE,
+	.type = PM_QOS_MAX,
+	.notifiers = &touch_release_notifier,
+};
+
+static struct pm_qos_object touch_release_pm_qos = {
+	.constraints = &touch_release_constraints,
+	.name = "touch_release",
+};
+
+
+static BLOCKING_NOTIFIER_HEAD(cpu_gov_up_level_notifier);
+static struct pm_qos_constraints cpu_gov_up_level_constraints = {
+	.list = PLIST_HEAD_INIT(cpu_gov_up_level_constraints.list),
+	.target_value = PM_QOS_CPU_GOV_UP_LEVEL_DEFAULT_VALUE,
+	.default_value = PM_QOS_CPU_GOV_UP_LEVEL_DEFAULT_VALUE,
+	.type = PM_QOS_MAX,
+	.notifiers = &cpu_gov_up_level_notifier,
+};
+
+static struct pm_qos_object cpu_gov_up_level_pm_qos = {
+	.constraints = &cpu_gov_up_level_constraints,
+	.name = "cpu_gov_up_level",
+};
+
+static BLOCKING_NOTIFIER_HEAD(cpu_freq_up_threshold_notifier);
+static struct pm_qos_constraints cpu_freq_up_threshold_constraints = {
+	.list = PLIST_HEAD_INIT(cpu_freq_up_threshold_constraints.list),
+	.target_value = PM_QOS_CPU_FREQ_UP_THRESHOLD_DEFAULT_VALUE,
+	.default_value = PM_QOS_CPU_FREQ_UP_THRESHOLD_DEFAULT_VALUE,
+	.type = PM_QOS_MIN,
+	.notifiers = &cpu_freq_up_threshold_notifier,
+};
+
+static struct pm_qos_object cpu_freq_up_threshold_pm_qos = {
+	.constraints = &cpu_freq_up_threshold_constraints,
+	.name = "cpu_freq_up_threshold",
+};
+
+
 static BLOCKING_NOTIFIER_HEAD(display_throughput_notifier);
 static struct pm_qos_constraints display_tput_constraints = {
 	.list = PLIST_HEAD_INIT(display_tput_constraints.list),
@@ -215,8 +313,16 @@ static struct pm_qos_object *pm_qos_array[] = {
 	&network_throughput_pm_qos,
 	&cpu_freq_min_pm_qos,
 	&cpu_freq_max_pm_qos,
+	&cpu_online_min_pm_qos,
+	&cpu_online_max_pm_qos,
 	&kfc_freq_min_pm_qos,
 	&kfc_freq_max_pm_qos,
+	&touch_press_pm_qos,
+	&touch_move_pm_qos,
+	&touch_release_pm_qos,
+	&cpu_gov_up_level_pm_qos,
+	&cpu_freq_up_threshold_pm_qos,
+
 	&display_throughput_pm_qos,
 };
 

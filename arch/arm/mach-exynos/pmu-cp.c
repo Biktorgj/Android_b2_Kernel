@@ -65,7 +65,8 @@ int exynos4_cp_reset(void)
 {
 	u32 cp_ctrl;
 	int ret = 0;
-	pr_err("mif: %s: +++\n", __func__);
+
+	pr_info("%s\n", __func__);
 
 	/* set sys_pwr_cfg registers */
 	exynos_sys_powerdown_conf_cp(CP_RESET);
@@ -80,7 +81,6 @@ int exynos4_cp_reset(void)
 	usleep_range(80, 100);
 
 	/* need to check reset is ok or not at message box */
-	pr_err("mif: %s: ---\n", __func__);
 	return ret;
 }
 
@@ -88,16 +88,14 @@ int exynos4_cp_reset(void)
 int exynos4_cp_release(void)
 {
 	u32 cp_ctrl;
-	pr_err("mif: %s: +++\n", __func__);
 
+	pr_info("%s\n", __func__);
 	cp_ctrl = __raw_readl(EXYNOS3470_CP_CTRL);
 	cp_ctrl |= CP_START;
-
 	__raw_writel(cp_ctrl, EXYNOS3470_CP_CTRL);
-	pr_err("mif: %s: cp_ctrl [0x%08x] -> [0x%08x]\n",
-		__func__, cp_ctrl, __raw_readl(EXYNOS3470_CP_CTRL));
+	pr_info("%s, cp_ctrl[0x%08x] -> [0x%08x]\n", __func__, cp_ctrl,
+		__raw_readl(EXYNOS3470_CP_CTRL));
 
-	pr_err("mif: %s: ---\n", __func__);
 	return 0;
 }
 
@@ -105,16 +103,14 @@ int exynos4_cp_release(void)
 int exynos4_cp_active_clear(void)
 {
 	u32 cp_ctrl;
-	pr_err("mif: %s: +++\n", __func__);
 
+	pr_info("%s\n", __func__);
 	cp_ctrl = __raw_readl(EXYNOS3470_CP_CTRL);
 	cp_ctrl |= CP_ACTIVE_CLR;
-
 	__raw_writel(cp_ctrl, EXYNOS3470_CP_CTRL);
-	pr_err("mif: %s: cp_ctrl [0x%08x] -> [0x%08x]\n",
-		__func__, cp_ctrl, __raw_readl(EXYNOS3470_CP_CTRL));
+	pr_info("%s, cp_ctrl[0x%08x] -> [0x%08x]\n", __func__, cp_ctrl,
+		__raw_readl(EXYNOS3470_CP_CTRL));
 
-	pr_err("mif: %s: ---\n", __func__);
 	return 0;
 }
 
@@ -122,16 +118,15 @@ int exynos4_cp_active_clear(void)
 int exynos4_clear_cp_reset_req(void)
 {
 	u32 cp_ctrl;
-	pr_err("mif: %s: +++\n", __func__);
+
+	pr_info("%s\n", __func__);
 
 	cp_ctrl = __raw_readl(EXYNOS3470_CP_CTRL);
 	cp_ctrl |= CP_RESET_REQ_CLR;
-
 	__raw_writel(cp_ctrl, EXYNOS3470_CP_CTRL);
-	pr_err("mif: %s: cp_ctrl [0x%08x] -> [0x%08x]\n",
-		__func__, cp_ctrl, __raw_readl(EXYNOS3470_CP_CTRL));
 
-	pr_err("mif: %s: ---\n", __func__);
+	pr_info("%s, cp_ctrl[0x%08x] -> [0x%08x]\n", __func__, cp_ctrl,
+		__raw_readl(EXYNOS3470_CP_CTRL));
 	return 0;
 }
 
@@ -148,7 +143,7 @@ int exynos4_get_cp_power_status(void)
 		return 0;
 }
 
-static void set_bts_cp(enum cp_mode mode)
+void set_bts_cp(enum cp_mode mode)
 {
 	struct clk *cp_clk = clk_get(NULL, "c2c");
 
@@ -181,7 +176,8 @@ int exynos4_set_cp_power_onoff(enum cp_mode mode)
 {
 	u32 cp_ctrl;
 	int ret = 0;
-	pr_err("mif: %s: mode[%d]\n", __func__, mode);
+
+	pr_info("%s: mode[%d]\n", __func__, mode);
 
 	/* set sys_pwr_cfg registers */
 	exynos_sys_powerdown_conf_cp(mode);
@@ -191,7 +187,7 @@ int exynos4_set_cp_power_onoff(enum cp_mode mode)
 
 	if (mode == CP_POWER_ON) {
 		if (cp_ctrl & CP_PWRON) {
-			pr_err("mif: %s: CP already ON!!!\n", __func__);
+			pr_err("CP is already power ON!!!\n");
 			return -1;
 		}
 		cp_ctrl |= (CP_PWRON | CP_START);
@@ -229,7 +225,7 @@ void exynos_sys_powerdown_conf_cp(enum cp_mode mode)
 {
 	u32 i;
 
-	pr_err("mif: %s: mode [%d]\n", __func__, mode);
+	pr_info("%s: mode[%d]\n", __func__, mode);
 
 	for (i = 0; (exynos3470_pmu_cp_config[i].reg != PMU_TABLE_END) ; i++)
 		__raw_writel(exynos3470_pmu_cp_config[i].val[mode],
@@ -242,8 +238,8 @@ int exynos4_pmu_cp_init(void)
 	int ret = 0;
 	unsigned int gpio;
 
-        pr_info("%s\n", __func__);
-	if (samsung_rev() >= EXYNOS3470_REV_2_0) {
+	pr_info("%s\n", __func__);
+	if (samsung_rev() == EXYNOS3470_REV_2_0) {
 		gpio = EXYNOS4_GPM2(3);
 		s3c_gpio_cfgpin(gpio, S3C_GPIO_SFN(1));
 		s3c_gpio_setpull(gpio, S3C_GPIO_PULL_NONE);
@@ -269,7 +265,5 @@ int exynos4_pmu_cp_init(void)
 	exynos4_set_cp_power_onoff(CP_POWER_ON);
 #endif
 
-	pr_err("mif: %s: ---\n", __func__);
 	return ret;
 }
-

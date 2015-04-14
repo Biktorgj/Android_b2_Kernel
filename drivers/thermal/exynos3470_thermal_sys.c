@@ -414,27 +414,6 @@ static DEVICE_ATTR(oneshot_trip_freq, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP,
 static DEVICE_ATTR(oneshot_trip_temp, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP,
 		trip_point_temp_oneshot_show, trip_point_temp_oneshot_store);
 
-#ifdef CONFIG_SEC_PM
-static ssize_t
-curr_temp_show(struct device *dev, struct device_attribute *attr, char *buf)
-{
-        struct thermal_zone_device *tz = to_thermal_zone(dev);
-        long temperature;
-        int ret;
-
-        if (!tz->ops->get_temp)
-                return -EPERM;
-
-        ret = tz->ops->get_temp(tz, &temperature);
-
-        if (ret)
-                return ret;
-
-        return sprintf(buf, "%ld\n", temperature/100);
-}
-static DEVICE_ATTR(curr_temp, 0444, curr_temp_show, NULL);
-#endif
-
 static struct device_attribute trip_point_attrs[] = {
 	__ATTR(trip_point_0_type, 0444, trip_point_type_show, NULL),
 	__ATTR(trip_point_0_temp, 0444, trip_point_temp_show, NULL),
@@ -1367,12 +1346,6 @@ struct thermal_zone_device *thermal_zone_device_register(char *type,
 
 	if (result)
 		goto unregister;
-
-#ifdef CONFIG_SEC_PM
-	result = device_create_file(&tz->device, &dev_attr_curr_temp);
-        if (result)
-                goto unregister;
-#endif
 
 	result = thermal_add_hwmon_sysfs(tz);
 	if (result)

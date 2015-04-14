@@ -676,7 +676,6 @@ static int jpeg_probe(struct platform_device *pdev)
 	}
 
 	*vfd = jpeg_enc_videodev;
-	vfd->lock = &jpeg->lock;
 	vfd->ioctl_ops = get_jpeg_enc_v4l2_ioctl_ops();
 	ret = video_register_device(vfd, VFL_TYPE_GRABBER, JPEG_ENC_NUM);
 	if (ret) {
@@ -707,7 +706,6 @@ static int jpeg_probe(struct platform_device *pdev)
 	}
 
 	*vfd = jpeg_dec_videodev;
-	vfd->lock = &jpeg->lock;
 	vfd->ioctl_ops = get_jpeg_dec_v4l2_ioctl_ops();
 	ret = video_register_device(vfd, VFL_TYPE_GRABBER, JPEG_DEC_NUM);
 	if (ret) {

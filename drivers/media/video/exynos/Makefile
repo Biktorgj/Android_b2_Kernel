@@ -9,7 +9,11 @@ obj-$(CONFIG_VIDEO_EXYNOS_FIMG2D)	+= fimg2d/
 obj-$(CONFIG_VIDEO_EXYNOS_MFC)	+= mfc/
 obj-$(CONFIG_VIDEO_EXYNOS_TV)		+= tv/
 obj-$(CONFIG_VIDEO_EXYNOS_ROTATOR)	+= rotator/
-obj-$(CONFIG_VIDEO_EXYNOS_FIMC_IS)	+= fimc-is/
+ifeq ($(CONFIG_SOC_EXYNOS3250),y)
+	obj-$(CONFIG_VIDEO_EXYNOS_FIMC_IS)	+= fimc-is-w1/
+else
+	obj-$(CONFIG_VIDEO_EXYNOS_FIMC_IS)	+= fimc-is/
+endif
 obj-$(CONFIG_VIDEO_EXYNOS5_FIMC_IS)	+= fimc-is-mc2/
 obj-$(CONFIG_VIDEO_EXYNOS_JPEG_HX)		+= jpeg_hx/
 EXTRA_CLAGS += -Idrivers/media/video

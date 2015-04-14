@@ -10,128 +10,23 @@
 #include <linux/clk.h>
 #include <linux/gpio.h>
 #include <linux/i2c.h>
-#include <linux/i2c-gpio.h>
 #include <linux/regulator/machine.h>
 #include <linux/regulator/fixed.h>
-#include <linux/regulator/consumer.h>
 #include <linux/mfd/wm8994/pdata.h>
-
-#include <linux/exynos_audio.h>
-#include <linux/sec_jack.h>
-
-#include <asm/system_info.h>
-
-#include <mach/pmu.h>
 
 #include <plat/gpio-cfg.h>
 #include <plat/devs.h>
 #include <plat/iic.h>
-#include <plat/adc.h>
+#include <linux/exynos_audio.h>
+#include <linux/regulator/consumer.h>
 
 #include "board-universal222ap.h"
 
-#ifdef CONFIG_SND_SOC_WM8994
 #define CODEC_LDO_EN		EXYNOS4_GPM0(7)
-#define CODEC_I2C_SDA		EXYNOS4_GPD1(2)
-#define CODEC_I2C_SCL		EXYNOS4_GPD1(3)
-
 #define GPIO_SUB_MIC_BIAS_EN	EXYNOS4_GPM4(6)
-#define GPIO_MAIN_MIC_BIAS_EN	EXYNOS4_GPM4(7)
-#endif
 
-static struct sec_jack_zone universal222ap_jack_zones[] = {
-	{
-		/* adc == 0, unstable zone, default to 3pole if it stays
-		 * in this range for 100ms (10ms delays, 10 samples)
-		 */
-		.adc_high = 0,
-		.delay_ms = 10,
-		.check_count = 10,
-		.jack_type = SEC_HEADSET_3POLE,
-	},
-	{
-		/* 0 < adc <= 1200, unstable zone, default to 3pole if it stays
-		 * in this range for 100ms (10ms delays, 10 samples)
-		 */
-		.adc_high = 1200,
-		.delay_ms = 10,
-		.check_count = 10,
-		.jack_type = SEC_HEADSET_3POLE,
-	},
-	{
-		/* 1200 < adc <= 2200, unstable zone, default to 4pole if it
-		 * stays in this range for 100ms (10ms delays, 10 samples)
-		 */
-		.adc_high = 2200,
-		.delay_ms = 10,
-		.check_count = 10,
-		.jack_type = SEC_HEADSET_4POLE,
-	},
-	{
-		/* 2200 < adc <= 3150, 4 pole zone, default to 4pole if it
-		 * stays in this range for 100ms (10ms delays, 10 samples)
-		 */
-		.adc_high = 3150,
-		.delay_ms = 10,
-		.check_count = 10,
-		.jack_type = SEC_HEADSET_4POLE,
-	},
-	{
-		/* adc > 3150, unstable zone, default to 3pole if it stays
-		 * in this range for two seconds (10ms delays, 200 samples)
-		 */
-		.adc_high = 0x7fffffff,
-		.delay_ms = 10,
-		.check_count = 200,
-		.jack_type = SEC_HEADSET_3POLE,
-	},
-};
+static struct regulator *sub_mic_bias_2v8_regulator = NULL;
 
-static unsigned int mclk_usecnt;
-static void universal222ap_mclk_enable(bool enable, bool forced)
-{
-	struct clk *clkout;
-
-	clkout = clk_get(NULL, "clkout");
-	if (!clkout) {
-		pr_err("%s: Failed to get clkout\n", __func__);
-		return;
-	}
-
-	if (!enable && forced) {
-		/* forced disable */
-		mclk_usecnt = 0;
-
-		clk_disable(clkout);
-		exynos_xxti_sys_powerdown(0);
-		goto exit;
-	}
-
-	if (enable) {
-		if (mclk_usecnt == 0) {
-			exynos_xxti_sys_powerdown(1);
-			clk_enable(clkout);
-		}
-
-		mclk_usecnt++;
-	} else {
-		if (mclk_usecnt == 0)
-			goto exit;
-
-		if (--mclk_usecnt > 0)
-			goto exit;
-
-		clk_disable(clkout);
-		exynos_xxti_sys_powerdown(0);
-	}
-
-	pr_info("%s: mclk is %d(count: %d)\n", __func__, enable, mclk_usecnt);
-
-exit:
-	clk_put(clkout);
-}
-
-#ifdef CONFIG_SND_SOC_WM8994
 static struct regulator_consumer_supply wm1811_fixed_voltage0_supplies[] = {
 	REGULATOR_SUPPLY("AVDD2", "1-001a"),
 	REGULATOR_SUPPLY("CPVDD", "1-001a"),
@@ -239,17 +134,6 @@ static struct regulator_init_data wm1811_ldo2_data = {
 	.consumer_supplies	= &wm1811_dcvdd_supply,
 };
 
-static struct wm8994_drc_cfg drc_value[] = {
-	{
-		.name = "voice call DRC",
-		.regs[0] = 0x009B,
-		.regs[1] = 0x0844,
-		.regs[2] = 0x00E8,
-		.regs[3] = 0x0210,
-		.regs[4] = 0x0000,
-	},
-};
-
 static struct wm8994_pdata wm1811_platform_data = {
 	/* configure gpio1 function: 0x0001(Logic level input/output) */
 	.gpio_defaults[0] = 0x0003,
@@ -261,26 +145,15 @@ static struct wm8994_pdata wm1811_platform_data = {
 	.ldo[0] = { CODEC_LDO_EN, &wm1811_ldo1_data },
 	.ldo[1] = { 0, &wm1811_ldo2_data },
 
-	.irq_base = IRQ_BOARD_AUDIO_START,
-
-	/* Apply DRC Value */
-	.drc_cfgs = drc_value,
-	.num_drc_cfgs = ARRAY_SIZE(drc_value),
+	/* .irq_base = IRQ_BOARD_AUDIO_START, */
 
 	/* Support external capacitors*/
 	.jd_ext_cap = 1,
 
 	/* Regulated mode at highest output voltage */
-	.micbias = {0x2f, 0x2f},
+	.micbias = {0x2f, 0x2b},
 
-	.micd_lvl_sel = 0x87,
-
-	.ldo_ena_always_driven = true,
-
-	.lineout1fb = 1,
-	.lineout2fb = 0,
-
-	.micdet_delay = 200,
+	.micd_lvl_sel = 0xFF,
 };
 
 static struct i2c_board_info i2c_devs1[] __initdata = {
@@ -291,70 +164,77 @@ static struct i2c_board_info i2c_devs1[] __initdata = {
 	},
 };
 
-struct s3c2410_platform_i2c universal222ap_i2c_pdata __initdata = {
-	.flags		= 0,
-	.slave_addr	= 0x10,
-	.frequency	= 100*1000,
-	.sda_delay	= 100,
-	.bus_num	= 1,
+static struct platform_device kmini_i2s_device = {
+        .name   = "kmini-i2s",
+        .id     = -1,
 };
-
-static struct platform_device universal222ap_i2s_device = {
-	.name   = "universal222ap-i2s",
-	.id     = -1,
-};
-#endif
 
 static void universal222ap_gpio_init(void)
 {
+	int err;
+
+	/* gpio power-down config */
 	s5p_gpio_set_pd_cfg(CODEC_LDO_EN, S5P_GPIO_PD_PREV_STATE);
+	s5p_gpio_set_pd_cfg(GPIO_SUB_MIC_BIAS_EN, S5P_GPIO_PD_PREV_STATE);
 
-	/* CODEC_I2C_SDA */
-	s3c_gpio_cfgpin(CODEC_I2C_SDA, S3C_GPIO_SFN(2));
-	s3c_gpio_setpull(CODEC_I2C_SDA, S3C_GPIO_PULL_NONE);
-	gpio_set_value(CODEC_I2C_SDA, 1);
-	s5p_gpio_set_drvstr(CODEC_I2C_SDA, S5P_GPIO_DRVSTR_LV1);
+	/* Sub Microphone BIAS */
+	err = gpio_request(GPIO_SUB_MIC_BIAS_EN, "SUB MIC");
+	if (err) {
+		pr_err(KERN_ERR "SUB_MIC_BIAS_EN GPIO set error!\n");
+		return;
+	}
+	gpio_direction_output(GPIO_SUB_MIC_BIAS_EN, 0);
+	gpio_free(GPIO_SUB_MIC_BIAS_EN);
+}
 
-	/* CODEC_I2C_SCL */
-	s3c_gpio_cfgpin(CODEC_I2C_SCL, S3C_GPIO_SFN(2));
-	s3c_gpio_setpull(CODEC_I2C_SCL, S3C_GPIO_PULL_NONE);
-	gpio_set_value(CODEC_I2C_SCL, 1);
-	s5p_gpio_set_drvstr(CODEC_I2C_SCL, S5P_GPIO_DRVSTR_LV1);
+static void universal222ap_set_ext_sub_mic(int on)
+{
+	/* Sub Microphone BIAS */
+	gpio_set_value(GPIO_SUB_MIC_BIAS_EN, on);
+
+	sub_mic_bias_2v8_regulator = regulator_get(NULL, "sub_mic_bias_2v8");
+	if (IS_ERR(sub_mic_bias_2v8_regulator)) {
+		pr_info("%s: failed to get %s\n", __func__, "sub_mic_bias_2v8");
+	}
+
+	if (on)
+		regulator_enable(sub_mic_bias_2v8_regulator);
+	else
+		regulator_disable(sub_mic_bias_2v8_regulator);
+
+	pr_info("%s: sub_mic bias on = %d\n", __func__, on);
 }
 
 struct exynos_sound_platform_data universal222ap_sound_pdata __initdata = {
-	.set_mclk = universal222ap_mclk_enable,
+	.set_ext_sub_mic	= universal222ap_set_ext_sub_mic,
+
 	.dcs_offset_l = -9,
 	.dcs_offset_r = -7,
-	.zones = universal222ap_jack_zones,
-	.num_zones = ARRAY_SIZE(universal222ap_jack_zones),
 };
 
 static struct platform_device *universal222ap_audio_devices[] __initdata = {
 	&exynos_device_audss,
-#ifdef CONFIG_S3C_DEV_I2C1
 	&s3c_device_i2c1,
+#ifdef CONFIG_SND_SAMSUNG_ALP
+	&exynos4_device_srp,
 #endif
 #ifdef CONFIG_SND_SAMSUNG_I2S
 	&exynos4_device_i2s0,
 #endif
-#ifdef CONFIG_SND_SAMSUNG_I2S
-	&samsung_asoc_dma,
-	&samsung_asoc_idma,
-#endif
-	&exynos4270_device_srp,
-#ifdef CONFIG_SND_SOC_WM8994
-	&universal222ap_i2s_device,
+	&kmini_i2s_device,
 	&wm1811_fixed_voltage0,
 	&wm1811_fixed_voltage1,
 	&wm1811_fixed_voltage2,
+	&samsung_asoc_dma,
+#ifdef CONFIG_SND_SAMSUNG_USE_IDMA
+	&samsung_asoc_idma,
 #endif
 };
 
 static void universal222ap_audio_setup_clocks(void)
 {
-	struct clk *xusbxti;
-	struct clk *clkout;
+	struct clk *xusbxti = NULL;
+	struct clk *clkout = NULL;
 
 	xusbxti = clk_get(NULL, "xusbxti");
 	if (!xusbxti) {
@@ -377,19 +257,15 @@ static void universal222ap_audio_setup_clocks(void)
 void __init exynos4_smdk4270_audio_init(void)
 {
 	universal222ap_audio_setup_clocks();
+	universal222ap_gpio_init();
 
-#ifdef CONFIG_SND_SOC_WM8994
-	s3c_i2c1_set_platdata(&universal222ap_i2c_pdata);
+	s3c_i2c1_set_platdata(NULL);
 	i2c_register_board_info(1, i2c_devs1, ARRAY_SIZE(i2c_devs1));
-#endif
 
 	platform_add_devices(universal222ap_audio_devices,
-				ARRAY_SIZE(universal222ap_audio_devices));
+			ARRAY_SIZE(universal222ap_audio_devices));
 
-	universal222ap_sound_pdata.use_jackdet_type = 1;
-
+	pr_info("%s: set sound platform data for universal222ap device\n", __func__);
 	if (exynos_sound_set_platform_data(&universal222ap_sound_pdata))
 		pr_err("%s: failed to register sound pdata\n", __func__);
-
-	universal222ap_gpio_init();
 }

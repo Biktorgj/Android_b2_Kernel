@@ -49,29 +49,23 @@ enum exynos_sensor_id {
 	SENSOR_NAME_NOTHING             = 0,
 	SENSOR_NAME_S5K3H2              = 1,
 	SENSOR_NAME_S5K6A3              = 2,
-	SENSOR_NAME_S5K3H5		= 3,
-	SENSOR_NAME_S5K3H7		= 4,
-	SENSOR_NAME_S5K3H7_SUNNY	= 5,
-	SENSOR_NAME_S5K3H7_SUNNY_2M	= 6,
-	SENSOR_NAME_S5K6B2		= 7,
-	SENSOR_NAME_S5K3L2		= 8,
-	SENSOR_NAME_S5K4E5		= 9,
-	SENSOR_NAME_S5K2P2		= 10,
-	SENSOR_NAME_S5K8B1		= 11,
-	SENSOR_NAME_S5K1P2		= 12,
-	SENSOR_NAME_S5K4H5		= 13,
-	SENSOR_NAME_S5K2P2_12M		= 15,
-	SENSOR_NAME_S5K6D1		= 16,
-	SENSOR_NAME_S5K4EC		= 57,
-	SENSOR_NAME_SR352		= 57,
-	SENSOR_NAME_SR030		= 57,
+	SENSOR_NAME_S5K3H5		 = 3,
+	SENSOR_NAME_S5K3H7		 = 4,
+	SENSOR_NAME_S5K3H7_SUNNY	 = 5,
+	SENSOR_NAME_S5K3H7_SUNNY_2M	 = 6,
+	SENSOR_NAME_S5K6B2		 = 7,
+	SENSOR_NAME_S5K3L2		 = 8,
+	SENSOR_NAME_S5K4E5		 = 9,
+	SENSOR_NAME_S5K2P2		 = 10,
+	SENSOR_NAME_S5K8B1		 = 11,
+	SENSOR_NAME_S5K1P2		 = 12,
+	SENSOR_NAME_S5K4H5		 = 13,
 
-	SENSOR_NAME_IMX135		= 101, /* 101 ~ 200 Sony sensors */
-	SENSOR_NAME_IMX134		= 102,
-	SENSOR_NAME_IMX175		= 103,
-	SENSOR_NAME_IMX240		= 104,
+	SENSOR_NAME_IMX135		 = 101, /* 101 ~ 200 Sony sensors */
+	SENSOR_NAME_IMX134		 = 102,
+	SENSOR_NAME_IMX175		 = 103,
 
-	SENSOR_NAME_SR261		= 201, /* 201 ~ 300 Other vendor sensors */
+	SENSOR_NAME_SR261		 = 201, /* 201 ~ 300 Other vendor sensors */
 
 	SENSOR_NAME_END,
 	SENSOR_NAME_CUSTOM		 = 301,
@@ -87,6 +81,7 @@ enum actuator_name {
 	ACTUATOR_NAME_AK7345	= 7,
 	ACTUATOR_NAME_DW9804    = 8,
 	ACTUATOR_NAME_AK7348    = 9,
+	ACTUATOR_NAME_SHAF3301	= 10,
 	ACTUATOR_NAME_END,
 	ACTUATOR_NAME_NOTHING	= 100,
 };
@@ -197,43 +192,37 @@ struct sensor_open_extended {
 #define GPIO_SCENARIO_ON		0
 #define GPIO_SCENARIO_OFF		1
 #define GPIO_SCENARIO_MAX		2
-#define GPIO_CTRL_MAX			32
+#define GPIO_CTRL_MAX			20
 
 #define SENSOR_SCENARIO_NORMAL		0
 #define SENSOR_SCENARIO_VISION		1
-#define SENSOR_SCENARIO_EXTERNAL	2
 #define SENSOR_SCENARIO_MAX		10
 
 enum pin_act {
 	PIN_PULL_NONE = 0,
-	PIN_PULL_UP,
-	PIN_PULL_DOWN,
 	PIN_OUTPUT_HIGH,
 	PIN_OUTPUT_LOW,
-	PIN_OUTPUT,
 	PIN_INPUT,
 	PIN_RESET,
 	PIN_FUNCTION,
 	PIN_REGULATOR_ON,
 	PIN_REGULATOR_OFF,
-	PIN_REGULATOR,
+	PIN_DELAY,
 	PIN_END
 };
 
 struct exynos_sensor_pin {
 	int pin;
-	int delay;
 	u32 value;
 	char *name;
 	enum pin_act act;
 };
 
-#define SET_PIN(p, id1, id2, n, _pin, _value, _name, _time, _act) \
-		(p)->pin_ctrls[id1][id2][n].pin = _pin; \
-		(p)->pin_ctrls[id1][id2][n].delay = _time; \
-		(p)->pin_ctrls[id1][id2][n].value = _value; \
-		(p)->pin_ctrls[id1][id2][n].name = _name; \
-		(p)->pin_ctrls[id1][id2][n].act = _act;
+#define SET_PIN(d, s, c, i, p, v, n, a)		\
+	(d)->pin_ctrls[s][c][i].pin	= p;	\
+	(d)->pin_ctrls[s][c][i].value	= v;	\
+	(d)->pin_ctrls[s][c][i].name	= n;	\
+	(d)->pin_ctrls[s][c][i].act	= a;
 
 /*
  * struct exynos_platform_fimc_is_sensor - platform data for exynos_sensor driver
@@ -255,9 +244,6 @@ struct exynos_platform_fimc_is_sensor {
 	u32 is_bns;
 	u32 flash_first_gpio;
 	u32 flash_second_gpio;
-	u32 is_softlanding;
-	u32 sensor_id;
-	u32 vision;
 };
 
 extern void exynos_fimc_is_sensor_set_platdata(struct exynos_platform_fimc_is_sensor *pd,
@@ -279,22 +265,6 @@ extern int exynos_fimc_is_sensor_mclk_on(struct platform_device *pdev,
 	u32 scenario,
 	u32 channel);
 extern int exynos_fimc_is_sensor_mclk_off(struct platform_device *pdev,
-	u32 scenario,
-	u32 channel);
-
-extern int exynos_fimc_is_companion_iclk_cfg(struct platform_device *pdev,
-	u32 scenario,
-	u32 channel);
-extern int exynos_fimc_is_companion_iclk_on(struct platform_device *pdev,
-	u32 scenario,
-	u32 channel);
-extern int exynos_fimc_is_companion_iclk_off(struct platform_device *pdev,
-	u32 scenario,
-	u32 channel);
-extern int exynos_fimc_is_companion_mclk_on(struct platform_device *pdev,
-	u32 scenario,
-	u32 channel);
-extern int exynos_fimc_is_companion_mclk_off(struct platform_device *pdev,
 	u32 scenario,
 	u32 channel);
 

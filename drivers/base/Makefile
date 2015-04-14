@@ -21,7 +21,11 @@ obj-$(CONFIG_SYS_HYPERVISOR) += hypervisor.o
 obj-$(CONFIG_REGMAP)	+= regmap/
 obj-$(CONFIG_SOC_BUS) += soc.o
 
+ifeq ($(CONFIG_SOC_EXYNOS3250),y)
+obj-$(CONFIG_SYNC)	+= sync_exynos3250.o
+else
 obj-$(CONFIG_SYNC)	+= sync.o
+endif
 obj-$(CONFIG_SW_SYNC)	+= sw_sync.o
 
 ccflags-$(CONFIG_DEBUG_DRIVER) := -DDEBUG

@@ -56,16 +56,11 @@ int samsung_gpio_setpull_updown(struct samsung_gpio_chip *chip,
 	void __iomem *reg = chip->base + 0x08;
 	int shift = off * 2;
 	u32 pup;
-	unsigned long flags;
-
-	samsung_gpio_lock(chip, flags);
 
 	pup = __raw_readl(reg);
 	pup &= ~(3 << shift);
 	pup |= pull << shift;
 	__raw_writel(pup, reg);
-
-	samsung_gpio_unlock(chip, flags);
 
 	need_lpa_pdn_set = true;
 
@@ -77,12 +72,7 @@ samsung_gpio_pull_t samsung_gpio_getpull_updown(struct samsung_gpio_chip *chip,
 {
 	void __iomem *reg = chip->base + 0x08;
 	int shift = off * 2;
-	unsigned long flags;
-	u32 pup;
-
-	samsung_gpio_lock(chip, flags);
-	pup = __raw_readl(reg);
-	samsung_gpio_unlock(chip, flags);
+	u32 pup = __raw_readl(reg);
 
 	pup >>= shift;
 	pup &= 0x3;
@@ -135,27 +125,17 @@ static int s3c24xx_gpio_setpull_1(struct samsung_gpio_chip *chip,
 				  samsung_gpio_pull_t updown)
 {
 	void __iomem *reg = chip->base + 0x08;
-	u32 pup;
-	int ret = 0;
-	unsigned long flags;
+	u32 pup = __raw_readl(reg);
 
-	samsung_gpio_lock(chip, flags);
-	pup = __raw_readl(reg);
-
-	if (pull == updown) {
+	if (pull == updown)
 		pup &= ~(1 << off);
-	} else if (pull == S3C_GPIO_PULL_NONE) {
+	else if (pull == S3C_GPIO_PULL_NONE)
 		pup |= (1 << off);
-	} else {
-		ret = -EINVAL;
-		goto out;
-	}
+	else
+		return -EINVAL;
 
 	__raw_writel(pup, reg);
-
- out:
-	samsung_gpio_unlock(chip, flags);
-	return ret;
+	return 0;
 }
 
 static samsung_gpio_pull_t s3c24xx_gpio_getpull_1(struct samsung_gpio_chip *chip,
@@ -163,12 +143,7 @@ static samsung_gpio_pull_t s3c24xx_gpio_getpull_1(struct samsung_gpio_chip *chip
 						  samsung_gpio_pull_t updown)
 {
 	void __iomem *reg = chip->base + 0x08;
-	u32 pup;
-	unsigned long flags;
-
-	samsung_gpio_lock(chip, flags);
-	pup = __raw_readl(reg);
-	samsung_gpio_unlock(chip, flags);
+	u32 pup = __raw_readl(reg);
 
 	pup &= (1 << off);
 	return pup ? S3C_GPIO_PULL_NONE : updown;
@@ -240,7 +215,6 @@ static int samsung_gpio_setcfg_2bit(struct samsung_gpio_chip *chip,
 	void __iomem *reg = chip->base;
 	unsigned int shift = off * 2;
 	u32 con;
-	unsigned long flags;
 
 	if (samsung_gpio_is_cfg_special(cfg)) {
 		cfg &= 0xf;
@@ -250,14 +224,11 @@ static int samsung_gpio_setcfg_2bit(struct samsung_gpio_chip *chip,
 		cfg <<= shift;
 	}
 
-	samsung_gpio_lock(chip, flags);
-
 	con = __raw_readl(reg);
 	con &= ~(0x3 << shift);
 	con |= cfg;
 	__raw_writel(con, reg);
 
-	samsung_gpio_unlock(chip, flags);
 	return 0;
 }
 
@@ -275,12 +246,8 @@ static unsigned int samsung_gpio_getcfg_2bit(struct samsung_gpio_chip *chip,
 					     unsigned int off)
 {
 	u32 con;
-	unsigned long flags;
 
-	samsung_gpio_lock(chip, flags);
 	con = __raw_readl(chip->base);
-	samsung_gpio_unlock(chip, flags);
-
 	con >>= off * 2;
 	con &= 3;
 
@@ -310,7 +277,6 @@ static int samsung_gpio_setcfg_4bit(struct samsung_gpio_chip *chip,
 {
 	void __iomem *reg = chip->base;
 	unsigned int shift = (off & 7) * 4;
-	unsigned long flags;
 	u32 con;
 
 	if (off < 8 && chip->chip.ngpio > 8)
@@ -321,14 +287,10 @@ static int samsung_gpio_setcfg_4bit(struct samsung_gpio_chip *chip,
 		cfg <<= shift;
 	}
 
-	samsung_gpio_lock(chip, flags);
-
 	con = __raw_readl(reg);
 	con &= ~(0xf << shift);
 	con |= cfg;
 	__raw_writel(con, reg);
-
-	samsung_gpio_unlock(chip, flags);
 
 	return 0;
 }
@@ -350,15 +312,12 @@ static unsigned samsung_gpio_getcfg_4bit(struct samsung_gpio_chip *chip,
 {
 	void __iomem *reg = chip->base;
 	unsigned int shift = (off & 7) * 4;
-	unsigned long flags;
 	u32 con;
 
 	if (off < 8 && chip->chip.ngpio > 8)
 		reg -= 4;
 
-	samsung_gpio_lock(chip, flags);
 	con = __raw_readl(reg);
-	samsung_gpio_unlock(chip, flags);
 	con >>= shift;
 	con &= 0xf;
 
@@ -383,7 +342,6 @@ static int s3c24xx_gpio_setcfg_abank(struct samsung_gpio_chip *chip,
 {
 	void __iomem *reg = chip->base;
 	unsigned int shift = off;
-	unsigned long flags;
 	u32 con;
 
 	if (samsung_gpio_is_cfg_special(cfg)) {
@@ -397,14 +355,10 @@ static int s3c24xx_gpio_setcfg_abank(struct samsung_gpio_chip *chip,
 		cfg <<= shift;
 	}
 
-	samsung_gpio_lock(chip, flags);
-
 	con = __raw_readl(reg);
 	con &= ~(0x1 << shift);
 	con |= cfg;
 	__raw_writel(con, reg);
-
-	samsung_gpio_unlock(chip, flags);
 
 	return 0;
 }
@@ -425,12 +379,8 @@ static unsigned s3c24xx_gpio_getcfg_abank(struct samsung_gpio_chip *chip,
 					  unsigned int off)
 {
 	u32 con;
-	unsigned long flags;
 
-	samsung_gpio_lock(chip, flags);
 	con = __raw_readl(chip->base);
-	samsung_gpio_unlock(chip, flags);
-
 	con >>= off;
 	con &= 1;
 	con++;
@@ -445,7 +395,6 @@ static int s5p64x0_gpio_setcfg_rbank(struct samsung_gpio_chip *chip,
 {
 	void __iomem *reg = chip->base;
 	unsigned int shift;
-	unsigned long flags;
 	u32 con;
 
 	switch (off) {
@@ -471,14 +420,10 @@ static int s5p64x0_gpio_setcfg_rbank(struct samsung_gpio_chip *chip,
 		cfg <<= shift;
 	}
 
-	samsung_gpio_lock(chip, flags);
-
 	con = __raw_readl(reg);
 	con &= ~(0xf << shift);
 	con |= cfg;
 	__raw_writel(con, reg);
-
-	samsung_gpio_unlock(chip, flags);
 
 	return 0;
 }
@@ -652,10 +597,7 @@ static int samsung_gpiolib_4bit_input(struct gpio_chip *chip,
 {
 	struct samsung_gpio_chip *ourchip = to_samsung_gpio(chip);
 	void __iomem *base = ourchip->base;
-	unsigned long flags;
 	unsigned long con;
-
-	samsung_gpio_lock(ourchip, flags);
 
 	con = __raw_readl(base + GPIOCON_OFF);
 	if (ourchip->bitmap_gpio_int & BIT(offset))
@@ -663,8 +605,6 @@ static int samsung_gpiolib_4bit_input(struct gpio_chip *chip,
 	else
 		con &= ~(0xf << con_4bit_shift(offset));
 	__raw_writel(con, base + GPIOCON_OFF);
-
-	samsung_gpio_unlock(ourchip, flags);
 
 	gpio_dbg("%s: %p: CON now %08lx\n", __func__, base, con);
 
@@ -676,11 +616,8 @@ static int samsung_gpiolib_4bit_output(struct gpio_chip *chip,
 {
 	struct samsung_gpio_chip *ourchip = to_samsung_gpio(chip);
 	void __iomem *base = ourchip->base;
-	unsigned long flags;
 	unsigned long con;
 	unsigned long dat;
-
-	samsung_gpio_lock(ourchip, flags);
 
 	con = __raw_readl(base + GPIOCON_OFF);
 	con &= ~(0xf << con_4bit_shift(offset));
@@ -696,8 +633,6 @@ static int samsung_gpiolib_4bit_output(struct gpio_chip *chip,
 	__raw_writel(dat, base + GPIODAT_OFF);
 	__raw_writel(con, base + GPIOCON_OFF);
 	__raw_writel(dat, base + GPIODAT_OFF);
-
-	samsung_gpio_unlock(ourchip, flags);
 
 	gpio_dbg("%s: %p: CON %08lx, DAT %08lx\n", __func__, base, con, dat);
 
@@ -732,7 +667,6 @@ static int samsung_gpiolib_4bit2_input(struct gpio_chip *chip,
 	struct samsung_gpio_chip *ourchip = to_samsung_gpio(chip);
 	void __iomem *base = ourchip->base;
 	void __iomem *regcon = base;
-	unsigned long flags;
 	unsigned long con;
 
 	if (offset > 7)
@@ -740,13 +674,9 @@ static int samsung_gpiolib_4bit2_input(struct gpio_chip *chip,
 	else
 		regcon -= 4;
 
-	samsung_gpio_lock(ourchip, flags);
-
 	con = __raw_readl(regcon);
 	con &= ~(0xf << con_4bit_shift(offset));
 	__raw_writel(con, regcon);
-
-	samsung_gpio_unlock(ourchip, flags);
 
 	gpio_dbg("%s: %p: CON %08lx\n", __func__, base, con);
 
@@ -759,7 +689,6 @@ static int samsung_gpiolib_4bit2_output(struct gpio_chip *chip,
 	struct samsung_gpio_chip *ourchip = to_samsung_gpio(chip);
 	void __iomem *base = ourchip->base;
 	void __iomem *regcon = base;
-	unsigned long flags;
 	unsigned long con;
 	unsigned long dat;
 	unsigned con_offset = offset;
@@ -768,8 +697,6 @@ static int samsung_gpiolib_4bit2_output(struct gpio_chip *chip,
 		con_offset -= 8;
 	else
 		regcon -= 4;
-
-	samsung_gpio_lock(ourchip, flags);
 
 	con = __raw_readl(regcon);
 	con &= ~(0xf << con_4bit_shift(con_offset));
@@ -785,8 +712,6 @@ static int samsung_gpiolib_4bit2_output(struct gpio_chip *chip,
 	__raw_writel(dat, base + GPIODAT_OFF);
 	__raw_writel(con, regcon);
 	__raw_writel(dat, base + GPIODAT_OFF);
-
-	samsung_gpio_unlock(ourchip, flags);
 
 	gpio_dbg("%s: %p: CON %08lx, DAT %08lx\n", __func__, base, con, dat);
 
@@ -810,7 +735,7 @@ static int s3c24xx_gpiolib_banka_output(struct gpio_chip *chip,
 	unsigned long dat;
 	unsigned long con;
 
-	samsung_gpio_lock(ourchip, flags);
+	local_irq_save(flags);
 
 	con = __raw_readl(base + 0x00);
 	dat = __raw_readl(base + 0x04);
@@ -826,7 +751,7 @@ static int s3c24xx_gpiolib_banka_output(struct gpio_chip *chip,
 	__raw_writel(con, base + 0x00);
 	__raw_writel(dat, base + 0x04);
 
-	samsung_gpio_unlock(ourchip, flags);
+	local_irq_restore(flags);
 	return 0;
 }
 #endif
@@ -938,13 +863,9 @@ static void samsung_gpiolib_set(struct gpio_chip *chip,
 static int samsung_gpiolib_get(struct gpio_chip *chip, unsigned offset)
 {
 	struct samsung_gpio_chip *ourchip = to_samsung_gpio(chip);
-	unsigned long flags;
 	unsigned long val;
 
-	samsung_gpio_lock(ourchip, flags);
 	val = __raw_readl(ourchip->base + 0x04);
-	samsung_gpio_unlock(ourchip, flags);
-
 	val >>= offset;
 	val &= 1;
 
@@ -2751,8 +2672,6 @@ static struct samsung_gpio_chip exynos4x12_gpios_1[] = {
 			.ngpio	= EXYNOS4_GPIO_F3_NR,
 			.label	= "GPF3",
 		},
-
-#ifndef CONFIG_SOC_EXYNOS3470
 	}, {
 		.chip	= {
 			.base	= EXYNOS4_GPJ0(0),
@@ -2765,16 +2684,11 @@ static struct samsung_gpio_chip exynos4x12_gpios_1[] = {
 			.ngpio	= EXYNOS4_GPIO_J1_NR,
 			.label	= "GPJ1",
 		},
-#endif /* CONFIG_SOC_EXYNOS3470 */
 #endif /* CONFIG_SOC_EXYNOS4415 */
 	},
 #endif /* CONFIG_SOC_EXYNOS4412 || CONFIG_SOC_EXYNOS4412
 	  || CONFIG_SOC_EXYNOS4415 || CONFIG_SOC_EXYNOS3470 */
 };
-
-#if defined(CONFIG_SOC_EXYNOS3470)
-static struct samsung_gpio_pm samsung_gpio_pm_nop = { NULL, NULL };
-#endif
 
 static struct samsung_gpio_chip exynos4x12_gpios_2[] = {
 #if defined(CONFIG_SOC_EXYNOS4412) || defined(CONFIG_SOC_EXYNOS4212)\
@@ -2785,10 +2699,6 @@ static struct samsung_gpio_chip exynos4x12_gpios_2[] = {
 			.ngpio	= EXYNOS4_GPIO_K0_NR,
 			.label	= "GPK0",
 		},
-#if defined(CONFIG_SOC_EXYNOS3470)
-		/* do not restore eMMC's GPIOs */
-		.pm	= &samsung_gpio_pm_nop,
-#endif
 	}, {
 		.chip	= {
 			.base	= EXYNOS4_GPK1(0),
@@ -2813,14 +2723,10 @@ static struct samsung_gpio_chip exynos4x12_gpios_2[] = {
 			.ngpio	= EXYNOS4_GPIO_L0_NR,
 			.label	= "GPL0",
 		},
-#if defined(CONFIG_SOC_EXYNOS3470)
-		/* do not restore eMMC's GPIOs */
-		.pm	= &samsung_gpio_pm_nop,
-#endif
-#if !defined(CONFIG_SOC_EXYNOS4415) && !defined(CONFIG_SOC_EXYNOS3470)
+#ifndef CONFIG_SOC_EXYNOS4415
 	}, {
 		.chip	= {
-			.base	= EXYNOS4_GPL1(0),adfjkhsdgjkhasdgkjhasdg
+			.base	= EXYNOS4_GPL1(0),
 			.ngpio	= EXYNOS4_GPIO_L1_NR,
 			.label	= "GPL1",
 		},
@@ -4163,7 +4069,7 @@ static __init int samsung_gpiolib_init(void)
 	int i, nr_chips;
 	void __iomem *gpio_base1, *gpio_base2, *gpio_base3, *gpio_base4, *gpio_base5;
 	void __iomem *gpf_base, *gpj_base, *gpm_base, *gpx_base , *gpe_base , *gpe2_base;
-#if defined(CONFIG_SOC_EXYNOS4415) || defined(CONFIG_SOC_EXYNOS3470)
+#ifdef CONFIG_SOC_EXYNOS4415
 	void __iomem *gpy_base;
 #endif
 #if defined(CONFIG_SOC_EXYNOS4412) || defined(CONFIG_SOC_EXYNOS4212)
@@ -4401,13 +4307,12 @@ static __init int samsung_gpiolib_init(void)
 				chip->chip.base <= EXYNOS4_GPF3(0)) {
 				chip->base = gpf_base;
 				gpf_base += 0x20;
-#ifndef CONFIG_SOC_EXYNOS3470
 			/* need to set base address for GPJ */
 			} else if (chip->chip.base >= EXYNOS4_GPJ0(0) &&
 				chip->chip.base <= EXYNOS4_GPJ1(0)) {
 				chip->base = gpj_base;
 				gpj_base += 0x20;
-#endif
+
 #endif
 			}
 			/* need to skip group number between GPD1 and GPF0 */
@@ -4434,7 +4339,7 @@ static __init int samsung_gpiolib_init(void)
 		chip = exynos4x12_gpios_2;
 		nr_chips = ARRAY_SIZE(exynos4x12_gpios_2);
 
-#if defined(CONFIG_SOC_EXYNOS4415) || defined(CONFIG_SOC_EXYNOS3470)
+#ifdef CONFIG_SOC_EXYNOS4415
 		gpy_base = gpio_base2 + 0x120;
 #endif
 		gpm_base = gpio_base2 + 0x260;
@@ -4452,7 +4357,7 @@ static __init int samsung_gpiolib_init(void)
 				chip->chip.base <= EXYNOS4_GPX3(0)) {
 				chip->base = gpx_base;
 				gpx_base += 0x20;
-#if defined(CONFIG_SOC_EXYNOS4415) || defined(CONFIG_SOC_EXYNOS3470)
+#ifdef CONFIG_SOC_EXYNOS4415
 			} else if (chip->chip.base >= EXYNOS4_GPY0(0) &&
 					chip->chip.base <= EXYNOS4_GPY6(0)) {
 				chip->base = gpy_base;
@@ -5023,6 +4928,7 @@ core_initcall(samsung_gpiolib_init);
 int s3c_gpio_cfgpin(unsigned int pin, unsigned int config)
 {
 	struct samsung_gpio_chip *chip = samsung_gpiolib_getchip(pin);
+	unsigned long flags;
 	int offset;
 	int ret;
 
@@ -5030,7 +4936,10 @@ int s3c_gpio_cfgpin(unsigned int pin, unsigned int config)
 		return -EINVAL;
 
 	offset = pin - chip->chip.base;
+
+	samsung_gpio_lock(chip, flags);
 	ret = samsung_gpio_do_setcfg(chip, offset, config);
+	samsung_gpio_unlock(chip, flags);
 
 	return ret;
 }
@@ -5070,12 +4979,16 @@ EXPORT_SYMBOL_GPL(s3c_gpio_cfgall_range);
 unsigned s3c_gpio_getcfg(unsigned int pin)
 {
 	struct samsung_gpio_chip *chip = samsung_gpiolib_getchip(pin);
+	unsigned long flags;
 	unsigned ret = 0;
 	int offset;
 
 	if (chip) {
 		offset = pin - chip->chip.base;
+
+		samsung_gpio_lock(chip, flags);
 		ret = samsung_gpio_do_getcfg(chip, offset);
+		samsung_gpio_unlock(chip, flags);
 	}
 
 	return ret;
@@ -5085,13 +4998,17 @@ EXPORT_SYMBOL(s3c_gpio_getcfg);
 int s3c_gpio_setpull(unsigned int pin, samsung_gpio_pull_t pull)
 {
 	struct samsung_gpio_chip *chip = samsung_gpiolib_getchip(pin);
+	unsigned long flags;
 	int offset, ret;
 
 	if (!chip)
 		return -EINVAL;
 
 	offset = pin - chip->chip.base;
+
+	samsung_gpio_lock(chip, flags);
 	ret = samsung_gpio_do_setpull(chip, offset, pull);
+	samsung_gpio_unlock(chip, flags);
 
 	return ret;
 }
@@ -5100,12 +5017,16 @@ EXPORT_SYMBOL(s3c_gpio_setpull);
 samsung_gpio_pull_t s3c_gpio_getpull(unsigned int pin)
 {
 	struct samsung_gpio_chip *chip = samsung_gpiolib_getchip(pin);
+	unsigned long flags;
 	int offset;
 	u32 pup = 0;
 
 	if (chip) {
 		offset = pin - chip->chip.base;
+
+		samsung_gpio_lock(chip, flags);
 		pup = samsung_gpio_do_getpull(chip, offset);
+		samsung_gpio_unlock(chip, flags);
 	}
 
 	return (__force samsung_gpio_pull_t)pup;
@@ -5160,7 +5081,6 @@ s5p_gpio_drvstr_t s5p_gpio_get_drvstr(unsigned int pin)
 	struct samsung_gpio_chip *chip = samsung_gpiolib_getchip(pin);
 	unsigned int off;
 	void __iomem *reg;
-	unsigned long flags;
 	int shift;
 	u32 drvstr;
 
@@ -5171,13 +5091,10 @@ s5p_gpio_drvstr_t s5p_gpio_get_drvstr(unsigned int pin)
 	shift = off * 2;
 	reg = chip->base + 0x0C;
 
-	samsung_gpio_lock(chip, flags);
-
 	drvstr = __raw_readl(reg);
 	drvstr = drvstr >> shift;
 	drvstr &= 0x3;
 
-	samsung_gpio_unlock(chip, flags);
 	return (__force s5p_gpio_drvstr_t)drvstr;
 }
 EXPORT_SYMBOL(s5p_gpio_get_drvstr);
@@ -5187,14 +5104,11 @@ int s5p_gpio_set_drvstr(unsigned int pin, s5p_gpio_drvstr_t drvstr)
 	struct samsung_gpio_chip *chip = samsung_gpiolib_getchip(pin);
 	unsigned int off;
 	void __iomem *reg;
-	unsigned long flags;
 	int shift;
 	u32 tmp;
 
 	if (!chip)
 		return -EINVAL;
-
-	samsung_gpio_lock(chip, flags);
 
 	off = pin - chip->chip.base;
 	shift = off * 2;
@@ -5206,7 +5120,6 @@ int s5p_gpio_set_drvstr(unsigned int pin, s5p_gpio_drvstr_t drvstr)
 
 	__raw_writel(tmp, reg);
 
-	samsung_gpio_unlock(chip, flags);
 	return 0;
 }
 EXPORT_SYMBOL(s5p_gpio_set_drvstr);
@@ -5217,7 +5130,6 @@ s5p_gpio_data_t s5p_gpio_get_data(unsigned int pin)
 	struct samsung_gpio_chip *chip = samsung_gpiolib_getchip(pin);
 	unsigned int off;
 	void __iomem *reg;
-	unsigned long flags;
 	int shift;
 	u32 g_data;
 
@@ -5228,10 +5140,7 @@ s5p_gpio_data_t s5p_gpio_get_data(unsigned int pin)
 	shift = off;
 	reg = chip->base + 0x04;
 
-	samsung_gpio_lock(chip, flags);
 	g_data = __raw_readl(reg);
-	samsung_gpio_unlock(chip, flags);
-
 	g_data = g_data >> shift;
 	g_data &= 0x1;
 
@@ -5244,7 +5153,6 @@ int s5p_gpio_set_data(unsigned int pin, s5p_gpio_data_t g_data)
 	struct samsung_gpio_chip *chip = samsung_gpiolib_getchip(pin);
 	unsigned int off;
 	void __iomem *reg;
-	unsigned long flags;
 	int shift;
 	u32 tmp;
 
@@ -5255,15 +5163,12 @@ int s5p_gpio_set_data(unsigned int pin, s5p_gpio_data_t g_data)
 	shift = off;
 	reg = chip->base + 0x04;
 
-	samsung_gpio_lock(chip, flags);
-
 	tmp = __raw_readl(reg);
 	tmp &= ~(0x1 << shift);
 	tmp |= g_data << shift;
 
 	__raw_writel(tmp, reg);
 
-	samsung_gpio_unlock(chip, flags);
 	return 0;
 }
 EXPORT_SYMBOL(s5p_gpio_set_data);
@@ -5296,7 +5201,6 @@ int s5p_gpio_set_pd_cfg(unsigned int pin, s5p_gpio_pd_cfg_t pd_cfg)
 	struct samsung_gpio_chip *chip = samsung_gpiolib_getchip(pin);
 	unsigned int off;
 	void __iomem *reg;
-	unsigned long flags;
 	int shift;
 	u32 tmp;
 
@@ -5307,15 +5211,11 @@ int s5p_gpio_set_pd_cfg(unsigned int pin, s5p_gpio_pd_cfg_t pd_cfg)
 	shift = off * 2;
 	reg = chip->base + 0x10;
 
-	samsung_gpio_lock(chip, flags);
-
 	tmp = __raw_readl(reg);
 	tmp &= ~(0x3 << shift);
 	tmp |= pd_cfg << shift;
 
 	__raw_writel(tmp, reg);
-
-	samsung_gpio_unlock(chip, flags);
 
 	need_lpa_pdn_set = true;
 
@@ -5328,7 +5228,6 @@ s5p_gpio_pd_pull_t s5p_gpio_get_pd_pull(unsigned int pin)
 	struct samsung_gpio_chip *chip = samsung_gpiolib_getchip(pin);
 	unsigned int off;
 	void __iomem *reg;
-	unsigned long flags;
 	int shift;
 	u32 pd_pull;
 
@@ -5339,13 +5238,10 @@ s5p_gpio_pd_pull_t s5p_gpio_get_pd_pull(unsigned int pin)
 	shift = off * 2;
 	reg = chip->base + 0x14;
 
-	samsung_gpio_lock(chip, flags);
-
 	pd_pull = __raw_readl(reg);
 	pd_pull = pd_pull >> shift;
 	pd_pull &= 0x3;
 
-	samsung_gpio_unlock(chip, flags);
 	return (__force s5p_gpio_pd_pull_t)pd_pull;
 }
 EXPORT_SYMBOL(s5p_gpio_get_pd_pull);
@@ -5355,7 +5251,6 @@ int s5p_gpio_set_pd_pull(unsigned int pin, s5p_gpio_pd_pull_t pd_pull)
 	struct samsung_gpio_chip *chip = samsung_gpiolib_getchip(pin);
 	unsigned int off;
 	void __iomem *reg;
-	unsigned long flags;
 	int shift;
 	u32 tmp;
 
@@ -5366,15 +5261,11 @@ int s5p_gpio_set_pd_pull(unsigned int pin, s5p_gpio_pd_pull_t pd_pull)
 	shift = off * 2;
 	reg = chip->base + 0x14;
 
-	samsung_gpio_lock(chip, flags);
-
 	tmp = __raw_readl(reg);
 	tmp &= ~(0x3 << shift);
 	tmp |= pd_pull << shift;
 
 	__raw_writel(tmp, reg);
-
-	samsung_gpio_unlock(chip, flags);
 
 	need_lpa_pdn_set = true;
 
@@ -5426,8 +5317,6 @@ void exynos_set_lpa_pdn(unsigned int gpio_end)
 
 		/* Pull up-down state in LPA mode is same as normal */
 		tmp = s3c_gpio_getpull(gpio_nr);
-                if(tmp == S3C_GPIO_PULL_UP)
-                        tmp = S5P_GPIO_PD_UP_ENABLE;
 		s5p_gpio_set_pd_pull(gpio_nr, tmp);
 	}
 	need_lpa_pdn_set = false;

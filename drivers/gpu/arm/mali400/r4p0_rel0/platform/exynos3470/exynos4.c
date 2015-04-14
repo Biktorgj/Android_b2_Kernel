@@ -68,7 +68,7 @@ int mali_platform_device_register(void)
 		{
 			mali_platform_init(&(exynos4_device_g3d.dev));
 #ifdef CONFIG_PM_RUNTIME
-			pm_runtime_set_autosuspend_delay(&(exynos4_device_g3d.dev), 50);
+			pm_runtime_set_autosuspend_delay(&(exynos4_device_g3d.dev), 1000);
 			pm_runtime_use_autosuspend(&(exynos4_device_g3d.dev));
 			pm_runtime_enable(&(exynos4_device_g3d.dev));
 #endif

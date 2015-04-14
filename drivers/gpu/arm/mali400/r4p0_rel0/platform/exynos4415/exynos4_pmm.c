@@ -374,6 +374,7 @@ void mali_clk_set_rate(unsigned int clk, unsigned int mhz)
 	int err;
 	unsigned int read_val;
 	unsigned long rate = (unsigned long)clk * (unsigned long)mhz;
+	unsigned long CurRate = 0;
 
 	_mali_osk_mutex_wait(mali_dvfs_lock);
 	MALI_DEBUG_PRINT(3, ("Mali platform: Setting frequency to %d mhz\n", clk));
@@ -382,6 +383,19 @@ void mali_clk_set_rate(unsigned int clk, unsigned int mhz)
 		_mali_osk_mutex_signal(mali_dvfs_lock);
 		return;
 	}
+
+	CurRate = clk_get_rate(mali_clock);
+
+	if (CurRate == 0) {
+		_mali_osk_mutex_signal(mali_dvfs_lock);
+		MALI_PRINT_ERROR(("clk_get_rate[mali_clock] is 0 - return\n"));
+		return;
+	}
+
+	err = clk_set_rate(mali_clock, CurRate / 4);
+
+	if (err > 0)
+		MALI_PRINT_ERROR(("Failed to set Mali clock before change PLL: %d\n", err));
 
 	err = clk_set_parent(mali_parent_clock, sclk_epll_clock);
 
@@ -465,6 +479,10 @@ mali_bool set_mali_dvfs_current_step(unsigned int step)
 static mali_bool set_mali_dvfs_status(u32 step,mali_bool boostup)
 {
 	u32 validatedStep = step;
+#if MALI_DVFS_CLK_DEBUG
+	unsigned int *pRegMaliClkDiv;
+	unsigned int *pRegMaliMpll;
+#endif
 
 	if(boostup)	{
 #ifdef CONFIG_REGULATOR
@@ -500,6 +518,11 @@ static mali_bool set_mali_dvfs_status(u32 step,mali_bool boostup)
 #endif
 	mali_clk_put(MALI_FALSE);
 
+#if MALI_DVFS_CLK_DEBUG
+	pRegMaliClkDiv = ioremap(0x1003c52c, 32);
+	pRegMaliMpll = ioremap(0x1003c22c, 32);
+	MALI_PRINT(("Mali MPLL reg:%d, CLK DIV: %d \n", *pRegMaliMpll, *pRegMaliClkDiv));
+#endif
 	set_mali_dvfs_current_step(validatedStep);
 	/*for future use*/
 	maliDvfsStatus.pCurrentDvfs = &mali_dvfs[validatedStep];

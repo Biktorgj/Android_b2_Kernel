@@ -1,9 +1,9 @@
 /*
- * Copyright (C) 2010-2012 ARM Limited. All rights reserved.
- * 
+ * Copyright (C) 2011-2012 ARM Limited. All rights reserved.
+ *
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
+ *
  * A copy of the licence is included with the program, and can also be obtained from Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
@@ -31,14 +31,12 @@ int get_user_settings_wrapper(struct mali_session_data *session_data, _mali_uk_g
 /* MALI_SEC */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,4,0)
 int stream_create_wrapper(struct mali_session_data *session_data, _mali_uk_stream_create_s __user *uargs);
-int sync_fence_create_empty_wrapper(struct mali_session_data *session_data, _mali_uk_fence_create_empty_s __user *uargs);
 int sync_fence_validate_wrapper(struct mali_session_data *session, _mali_uk_fence_validate_s __user *uargs);
 #endif
 #endif
 int post_notification_wrapper(struct mali_session_data *session_data, _mali_uk_post_notification_s __user *uargs);
 int mem_init_wrapper(struct mali_session_data *session_data, _mali_uk_init_mem_s __user *uargs);
 int mem_term_wrapper(struct mali_session_data *session_data, _mali_uk_term_mem_s __user *uargs);
-int mem_write_safe_wrapper(struct mali_session_data *session_data, _mali_uk_mem_write_safe_s __user * uargs);
 int mem_map_ext_wrapper(struct mali_session_data *session_data, _mali_uk_map_external_mem_s __user * argument);
 int mem_unmap_ext_wrapper(struct mali_session_data *session_data, _mali_uk_unmap_external_mem_s __user * argument);
 int mem_query_mmu_page_table_dump_size_wrapper(struct mali_session_data *session_data, _mali_uk_query_mmu_page_table_dump_size_s __user * uargs);

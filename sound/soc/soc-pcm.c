@@ -309,6 +309,10 @@ static void close_delayed_work(struct work_struct *work)
 		codec_dai->pop_wait = 0;
 		snd_soc_dapm_stream_event(rtd, SNDRV_PCM_STREAM_PLAYBACK,
 					  codec_dai, SND_SOC_DAPM_STREAM_STOP);
+#ifdef CONFIG_SND_SOC_SAMSUNG_SMDK_WM8994
+		snd_soc_dapm_stream_event(rtd, SNDRV_PCM_STREAM_CAPTURE,
+					  codec_dai, SND_SOC_DAPM_STREAM_STOP);
+#endif
 	}
 
 	mutex_unlock(&rtd->pcm_mutex);
@@ -385,9 +389,15 @@ static int soc_pcm_close(struct snd_pcm_substream *substream)
 				msecs_to_jiffies(rtd->pmdown_time));
 		}
 	} else {
+#ifdef CONFIG_SND_SOC_SAMSUNG_SMDK_WM8994
+		codec_dai->pop_wait = 1;
+		schedule_delayed_work(&rtd->delayed_work,
+			msecs_to_jiffies(rtd->pmdown_time));
+#else
 		/* capture streams can be powered down now */
 		snd_soc_dapm_stream_event(rtd, SNDRV_PCM_STREAM_CAPTURE,
 				  codec_dai, SND_SOC_DAPM_STREAM_STOP);
+#endif
 	}
 
 	mutex_unlock(&rtd->pcm_mutex);

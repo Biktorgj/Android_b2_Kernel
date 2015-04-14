@@ -105,12 +105,6 @@ config ARM_EXYNOS3250_CPUFREQ
 	  This adds the CPUFreq driver for Samsung EXYNOS3250
 	  SoC.
 
-config ARM_EXYNOS3472_CPUFREQ
-	def_bool SOC_EXYNOS3472
-	help
-	  This adds the CPUFreq driver for Samsung EXYNOS3472
-	  SoC.
-
 config ARM_EXYNOS3470_CPUFREQ
 	def_bool SOC_EXYNOS3470
 	help
@@ -161,7 +155,7 @@ config ARM_EXYNOS5420_CPUFREQ
 
 config EXYNOS_DM_CPU_HOTPLUG
 	bool "Common dynamic CPU Hotplug support"
-	depends on (ARM_EXYNOS3470_CPUFREQ || ARM_EXYNOS3250_CPUFREQ || ARM_EXYNOS3472_CPUFREQ || ARM_EXYNOS4415_CPUFREQ)
+	depends on (ARM_EXYNOS3470_CPUFREQ || ARM_EXYNOS3250_CPUFREQ || ARM_EXYNOS4415_CPUFREQ)
 	default n
 	help
 	 Enable Common Dynamic CPU Hotplug

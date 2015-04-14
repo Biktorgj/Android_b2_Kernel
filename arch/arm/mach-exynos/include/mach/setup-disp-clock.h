@@ -9,9 +9,9 @@
  * published by the Free Software Foundation.
 */
 
-#ifndef EXYNOS5260_DISP_CLOCK_INIT
-#define EXYNOS5260_DISP_CLOCK_INIT
-int s3c_fb_clock_init(void);
-int mipi_dsi_clock_init(void);
-int s5p_dp_clock_init(void);
+#ifndef EXYNOS5260_DISP_CLOCK_REINIT
+#define EXYNOS5260_DISP_CLOCK_REINIT
+int s3c_fb_clock_reinit(void);
+int mipi_dsi_clock_reinit(void);
+int s5p_dp_clock_reinit(void);
 #endif

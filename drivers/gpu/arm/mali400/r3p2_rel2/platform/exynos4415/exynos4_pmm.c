@@ -482,6 +482,10 @@ static int mali_devfreq_target(struct device *dev, unsigned long *freq, u32 flag
 
 	/*if next status is same with current status, don't change anything*/
 	if (curStatus != nextStatus) {
+#if MALI_DVFS_CLK_DEBUG
+		unsigned int *pRegMaliClkDiv;
+		unsigned int *pRegMaliMpll;
+#endif
 		if (nextStatus > curStatus) {
 #ifdef CONFIG_MALI_DVFS
 			update_time_in_state(curStatus);
@@ -523,6 +527,11 @@ static int mali_devfreq_target(struct device *dev, unsigned long *freq, u32 flag
 #endif
 		mali_clk_put(MALI_FALSE);
 
+#if MALI_DVFS_CLK_DEBUG
+		pRegMaliClkDiv = ioremap(0x1003c52c, 32);
+		pRegMaliMpll = ioremap(0x1003c22c, 32);
+		MALI_PRINT(("Mali MPLL reg:%d, CLK DIV: %d \n", *pRegMaliMpll, *pRegMaliClkDiv));
+#endif
 		set_mali_dvfs_current_step(nextStatus);
 		/*for future use*/
 		maliDvfsStatus.pCurrentDvfs = &mali_dvfs[nextStatus];

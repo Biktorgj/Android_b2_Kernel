@@ -34,6 +34,7 @@
 #include <mach/regs-gpio.h>
 #include <mach/pmu.h>
 #include <mach/smc.h>
+#include <mach/sec_debug.h>
 
 #include <plat/cpu.h>
 #include <plat/clock.h>
@@ -252,7 +253,7 @@ static struct map_desc exynos3_iodesc[] __initdata = {
 	},{
 		.virtual	= (unsigned long)S5P_VA_PPMU_CPU,
 		.pfn		= __phys_to_pfn(EXYNOS3250_PA_PPMU_CPU),
-		.length		= SZ_4K,
+		.length		= SZ_8K,
 		.type		= MT_DEVICE,
 	}, {
 		.virtual	= (unsigned long)S5P_VA_PPMU_DMC0,
@@ -509,38 +510,6 @@ static struct map_desc exynos4415_iodesc[] __initdata = {
 		.pfn		= __phys_to_pfn(EXYNOS4415_PA_SYSRAM_NS),
 		.length		= SZ_4K,
 		.type		= MT_DEVICE,
-	}, {
-		.virtual	= (unsigned long)S5P_VA_FIMCLITE0,
-		.pfn		= __phys_to_pfn(EXYNOS4_PA_FIMC_LITE0),
-		.length		= SZ_4K,
-		.type		= MT_DEVICE,
-	}, {
-		.virtual	= (unsigned long)S5P_VA_FIMCLITE1,
-		.pfn		= __phys_to_pfn(EXYNOS4_PA_FIMC_LITE1),
-		.length		= SZ_4K,
-		.type		= MT_DEVICE,
-	}, {
-#if defined(CONFIG_SOC_EXYNOS4415)
-		.virtual	= (unsigned long)S5P_VA_FIMCLITE2,
-		.pfn		= __phys_to_pfn(EXYNOS4_PA_FIMC_LITE2),
-		.length		= SZ_4K,
-		.type		= MT_DEVICE,
-	}, {
-#endif
-		.virtual	= (unsigned long)S5P_VA_MIPICSI0,
-		.pfn		= __phys_to_pfn(EXYNOS4_PA_MIPI_CSIS0),
-		.length		= SZ_4K,
-		.type		= MT_DEVICE,
-	}, {
-		.virtual	= (unsigned long)S5P_VA_MIPICSI1,
-		.pfn		= __phys_to_pfn(EXYNOS4_PA_MIPI_CSIS1),
-		.length		= SZ_4K,
-		.type		= MT_DEVICE,
-	}, {
-		.virtual	= (unsigned long)S5P_VA_PROVISION,
-		.pfn		= __phys_to_pfn(EXYNOS4415_PA_PROVISION),
-		.length		= SZ_4K,
-		.type		= MT_DEVICE,
 	},
 };
 
@@ -616,14 +585,6 @@ static struct map_desc exynos3470_iodesc[] __initdata = {
 		.length		= SZ_8K,
 		.type		= MT_DEVICE,
 	},
-#ifdef CONFIG_SEC_PM_DEBUG
-	{
-		.virtual	= (unsigned long)S5P_VA_GPIO2,
-		.pfn		= __phys_to_pfn(EXYNOS4_PA_GPIO2),
-                .length		= SZ_4K,
-                .type		= MT_DEVICE,
-	},
-#endif
 };
 
 static struct map_desc exynos5_iodesc[] __initdata = {
@@ -1781,6 +1742,8 @@ static int __init exynos_init(void)
 {
 	printk(KERN_INFO "EXYNOS: Initializing architecture\n");
 
+	sec_debug_init();
+
 	if (soc_is_exynos3250())
 		return device_register(&exynos3_dev);
 	else if (soc_is_exynos5250() || soc_is_exynos5260() ||
@@ -2115,7 +2078,7 @@ static int __init exynos_init_irq_eint(void)
 		set_irq_flags(IRQ_EINT(irq), IRQF_VALID);
 	}
 
-	if (soc_is_exynos3250())
+if (soc_is_exynos3250())
 		irq_set_chained_handler(EXYNOS3_IRQ_EINT16_31, exynos_irq_demux_eint16_31);
 	else if (soc_is_exynos5260()) {
 		exynos_eint_fltcon_config(1, 1, 0);

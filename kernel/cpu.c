@@ -17,6 +17,8 @@
 #include <linux/gfp.h>
 #include <linux/suspend.h>
 #include <mach/sec_debug.h>
+#include <linux/pm_qos.h>
+#include <linux/cpuidle.h>
 
 #ifdef CONFIG_ARM_EXYNOS_MP_CPUFREQ
 #include <mach/cpufreq.h>
@@ -280,6 +282,8 @@ static int __ref _cpu_down(unsigned int cpu, int tasks_frozen)
 	while (!idle_cpu(cpu))
 		cpu_relax();
 
+	cpuidle_w_after_oneshot_log_en();
+
 	/* This actually kills the CPU. */
 	__cpu_die(cpu);
 
@@ -299,6 +303,9 @@ int __ref cpu_down(unsigned int cpu)
 {
 	int err;
 
+	if (num_online_cpus() <= pm_qos_request(PM_QOS_CPU_ONLINE_MIN))
+		return 0;
+
 	cpu_maps_update_begin();
 	sec_debug_task_log_msg(cpu, "cpudown+");
 
@@ -310,6 +317,7 @@ int __ref cpu_down(unsigned int cpu)
 	err = _cpu_down(cpu, 0);
 
 out:
+	pr_info("_cpu_down ret=%d\n", err);
 	sec_debug_task_log_msg(cpu, "cpudown-");
 	cpu_maps_update_done();
 	return err;
@@ -363,6 +371,9 @@ int __cpuinit cpu_up(unsigned int cpu)
 	int nid;
 	pg_data_t	*pgdat;
 #endif
+
+	if (num_online_cpus() >= pm_qos_request(PM_QOS_CPU_ONLINE_MAX))
+		return 0;
 
 	if (!cpu_possible(cpu)) {
 		printk(KERN_ERR "can't online cpu %d because it is not "
