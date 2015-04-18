@@ -17,28 +17,27 @@
 
 #define ALIAS_NAME "rt5033_mfd_irq"
 
-#define RT5033_CHG_IRQ          0x60
-#define RT5033_LED_IRQ          0x66
-#define RT5033_PMIC_IRQ         0x68
-#define RT5033_OFF_EVENT        0x6B
+#define RT5033_CHG_IRQ			0x60
+#define RT5033_LED_IRQ			0x66
+#define RT5033_PMIC_IRQ			0x68
+#define RT5033_OFF_EVENT		0x6B
 
-#define RT5033_CHG_IRQ_CTRL     0x63
-#define RT5033_CHG_IRQ1_CTRL    RT5033_CHG_IRQ_CTRL
-#define RT5033_CHG_IRQ2_CTRL    (RT5033_CHG_IRQ_CTRL + 1)
-#define RT5033_CHG_IRQ3_CTRL    (RT5033_CHG_IRQ_CTRL + 2)
-#define RT5033_LED_IRQ_CTRL     0x67
-#define RT5033_PMIC_IRQ_CTRL    0x69
+#define RT5033_CHG_IRQ_CTRL		0x63
+#define RT5033_CHG_IRQ1_CTRL	RT5033_CHG_IRQ_CTRL
+#define RT5033_CHG_IRQ2_CTRL	(RT5033_CHG_IRQ_CTRL + 1)
+#define RT5033_CHG_IRQ3_CTRL	(RT5033_CHG_IRQ_CTRL + 2)
+#define RT5033_LED_IRQ_CTRL		0x67
+#define RT5033_PMIC_IRQ_CTRL	0x69
 
 #define IRQ_NAME(irq) [irq] = irq##_NAME
 static const char *rt5033_irq_names[] = {
-	IRQ_NAME(RT5033_ADPBAD_IRQ),
 	IRQ_NAME(RT5033_PPBATLV_IRQ),
-	IRQ_NAME(RT5033_CHTMRFI_IRQ),
+	IRQ_NAME(RT5033_IEOC_IRQ),
 	IRQ_NAME(RT5033_VINOVPI_IRQ),
 	IRQ_NAME(RT5033_TSDI_IRQ),
 	IRQ_NAME(RT5033_CHMIVRI_IRQ),
 	IRQ_NAME(RT5033_CHTREGI_IRQ),
-	IRQ_NAME(RT5033_IEOC_IRQ),
+	IRQ_NAME(RT5033_CHTMRFI_IRQ),
 	IRQ_NAME(RT5033_CHRCHGI_IRQ),
 	IRQ_NAME(RT5033_CHTERMI_IRQ),
 	IRQ_NAME(RT5033_CHBATOVI_IRQ),
@@ -89,16 +88,16 @@ static const u8 rt5033_mask_reg[] = {
 	[(idx)] = { .offset = (_offset), .mask = (_mask) }
 
 static const struct rt5033_irq_data rt5033_irqs[] = {
-	DECLARE_IRQ_CTRL(RT5033_ADPBAD_IRQ, 0, 1<<0),
 	DECLARE_IRQ_CTRL(RT5033_PPBATLV_IRQ, 0, 1<<4),
-	DECLARE_IRQ_CTRL(RT5033_CHTERMI_IRQ, 0, 1<<5),
+	DECLARE_IRQ_CTRL(RT5033_IEOC_IRQ, 0, 1<<5),
 	DECLARE_IRQ_CTRL(RT5033_VINOVPI_IRQ, 0, 1<<6),
 	DECLARE_IRQ_CTRL(RT5033_TSDI_IRQ, 0, 1<<7),
+
 	DECLARE_IRQ_CTRL(RT5033_CHMIVRI_IRQ, 1, 1<<0),
 	DECLARE_IRQ_CTRL(RT5033_CHTREGI_IRQ, 1, 1<<1),
 	DECLARE_IRQ_CTRL(RT5033_CHTMRFI_IRQ, 1, 1<<2),
 	DECLARE_IRQ_CTRL(RT5033_CHRCHGI_IRQ, 1, 1<<3),
-	DECLARE_IRQ_CTRL(RT5033_IEOC_IRQ, 1, 1<<4),
+	DECLARE_IRQ_CTRL(RT5033_CHTERMI_IRQ, 1, 1<<4),
 	DECLARE_IRQ_CTRL(RT5033_CHBATOVI_IRQ, 1, 1<<5),
 	DECLARE_IRQ_CTRL(RT5033_CHRVPI_IRQ, 1, 1<<7),
 
@@ -149,8 +148,8 @@ static void rt5033_irq_sync_unlock(struct irq_data *data)
 	mutex_unlock(&chip->irq_lock);
 }
 
-static const inline struct rt5033_irq_data *
-	irq_to_rt5033_irq(rt5033_mfd_chip_t *chip, int irq)
+	static const inline struct rt5033_irq_data *
+irq_to_rt5033_irq(rt5033_mfd_chip_t *chip, int irq)
 {
 	return &rt5033_irqs[irq - chip->irq_base];
 }
@@ -183,68 +182,61 @@ static struct irq_chip rt5033_irq_chip = {
 };
 
 rt5033_irq_status_t *rt5033_get_irq_status(rt5033_mfd_chip_t *mfd_chip,
-		rt5033_irq_status_sel_t sel)
+										rt5033_irq_status_sel_t sel)
 {
 
 	int index;
 
 	switch(sel) {
-	case RT5033_PREV_STATUS:
-		index = mfd_chip->irq_status_index^0x01;
-		break;
-	case RT5033_NOW_STATUS:
-	default:
-		index = mfd_chip->irq_status_index;
-	}
+		case RT5033_PREV_STATUS:
+			index = mfd_chip->irq_status_index^0x01;
+			break;
+		case RT5033_NOW_STATUS:
+		default:
+			index = mfd_chip->irq_status_index;
+    }
 
 	return &mfd_chip->irq_status[index];
 }
 EXPORT_SYMBOL(rt5033_get_irq_status);
 
-static int rt5033_read_irq_status(rt5033_mfd_chip_t *chip)
+static int rt5033_read_irq_staus(rt5033_mfd_chip_t *chip)
 {
 	int ret;
 	struct i2c_client *iic = chip->i2c_client;
 	rt5033_irq_status_t *now_irq_status;
-
 	now_irq_status = rt5033_get_irq_status(chip, RT5033_NOW_STATUS);
 
 #ifdef CONFIG_CHARGER_RT5033
 	ret = rt5033_block_read_device(iic, RT5033_CHG_IRQ,
-			sizeof(now_irq_status->chg_irq_status),
-			now_irq_status->chg_irq_status);
+						sizeof(now_irq_status->chg_irq_status),
+						now_irq_status->chg_irq_status);
 	if (ret < 0) {
 		dev_err(chip->dev,
-				"Failed on reading CHG irq status\n");
+			"Failed on reading CHG irq status\n");
 		return ret;
 	}
-
-	printk("charger irq = 0x%x 0x%x 0x%x\n", (int)now_irq_status->chg_irq_status[0],
-                                        (int)now_irq_status->chg_irq_status[1],
-                                        now_irq_status->chg_irq_status[2]);
 #endif
 #ifdef CONFIG_FLED_RT5033
 	ret = rt5033_block_read_device(iic, RT5033_LED_IRQ,
-			sizeof(now_irq_status->fled_irq_status),
-			now_irq_status->fled_irq_status);
+						sizeof(now_irq_status->fled_irq_status),
+						now_irq_status->fled_irq_status);
 	if (ret < 0) {
 		dev_err(chip->dev,
-				"Failed on reading FlashLED irq status\n");
+			"Failed on reading FlashLED irq status\n");
 		return ret;
 	}
-	printk("fled irq = 0x%x\n", (int)now_irq_status->fled_irq_status[0]);
 #endif /* CONFIG_FLED_RT5033 */
 
 #ifdef CONFIG_REGULATOR_RT5033
 	ret = rt5033_block_read_device(iic, RT5033_PMIC_IRQ,
-			sizeof(now_irq_status->pmic_irq_status),
-			now_irq_status->pmic_irq_status);
+						sizeof(now_irq_status->pmic_irq_status),
+						now_irq_status->pmic_irq_status);
 	if (ret < 0) {
 		dev_err(chip->dev,
-				"Failed on reading PMIC irq status\n");
+			"Failed on reading PMIC irq status\n");
 		return ret;
 	}
-	printk("regulator irq = 0x%x\n", (int)now_irq_status->pmic_irq_status[0]);
 #endif /* CONFIG_REGULATOR_RT5033 */
 
 	return 0;
@@ -252,38 +244,36 @@ static int rt5033_read_irq_status(rt5033_mfd_chip_t *chip)
 
 static irqreturn_t rt5033_irq_handler(int irq, void *data)
 {
-	int ret;
-	int i;
-	rt5033_mfd_chip_t *chip = data;
+	int ret, i;
 	rt5033_irq_status_t *status;
+	rt5033_mfd_chip_t *chip = data;
 
-	printk("RT5033 IRQ triggered\n");
-	wake_lock_timeout(&chip->irq_wake_lock, msecs_to_jiffies(500));
+	chip->irq = irq;
+	wake_lock_timeout(&chip->irq_wake_lock, HZ);
 
-        ret = rt5033_read_irq_status(chip);
-        if (ret < 0) {
-                pr_err("%s :Error : can't read irq status (%d)\n",
-                                __func__, ret);
-                return IRQ_HANDLED;
-        }
-        status = rt5033_get_irq_status(chip, RT5033_NOW_STATUS);
+	ret = rt5033_read_irq_staus(chip);
+	if (ret < 0) {
+		pr_err("%s :Error : can't read irq status (%d)\n",
+				__func__, ret);
+		return IRQ_NONE;
+    }
 
-        for (i = 0; i < RT5033_IRQ_REGS_NR; i++)
-                status->regs[i] &= ~chip->irq_masks_cache[i];
+	status = rt5033_get_irq_status(chip, RT5033_NOW_STATUS);
 
-        for (i = 0; i < RT5033_IRQS_NR; i++) {
-                if (status->regs[rt5033_irqs[i].offset] & rt5033_irqs[i].mask) {
-                        pr_info("%s : Trigger IRQ %s, irq : %d \n",
-				__func__, rt5033_get_irq_name_by_index(i),
-				chip->irq_base + i);
+	for (i = 0; i < RT5033_IRQ_REGS_NR; i++)
+		status->regs[i] &= ~chip->irq_masks_cache[i];
 
-                        handle_nested_irq(chip->irq_base + i);
-                }
-        }
+	for (i = 0; i < RT5033_IRQS_NR; i++) {
+		if (status->regs[rt5033_irqs[i].offset] & rt5033_irqs[i].mask) {
+			pr_info("%s : Trigger IRQ %s \n",
+					__func__, rt5033_get_irq_name_by_index(i));
+			handle_nested_irq(chip->irq_base + i);
+		}
+	}
 
-        chip->irq_status_index ^= 0x01; // exchange irq index;
+	chip->irq_status_index ^= 0x01;
 
-	return IRQ_HANDLED;
+    return IRQ_HANDLED;
 }
 
 static int rt5033_irq_ctrl_regs[] = {
@@ -295,7 +285,7 @@ static int rt5033_irq_ctrl_regs[] = {
 };
 
 static uint8_t rt5033_irqs_ctrl_mask_all_val[] = {
-	0xf1,
+	0xf0,
 	0xbf,
 	0xf0,
 	0xc8,
@@ -309,11 +299,12 @@ static int rt5033_mask_all_irqs(struct i2c_client *iic)
 
 	rt5033_mfd_chip_t *chip = i2c_get_clientdata(iic);
 
-	for (i=0;i<ARRAY_SIZE(rt5033_irq_ctrl_regs);i++) {
+	for (i = 0; i < ARRAY_SIZE(rt5033_irq_ctrl_regs); i++) {
 		rc = rt5033_reg_write(iic, rt5033_irq_ctrl_regs[i],
-				rt5033_irqs_ctrl_mask_all_val[i]);
+							rt5033_irqs_ctrl_mask_all_val[i]);
 		chip->irq_masks_cache[i] = rt5033_irqs_ctrl_mask_all_val[i];
-		if (rc<0) {
+
+		if (rc < 0) {
 			pr_info("Error : can't write reg[0x%x] = 0x%x\n",
 					rt5033_irq_ctrl_regs[i],
 					rt5033_irqs_ctrl_mask_all_val[i]);
@@ -327,7 +318,7 @@ static int rt5033_mask_all_irqs(struct i2c_client *iic)
 static int rt5033_irq_init_read(rt5033_mfd_chip_t *chip)
 {
 	int ret;
-	ret = rt5033_read_irq_status(chip);
+	ret = rt5033_read_irq_staus(chip);
 	chip->irq_status_index ^= 0x01;
 
 	return ret;
@@ -339,27 +330,13 @@ int rt5033_init_irq(rt5033_mfd_chip_t *chip)
 	ret = rt5033_mask_all_irqs(chip->i2c_client);
 
 	if (ret < 0) {
-		pr_err("%s : Can't mask all irqs(%d)\n", __func__, ret);
+		pr_err("%s : Can't mask all irqs(%d)\n",
+				__func__, ret);
 		goto err_mask_all_irqs;
 	}
 
 	rt5033_irq_init_read(chip);
 	mutex_init(&chip->irq_lock);
-
-	/* Register with genirq */
-	for (i = 0; i < RT5033_IRQS_NR; i++) {
-		curr_irq = i + chip->irq_base;
-		irq_set_chip_data(curr_irq, chip);
-		irq_set_chip_and_handler(curr_irq, &rt5033_irq_chip,
-				handle_simple_irq);
-		irq_set_nested_thread(curr_irq, 1);
-#ifdef CONFIG_ARM
-		set_irq_flags(curr_irq, IRQF_VALID);
-#else
-		irq_set_noprobe(curr_irq);
-#endif
-	}
-
 	ret = gpio_request(chip->pdata->irq_gpio, "rt5033_mfd_irq");
 	if (ret < 0) {
 		pr_err("%s : Request GPIO %d failed\n",
@@ -375,37 +352,40 @@ int rt5033_init_irq(rt5033_mfd_chip_t *chip)
 
 	chip->irq = gpio_to_irq(chip->pdata->irq_gpio);
 	ret = request_threaded_irq(chip->irq, NULL, rt5033_irq_handler,
-			/* IRQF_TRIGGER_FALLING */
-			IRQF_TRIGGER_LOW | IRQF_ONESHOT | IRQF_NO_SUSPEND,
-			"rt5033", chip);
-	if (ret <0) {
-		pr_err("%s : Failed : request IRQ (%d)\n", __func__, ret);
+			IRQF_TRIGGER_FALLING | IRQF_ONESHOT, "rt5033", chip);
+	if (ret < 0) {
+		pr_err("%s : Failed : request IRQ (%d)\n",
+					__func__, ret);
 		goto err_request_irq;
 
 	}
 
 	ret = enable_irq_wake(chip->irq);
 	if (ret < 0) {
-		pr_info("%s : enable_irq_wake(%d) failed for (%d)\n",
-				__func__, chip->irq, ret);
+		pr_err("%s : enable_irq_wake(%d) failed for (%d)\n",
+					__func__, chip->irq, ret);
 	}
 
+	/* Register with genirq */
+	for (i = 0; i < RT5033_IRQS_NR; i++) {
+		curr_irq = i + chip->irq_base;
+		irq_set_chip_data(curr_irq, chip);
+		irq_set_chip_and_handler(curr_irq, &rt5033_irq_chip,
+				handle_simple_irq);
+		irq_set_nested_thread(curr_irq, 1);
+#ifdef CONFIG_ARM
+		set_irq_flags(curr_irq, IRQF_VALID);
+#else
+		irq_set_noprobe(curr_irq);
+#endif
+	}
 
 	return ret;
+
 err_request_irq:
 err_set_gpio_input:
 	gpio_free(chip->pdata->irq_gpio);
 err_gpio_request:
-	for (curr_irq = chip->irq_base;
-			curr_irq < chip->irq_base + RT5033_IRQS_NR;
-			curr_irq++) {
-#ifdef CONFIG_ARM
-		set_irq_flags(curr_irq, 0);
-#endif
-		irq_set_chip_and_handler(curr_irq, NULL, NULL);
-		irq_set_chip_data(curr_irq, NULL);
-	}
-
 	mutex_destroy(&chip->irq_lock);
 err_mask_all_irqs:
 	return ret;
@@ -428,7 +408,9 @@ int rt5033_exit_irq(rt5033_mfd_chip_t *chip)
 
 	if (chip->irq)
 		free_irq(chip->irq, chip);
+
 	mutex_destroy(&chip->irq_lock);
+
 	return 0;
 }
 

@@ -123,7 +123,7 @@ struct gs_port {
 };
 
 /* increase N_PORTS if you need more */
-#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+#if defined(CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE) || defined(CONFIG_USB_G_SLP)
 #define N_PORTS		8
 #else
 #define N_PORTS		4
@@ -389,7 +389,7 @@ __acquires(&port->port_lock)
 
 		req->length = len;
 		list_del(&req->list);
-#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+#if defined(CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE) || defined(CONFIG_USB_G_SLP)
 		req->zero = (gs_buf_data_avail(&port->port_write_buf) == 0)
 						&&  (req->length % in->maxpacket == 0);
 #else

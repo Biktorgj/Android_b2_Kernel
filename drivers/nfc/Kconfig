@@ -59,9 +59,9 @@ config NFC_WILINK
 	  Say Y here to compile support for Texas Instrument's NFC WiLink driver
 	  into the kernel or say M to compile it as module.
 
-config SEC_NFC_I2C
-    tristate "SEC NFC driver"
-    default n
+config SEC_NFC
+    bool "Samsung NFC driver"
+    default y
     help
       SAMSUNG NFC Driver.
       This driver provides support for SAMSUNG NFC products.
@@ -69,49 +69,26 @@ config SEC_NFC_I2C
 
       Say Y here to compile support for SAMSUNG NFC driver into the
       kernel.
-
-config SEC_NFC_CLK_REQ
-    tristate "SEC NFC CLK REQ"
-    default n
-    help
-      SAMSUNG NFC CLR REQ feature.
-      This feature provides support for SAMSUNG NFC products.
-      You should select this feature if your NFC product uses AP CLK.
-
-      Say Y here to compile support for SAMSUNG NFC CLK REQ feature into the
-      kernel.
-
-config SEC_NFC_COMMON
-	tristate "Samsung NFC driver"
-	default n
-	help
-	  SAMSUNG NFC Driver.
-	  This driver provides support for SAMSUNG NFC products.
-	  You should select your NFC product and interface.
-
-	  Say Y here to compile support for SAMSUNG NFC driver into the
-	  kernel.
 choice
-	prompt "SEC NFC Products"
-	depends on SEC_NFC_COMMON
-	default SEC_NFC_PRODUCT_N5
-config SEC_NFC_PRODUCT_N3
-	bool "N3"
-config SEC_NFC_PRODUCT_N5
-	bool "N5"
+    prompt "SEC NFC Products"
+    depends on SEC_NFC
+    default SEC_NFC_S3FNRN3
+
+config SEC_NFC_S3FNRN3
+    bool "S3FNRN3"
 endchoice
 
 choice
-	prompt "SEC NFC Interface"
-	depends on SEC_NFC_COMMON
-	default SEC_NFC_IF_I2C
-config SEC_NFC_IF_UART
-	bool "UART"
-config SEC_NFC_IF_I2C
-	bool "I2C"
-config SEC_NFC_IF_I2C_GPIO
-	bool "I2C-GPIO (S/W-I2C)"
-	select I2C_ALGOBIT
+    prompt "SEC NFC Interface"
+    depends on SEC_NFC
+    default SEC_NFC_UART
+config SEC_NFC_UART
+    bool "UART"
+config SEC_NFC_I2C
+    bool "I2C"
+config SEC_NFC_I2C_GPIO
+    bool "I2C-GPIO (S/W-I2C)"
+    select I2C_ALGOBIT
 endchoice
 
 endif # NFC_DEVICES

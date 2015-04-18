@@ -191,7 +191,7 @@ static const char *wm8958_main_supplies[] = {
 	"SPKVDD2",
 };
 
-#ifdef CONFIG_PM_RUNTIME
+#ifdef CONFIG_PM
 static int wm8994_suspend(struct device *dev)
 {
 	struct wm8994 *wm8994 = dev_get_drvdata(dev);
@@ -386,7 +386,6 @@ static const __devinitdata struct reg_default wm8958_reva_patch[] = {
 	{ 0x102, 0x0 },
 };
 
-#if 0
 static const __devinitdata struct reg_default wm1811_reva_patch[] = {
 	{ 0x102, 0x3 },
 	{ 0x56, 0xc07 },
@@ -394,28 +393,6 @@ static const __devinitdata struct reg_default wm1811_reva_patch[] = {
 	{ 0x5e, 0x0 },
 	{ 0x102, 0x0 },
 };
-#else
-static const __devinitdata struct reg_default wm1811_reva_patch[] = {
-	{ 0x102, 0x3 },
-/* Configure Hidden registers of WM1811 to conform of
- * the Samsung's standard Revision 1.1 for earphones */
-	{ 0xcb, 0x5151 },
-	{ 0xd3, 0x3f3f },
-	{ 0xd4, 0x3f3f },
-	{ 0xd5, 0x3f3f },
-	{ 0xd6, 0x3228 },
-	{ 0x4c, 0x991f },
-	{ 0x4d, 0x2513 },
-	{ 0x56, 0xc07 },
-	{ 0x5d, 0x7e },
-	{ 0x5e, 0x0 },
-	{ 0x102, 0x0 },
-/* Samsung-specific customization of MICBIAS levels */
-	{ 0xd1, 0x87 },
-	{ 0x3b, 0x9 },
-	{ 0x3c, 0x2 },
-};
-#endif
 
 /*
  * Instantiate the generic non-control parts of the device.
@@ -573,9 +550,19 @@ static __devinit int wm8994_device_init(struct wm8994 *wm8994, int irq)
 		/* Revision C did not change the relevant layer */
 		if (wm8994->revision > 1)
 			wm8994->revision++;
+		switch (wm8994->revision) {
+		case 0:
+		case 1:
+		case 2:
+		case 3:
+		case 4:
 			regmap_patch = wm1811_reva_patch;
 			patch_regs = ARRAY_SIZE(wm1811_reva_patch);
 			break;
+		default:
+			break;
+		}
+		break;
 
 	default:
 		break;
@@ -745,9 +732,8 @@ static const struct i2c_device_id wm8994_i2c_id[] = {
 };
 MODULE_DEVICE_TABLE(i2c, wm8994_i2c_id);
 
-static const struct dev_pm_ops wm8994_pm_ops = {
-	SET_RUNTIME_PM_OPS(wm8994_suspend, wm8994_resume, NULL)
-};
+static UNIVERSAL_DEV_PM_OPS(wm8994_pm_ops, wm8994_suspend, wm8994_resume,
+			    NULL);
 
 static struct i2c_driver wm8994_i2c_driver = {
 	.driver = {

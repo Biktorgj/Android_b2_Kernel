@@ -29,6 +29,9 @@
 #include <linux/regulator/driver.h>
 #include <linux/regulator/machine.h>
 #include <linux/module.h>
+#if defined(CONFIG_SYSTEM_LOAD_ANALYZER)
+#include <linux/load_analyzer.h>
+#endif
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/regulator.h>
@@ -1951,6 +1954,13 @@ int regulator_set_voltage(struct regulator *regulator, int min_uV, int max_uV)
 	struct regulator_dev *rdev = regulator->rdev;
 	int ret = 0;
 
+#if defined(CONFIG_SLP_MINI_TRACER)
+{
+	char str[64];
+	sprintf(str, "regulator S %p %d-%d\n", regulator, min_uV, max_uV);
+	kernel_mini_tracer(str, TIME_ON | FLUSH_CACHE);
+}
+#endif
 	mutex_lock(&rdev->mutex);
 
 	/* If we're setting the same range as last time the change
@@ -1982,6 +1992,15 @@ int regulator_set_voltage(struct regulator *regulator, int min_uV, int max_uV)
 
 out:
 	mutex_unlock(&rdev->mutex);
+
+#if defined(CONFIG_SLP_MINI_TRACER)
+{
+	char str[64];
+	sprintf(str, "regulator E %p %d-%d ret=%d\n", regulator, min_uV, max_uV, ret);
+	kernel_mini_tracer(str, TIME_ON | FLUSH_CACHE);
+}
+#endif
+
 	return ret;
 }
 EXPORT_SYMBOL_GPL(regulator_set_voltage);

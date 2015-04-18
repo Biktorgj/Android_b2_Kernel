@@ -826,13 +826,6 @@ static ssize_t interrupt_write(struct file *fd,
 	return ret;
 }
 
-static void mtp_complete_ep0_transection(struct usb_ep *ep, struct usb_request *req)
-{
-	if (req->status || req->actual != req->length) {
-		DEBUG_MTPB("[%s]\tline = [%d]\n", __func__, __LINE__);
-	}
-}
-
 static void read_send_work(struct work_struct *work)
 {
 	struct mtpg_dev	*dev = container_of(work, struct mtpg_dev,
@@ -1039,7 +1032,6 @@ static long  mtpg_ioctl(struct file *fd, unsigned int code, unsigned long arg)
 		/*printk(KERN_DEBUG "[%s]SEND_RESET_ACK and usb_ep_queu
 				ZERO data size = %d\tline=[%d]\n",
 					__func__, size, __LINE__);*/
-		req->complete = mtp_complete_ep0_transection;
 		status = usb_ep_queue(cdev->gadget->ep0,
 						req, GFP_ATOMIC);
 		if (status < 0)
@@ -1062,7 +1054,6 @@ static long  mtpg_ioctl(struct file *fd, unsigned int code, unsigned long arg)
 		memcpy(req->buf, buf, size);
 		req->zero = 0;
 		req->length = size;
-		req->complete = mtp_complete_ep0_transection;
 		status = usb_ep_queue(cdev->gadget->ep0, req,
 							GFP_ATOMIC);
 		if (status < 0)

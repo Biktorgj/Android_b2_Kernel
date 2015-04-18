@@ -575,15 +575,23 @@ static void acm_cdc_notify_complete(struct usb_ep *ep, struct usb_request *req)
 int acm_notify(void *dev, u16 state)
 {
 	struct f_acm	*acm;
+	int status = 0;
+
 	if (dev) {
 		acm = (struct f_acm *)dev;
-		acm->serial_state = state;
-		acm_notify_serial_state(acm);
+		if (acm->notify->driver_data) {
+			acm->serial_state = state;
+			status = acm_notify_serial_state(acm);
+		} else {
+			printk(KERN_DEBUG "usb: %s not enabled\n", __func__);
+			return -ENODEV;
+		}
 	} else {
 		printk(KERN_DEBUG "usb: %s not ready\n", __func__);
 		return -EAGAIN;
 	}
-	return 0;
+
+	return status;
 }
 #endif
 /* connect == the TTY link is open */
@@ -749,10 +757,8 @@ acm_unbind(struct usb_configuration *c, struct usb_function *f)
 	if (gadget_is_superspeed(c->cdev->gadget))
 		usb_free_descriptors(f->ss_descriptors);
 	usb_free_descriptors(f->descriptors);
-    if ( acm->notify_req )
-		gs_free_req(acm->notify, acm->notify_req);
-
-#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+	gs_free_req(acm->notify, acm->notify_req);
+#if defined(CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE) || defined(CONFIG_USB_G_SLP)
 	kfree(acm->port.func.name);
 #endif
 	kfree(acm);
@@ -828,7 +834,7 @@ int acm_bind_config(struct usb_configuration *c, u8 port_num)
 	acm->port.connect = acm_connect;
 	acm->port.disconnect = acm_disconnect;
 	acm->port.send_break = acm_send_break;
-#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+#if defined(CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE) || defined(CONFIG_USB_G_SLP)
 	acm->port.func.name = kasprintf(GFP_KERNEL, "acm%u", port_num);
 	if (!acm->port.func.name) {
 		kfree(acm);

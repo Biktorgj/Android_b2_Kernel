@@ -1451,7 +1451,7 @@ int ncm_bind_config(struct usb_configuration *c, u8 ethaddr[ETH_ALEN])
 	ncm_reset_values(ncm);
 	ncm->port.is_fixed = true;
 
-#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+#if defined(CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE) || defined(CONFIG_USB_G_SLP)
 	ncm->port.func.name = "ncm";
 #else
 	ncm->port.func.name = "cdc_network";

@@ -37,10 +37,10 @@
 
 static struct mfd_cell max77803_devs[] = {
 	{ .name = "max77803-charger", },
-	{ .name = "max77803-led", },
+	//{ .name = "max77803-led", },
 	{ .name = "max77803-muic", },
 	{ .name = "max77803-safeout", },
-	{ .name = "max77803-haptic", },
+	//{ .name = "max77803-haptic", },
 };
 
 int max77803_read_reg(struct i2c_client *i2c, u8 reg, u8 *dest)
@@ -131,6 +131,7 @@ static int max77803_i2c_probe(struct i2c_client *i2c,
 	u8 reg_data;
 	int ret = 0;
 
+	pr_info("%s\n", __func__);
 	max77803 = kzalloc(sizeof(struct max77803_dev), GFP_KERNEL);
 	if (max77803 == NULL)
 		return -ENOMEM;
@@ -163,13 +164,13 @@ static int max77803_i2c_probe(struct i2c_client *i2c,
 	}
 	/* No active discharge on safeout ldo 1,2 */
 	max77803_update_reg(i2c, MAX77803_CHG_REG_SAFEOUT_CTRL, 0x00, 0x30);
-	
+
 	max77803->muic = i2c_new_dummy(i2c->adapter, I2C_ADDR_MUIC);
 	i2c_set_clientdata(max77803->muic, max77803);
-
+#if 0 /* Haptic driver does not use */
 	max77803->haptic = i2c_new_dummy(i2c->adapter, I2C_ADDR_HAPTIC);
 	i2c_set_clientdata(max77803->haptic, max77803);
-
+#endif
 	ret = max77803_irq_init(max77803);
 	if (ret < 0)
 		goto err_irq_init;

@@ -14,9 +14,7 @@
 #include <linux/clk.h>
 #include <linux/platform_device.h>
 #include <mach/ohci.h>
-#include <plat/cpu.h>
 #include <plat/usb-phy.h>
-#include <plat/cpu.h>
 
 struct exynos_ohci_hcd {
 	struct device *dev;
@@ -97,8 +95,6 @@ static int exynos_ohci_suspend(struct device *dev)
 	struct exynos4_ohci_platdata *pdata = pdev->dev.platform_data;
 	unsigned long flags;
 
-	if (soc_is_exynos3470())
-		return 0;
 	/*
 	 * Root hub was already suspended. Disable irq emission and
 	 * mark HW unaccessible, bail out if RH has been resumed. Use
@@ -119,7 +115,6 @@ static int exynos_ohci_suspend(struct device *dev)
 	if (pdata && pdata->phy_exit)
 		pdata->phy_exit(pdev, S5P_USB_PHY_HOST);
 
-	clk_disable(exynos_ohci->clk);
 	return 0;
 }
 
@@ -130,8 +125,6 @@ static int exynos_ohci_resume(struct device *dev)
 	struct platform_device *pdev = to_platform_device(dev);
 	struct exynos4_ohci_platdata *pdata = pdev->dev.platform_data;
 
-	if (soc_is_exynos3470())
-		return 0;
 	clk_enable(exynos_ohci->clk);
 	if (pdata && pdata->phy_init)
 		pdata->phy_init(pdev, S5P_USB_PHY_HOST);
@@ -207,55 +200,6 @@ static const struct hc_driver exynos_ohci_hc_driver = {
 #endif
 	.start_port_reset	= ohci_start_port_reset,
 };
-
-void ohci_power(struct device *dev, int on)
-{
-	struct platform_device *pdev = to_platform_device(dev);
-	struct exynos4_ohci_platdata *pdata = pdev->dev.platform_data;
-	struct exynos_ohci_hcd *exynos_ohci = platform_get_drvdata(pdev);
-	struct usb_hcd *hcd = exynos_ohci->hcd;
-	int irq;
-	int retval;
-	int power_on = on;
-
-	device_lock(dev);
-	if (!power_on && exynos_ohci->power_on) {
-		printk(KERN_DEBUG "%s: EHCI turns off\n", __func__);
-		exynos_ohci->power_on = 0;
-		usb_remove_hcd(hcd);
-
-		if (pdata && pdata->phy_exit)
-			pdata->phy_exit(pdev, S5P_USB_PHY_HOST);
-		clk_disable(exynos_ohci->clk);
-	} else if (power_on) {
-		printk(KERN_DEBUG "%s: EHCI turns on\n", __func__);
-		clk_enable(exynos_ohci->clk);
-		if (exynos_ohci->power_on) {
-			usb_remove_hcd(hcd);
-		} else {
-			if (pdata && pdata->phy_init)
-				pdata->phy_init(pdev, S5P_USB_PHY_HOST);
-		}
-
-		irq = platform_get_irq(pdev, 0);
-		retval = usb_add_hcd(hcd, irq, IRQF_SHARED);
-		if (retval < 0) {
-			dev_err(dev, "Power On Fail\n");
-			goto exit;
-		}
-
-		/*
-		 * OHCI root hubs are expected to handle remote wakeup.
-		 * So, wakeup flag init defaults for root hubs.
-		 */
-		device_wakeup_enable(&hcd->self.root_hub->dev);
-
-		exynos_ohci->power_on = 1;
-	}
-
-exit:
-	device_unlock(dev);
-}
 
 static ssize_t show_ohci_power(struct device *dev,
 			       struct device_attribute *attr,
@@ -433,14 +377,6 @@ static int __devinit exynos_ohci_probe(struct platform_device *pdev)
 	pm_runtime_enable(&pdev->dev);
 	pm_runtime_get(hcd->self.controller);
 #endif
-	if (soc_is_exynos3470()) {
-		exynos_ohci->power_on = 0;
-		usb_remove_hcd(hcd);
-
-		if (pdata && pdata->phy_exit)
-			pdata->phy_exit(pdev, S5P_USB_PHY_HOST);
-		clk_disable(exynos_ohci->clk);
-	}
 	return 0;
 
 fail:
@@ -542,9 +478,6 @@ static int exynos_ohci_runtime_suspend(struct device *dev)
 	if (pdata->phy_suspend)
 		pdata->phy_suspend(pdev, S5P_USB_PHY_HOST);
 
-	if (soc_is_exynos3470())
-		clk_disable(exynos_ohci->clk);
-
 	return 0;
 }
 
@@ -558,8 +491,6 @@ static int exynos_ohci_runtime_resume(struct device *dev)
 	if (dev->power.is_suspended)
 		return 0;
 
-	if (soc_is_exynos3470())
-		clk_enable(exynos_ohci->clk);
 	if (pdata->phy_resume)
 		pdata->phy_resume(pdev, S5P_USB_PHY_HOST);
 	/* Mark hardware accessible again as we are out of D3 state by now */

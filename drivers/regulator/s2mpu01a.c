@@ -53,7 +53,7 @@ struct s2mpu01a_voltage_desc {
 };
 
 static const struct s2mpu01a_voltage_desc buck_voltage_val1 = {
-	.max = 1600000,
+	.max = 1400000,
 	.min =  600000,
 	.step =   6250,
 };
@@ -122,9 +122,9 @@ static const struct s2mpu01a_voltage_desc *reg_voltage_map[] = {
 	[S2MPU01A_BUCK2] = &buck_voltage_val1,
 	[S2MPU01A_BUCK3] = &buck_voltage_val1,
 	[S2MPU01A_BUCK4] = &buck_voltage_val1,
-	[S2MPU01A_BUCK5] = &buck_voltage_val1,
-	[S2MPU01A_BUCK6] = &buck_voltage_val1,
-	[S2MPU01A_BUCK7] = &buck_voltage_val4,
+	[S2MPU01A_BUCK5] = &buck_voltage_val2,
+	[S2MPU01A_BUCK6] = &buck_voltage_val2,
+	[S2MPU01A_BUCK7] = &buck_voltage_val3,
 	[S2MPU01A_BUCK8] = &buck_voltage_val4,
 };
 
@@ -251,17 +251,6 @@ static int s2mpu01a_reg_is_enabled(struct regulator_dev *rdev)
 	return (val & mask) == pmic_en;
 }
 
-int change_mr_reset()
-{
-	int ret;
-
-	printk(KERN_INFO "Change manual reset value\n");
-	ret = sec_reg_update(patch_info->iodev, S2MPU01A_REG_CTRL1, 0x04, 0x0f);
-
-	return ret;
-}
-EXPORT_SYMBOL_GPL(change_mr_reset);
-
 unsigned int get_pmic_rev()
 {
 	int ret;
@@ -272,22 +261,6 @@ unsigned int get_pmic_rev()
 	return pmic_rev;
 }
 EXPORT_SYMBOL_GPL(get_pmic_rev);
-
-bool s2mpu01a_get_jig_status()
-{
-	int ret;
-	u8 st1;
-
-	ret = sec_reg_read(patch_info->iodev, S2MPU01A_REG_ST1, &st1);
-	if (ret < 0) {
-			pr_err("%s: fail to read status1 reg(%d)\n",
-					__func__, ret);
-			return false;
-	}
-
-	return !(st1 & BIT(1));
-}
-EXPORT_SYMBOL_GPL(s2mpu01a_get_jig_status);
 
 static int s2mpu01a_reg_enable(struct regulator_dev *rdev)
 {
@@ -666,7 +639,7 @@ static __devinit int s2mpu01a_pmic_probe(struct platform_device *pdev)
 	struct s2mpu01a_info *s2mpu01a;
 	int i, ret, size;
 	unsigned int ramp_enable, ramp_reg = 0;
-	unsigned int val, buck_init;
+	unsigned int buck_init;
 
 	if (!pdata) {
 		dev_err(pdev->dev.parent, "Platform data not supplied\n");
@@ -711,8 +684,6 @@ static __devinit int s2mpu01a_pmic_probe(struct platform_device *pdev)
 	s2mpu01a->opmode_data = pdata->opmode_data;
 
 	sec_reg_update(s2mpu01a->iodev, S2MPU01A_REG_LEE_NO, 0x20, 0x20);
-
-	sec_reg_update(s2mpu01a->iodev, S2MPU01A_REG_RTC_CTRL, 0x10, 0x10);
 
 	if (pdata->buck1_init) {
 		buck_init = s2mpu01a_convert_voltage_to_sel(&buck_voltage_val1,
@@ -774,10 +745,6 @@ static __devinit int s2mpu01a_pmic_probe(struct platform_device *pdev)
 	ramp_reg |= get_ramp_delay(s2mpu01a->ramp_delay7) << 2;
 	ramp_reg |= get_ramp_delay(s2mpu01a->ramp_delay8);
 	sec_reg_update(s2mpu01a->iodev, S2MPU01A_REG_RAMP_BUCK, ramp_reg, 0xff);
-
-	sec_reg_read(s2mpu01a->iodev, 0x59, &val);
-	printk(KERN_ERR "%s--pmu_mif[0x%02x]\n", __func__, val);
-	sec_reg_write(s2mpu01a->iodev, 0x59, 0xff);
 
 	for (i = 0; i < pdata->num_regulators; i++) {
 		const struct s2mpu01a_voltage_desc *desc;

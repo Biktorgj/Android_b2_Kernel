@@ -1239,12 +1239,12 @@ composite_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 		spin_lock(&cdev->lock);
 		value = set_config(cdev, ctrl, w_value);
 		spin_unlock(&cdev->lock);
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 		printk(KERN_DEBUG "usb: SET_CON\n");
 		if(value == 0) {
 			if(w_value)
 				set_config_number(w_value - 1);
 		}
-#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 #ifdef CONFIG_USB_GADGET_SUPERSPEED
 		if(gadget->speed >= USB_SPEED_SUPER) {
 			if(get_host_os_type() == 0) {

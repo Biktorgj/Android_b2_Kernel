@@ -22,6 +22,9 @@
 #include <linux/regulator/machine.h>
 #include <linux/mfd/samsung/core.h>
 #include <linux/mfd/samsung/s2mps14.h>
+#ifdef CONFIG_DEBUG_FS
+#include <linux/debugfs.h>
+#endif
 
 
 
@@ -49,6 +52,10 @@ struct s2mps14_info {
 	bool dvs3_en;
 	bool dvs4_en;
 	bool dvs6_en;
+
+#ifdef CONFIG_DEBUG_FS
+	struct dentry			*reg_debugfs_dir;
+#endif
 };
 
 struct s2mps14_voltage_desc {
@@ -119,6 +126,66 @@ static const struct s2mps14_voltage_desc *reg_voltage_map[] = {
 	[S2MPS14_BUCK4] = &buck_voltage_val2,
 	[S2MPS14_BUCK5] = &buck_voltage_val1,
 };
+
+#ifdef CONFIG_DEBUG_FS
+static int s2mps14_debugfs_open(struct inode *inode, struct file *filp)
+{
+	filp->private_data = inode->i_private;
+	return 0;
+}
+
+static ssize_t s2mps14_debugfs_read_registers(struct file *filp,
+	char __user *buffer, size_t count, loff_t *ppos)
+{
+	struct s2mps14_info *s2mps14 = filp->private_data;
+	int i;
+	u8 regs_value[S2MPS14_REG_LDO_DSCH3+1];
+	u32 reg = 0;
+	char *buf;
+	size_t len = 0;
+	ssize_t ret;
+
+	if (!s2mps14) {
+		pr_err("%s : s2mps14 is null\n", __func__);
+		return 0;
+	}
+
+	if (*ppos != 0)
+		return 0;
+
+	if (count < sizeof(buf))
+		return -ENOSPC;
+
+	buf = kzalloc(PAGE_SIZE, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	len += snprintf(buf + len, PAGE_SIZE - len, "Address Value\n");
+	len += snprintf(buf + len, PAGE_SIZE - len, "------- -----\n");
+
+	reg = S2MPS14_REG_ID;
+	ret = sec_bulk_read(s2mps14->iodev, reg,
+			S2MPS14_REG_LDO_DSCH3+1, regs_value);
+	if (!ret) {
+		for (i = 0; i < S2MPS14_REG_LDO_DSCH3+1; i++) {
+			len += snprintf(buf + len, PAGE_SIZE - len,
+				" 0x%02x   0x%02x\n",
+				i, regs_value[i]);
+		}
+	}
+
+	ret = simple_read_from_buffer(buffer, len, ppos, buf, PAGE_SIZE);
+	kfree(buf);
+
+	return ret;
+}
+
+static const struct file_operations s2mps14_debugfs_fops = {
+	.owner = THIS_MODULE,
+	.open = s2mps14_debugfs_open,
+	.read = s2mps14_debugfs_read_registers,
+};
+#endif
 
 static int s2mps14_list_voltage(struct regulator_dev *rdev,
 				unsigned int selector)
@@ -626,6 +693,18 @@ static __devinit int s2mps14_pmic_probe(struct platform_device *pdev)
 		}
 	}
 
+#ifdef CONFIG_DEBUG_FS
+	s2mps14->reg_debugfs_dir =
+		debugfs_create_dir("s2mps14_debug", NULL);
+	if (s2mps14->reg_debugfs_dir) {
+		if (!debugfs_create_file("s2mps14_regs", 0644,
+			s2mps14->reg_debugfs_dir,
+			s2mps14, &s2mps14_debugfs_fops))
+			pr_err("%s : debugfs_create_file, error\n", __func__);
+	} else
+		pr_err("%s : debugfs_create_dir, error\n", __func__);
+#endif
+
 	return 0;
 err:
 	for (i = 0; i < s2mps14->num_regulators; i++)
@@ -648,6 +727,18 @@ static int __devexit s2mps14_pmic_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static void s2mps14_pmic_shutdown(struct platform_device *pdev)
+{
+	struct s2mps14_info *s2mps14 = platform_get_drvdata(pdev);
+	int ret;
+
+        /* Turn Off the Low Jitter Mode (Change to reset value) */
+        ret = sec_reg_write(s2mps14->iodev, S2MPS14_REG_RTC_BUF, 0x01);
+        if (ret < 0)
+                dev_err(s2mps14->dev, "Low Jitter Mode Turn Off failed");
+
+}
+
 static const struct platform_device_id s2mps14_pmic_id[] = {
 	{ "s2mps14-pmic", 0},
 	{ },
@@ -661,6 +752,7 @@ static struct platform_driver s2mps14_pmic_driver = {
 	},
 	.probe = s2mps14_pmic_probe,
 	.remove = __devexit_p(s2mps14_pmic_remove),
+	.shutdown = s2mps14_pmic_shutdown,
 	.id_table = s2mps14_pmic_id,
 };
 

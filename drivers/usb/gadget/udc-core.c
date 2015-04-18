@@ -354,7 +354,7 @@ found:
 		 * the call to usb_gadget_connect bellow to avoid enabling the
 		 * pullup before userspace is ready.
 		 */
-#if !defined(CONFIG_USB_G_ANDROID)
+#if !defined(CONFIG_USB_G_ANDROID) && !defined(CONFIG_USB_G_SLP)
 		 usb_gadget_connect(udc->gadget);
 #endif
 	} else {

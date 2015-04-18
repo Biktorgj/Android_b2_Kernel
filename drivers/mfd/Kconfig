@@ -429,7 +429,6 @@ config MFD_MAX77836
 	  This driver provides common support for accessing the device;
 	  additional drivers
 
-	  
 config MFD_MAX8997
 	bool "Maxim Semiconductor MAX8997/8966 PMIC Support"
 	depends on I2C=y && GENERIC_HARDIRQS
@@ -477,6 +476,43 @@ config MFD_SEC_CORE
 	 This driver provies common support for accessing the device,
 	 additional drivers must be enabled in order to use the functionality
 	 of the device
+
+config MFD_ARIZONA
+	select REGMAP
+	select REGMAP_IRQ
+	bool
+
+config MFD_ARIZONA_I2C
+	tristate "Support Wolfson Microelectronics Arizona platform with I2C"
+	select MFD_ARIZONA
+	select MFD_CORE
+	select REGMAP_I2C
+	depends on I2C
+	help
+	  Support for the Wolfson Microelectronics Arizona platform audio SoC
+	  core functionality controlled via I2C.
+
+config MFD_ARIZONA_SPI
+	tristate "Support Wolfson Microelectronics Arizona platform with SPI"
+	select MFD_ARIZONA
+	select MFD_CORE
+	select REGMAP_SPI
+	depends on SPI_MASTER
+	help
+	  Support for the Wolfson Microelectronics Arizona platform audio SoC
+	  core functionality controlled via I2C.
+
+config MFD_WM5102
+	bool "Support Wolfson Microelectronics WM5102"
+	depends on MFD_ARIZONA
+	help
+	  Support for Wolfson Microelectronics WM5102 low power audio SoC
+
+config MFD_WM5110
+	bool "Support Wolfson Microelectronics WM5110"
+	depends on MFD_ARIZONA
+	help
+	  Support for Wolfson Microelectronics WM5110 low power audio SoC
 
 config MFD_WM8400
 	tristate "Support Wolfson Microelectronics WM8400"

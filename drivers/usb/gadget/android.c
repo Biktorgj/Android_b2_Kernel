@@ -67,9 +67,6 @@
 #include "rndis.c"
 #include "f_diag.c"
 #include "f_dm.c"
-#ifdef CONFIG_USB_ANDROID_SAMSUNG_SIDESYNC
-#include "f_conn_gadget.c"
-#endif
 
 MODULE_AUTHOR("Mike Lockwood");
 MODULE_DESCRIPTION("Android Composite USB Driver");
@@ -482,44 +479,6 @@ static struct android_usb_function adb_function = {
 	.cleanup	= adb_function_cleanup,
 	.bind_config	= adb_function_bind_config,
 };
-
-#ifdef CONFIG_USB_ANDROID_SAMSUNG_SIDESYNC
-struct conn_gadget_data {
-	bool opened;
-	bool enabled;
-};
-
-static int
-conn_gadget_function_init(struct android_usb_function *f,
-		struct usb_composite_dev *cdev)
-{
-	f->config = kzalloc(sizeof(struct conn_gadget_data), GFP_KERNEL);
-	if (!f->config)
-		return -ENOMEM;
-
-	return conn_gadget_setup();
-}
-
-static void conn_gadget_function_cleanup(struct android_usb_function *f)
-{
-	conn_gadget_cleanup();
-	kfree(f->config);
-}
-
-static int
-conn_gadget_function_bind_config(struct android_usb_function *f,
-		struct usb_configuration *c)
-{
-	return conn_gadget_bind_config(c);
-}
-
-static struct android_usb_function conn_gadget_function = {
-	.name = "conn_gadget",
-	.init = conn_gadget_function_init,
-	.cleanup = conn_gadget_function_cleanup,
-	.bind_config = conn_gadget_function_bind_config,
-};
-#endif
 
 static void adb_ready_callback(void)
 {
@@ -1311,9 +1270,6 @@ static struct android_usb_function *supported_functions[] = {
 #ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 	&ncm_function,
 #endif
-#ifdef CONFIG_USB_ANDROID_SAMSUNG_SIDESYNC
-	&conn_gadget_function,
-#endif
 	&mass_storage_function,
 	&accessory_function,
 	&audio_source_function,
@@ -1606,17 +1562,6 @@ static ssize_t enable_store(struct device *pdev, struct device_attribute *attr,
 				/* Samsung KIES needs fixed bcdDevice number */
 				cdev->desc.bcdDevice = cpu_to_le16(0x0400);
 			}
-#ifdef CONFIG_USB_ANDROID_SAMSUNG_SIDESYNC
-			if (!strcmp(f->name, "conn_gadget")) {
-				if(cdev->desc.bcdDevice == cpu_to_le16(0x0400))	{
-					printk(KERN_DEBUG "usb: conn_gadget + kies (bcdDevice=0xC00)\n");
-					cdev->desc.bcdDevice = cpu_to_le16(0x0C00);
-				} else {
-					printk(KERN_DEBUG "usb: conn_gadget only (bcdDevice=0x800)\n");
-					cdev->desc.bcdDevice = cpu_to_le16(0x0800);
-				}
-			}
-#endif
 			if (is_ncm_ready(f->name))
 				set_ncm_device_descriptor(&cdev->desc);
 		}

@@ -114,8 +114,6 @@ static int s5p_ehci_suspend(struct device *dev)
 	unsigned long flags;
 	int rc = 0;
 
-	if (soc_is_exynos3470())
-		return 0;
 #if defined(CONFIG_LINK_DEVICE_HSIC)
 	if (is_cp_wait_for_resume()) {
 		pr_info("%s: suspend fail by host wakeup irq\n", __func__);
@@ -164,8 +162,6 @@ static int s5p_ehci_resume(struct device *dev)
 	struct usb_hcd *hcd = s5p_ehci->hcd;
 	struct ehci_hcd *ehci = hcd_to_ehci(hcd);
 
-	if (soc_is_exynos3470())
-		return 0;
 	pm_qos_update_request(&s5p_ehci->mif_qos, MIF_QOS_VALUE);
 
 	clk_enable(s5p_ehci->clk);
@@ -267,9 +263,6 @@ static int s5p_ehci_runtime_suspend(struct device *dev)
 					atomic_read(&dev->power.child_count));
 #endif
 
-	if(soc_is_exynos3470())
-		clk_disable(s5p_ehci->clk);
-
 	pm_qos_update_request(&s5p_ehci->mif_qos, 0);
 
 	return 0;
@@ -287,8 +280,7 @@ static int s5p_ehci_runtime_resume(struct device *dev)
 	if (dev->power.is_suspended)
 		return 0;
 
-	if(soc_is_exynos3470())
-		clk_enable(s5p_ehci->clk);
+	pm_qos_update_request(&s5p_ehci->mif_qos, MIF_QOS_VALUE);
 
 	/* platform device isn't suspended */
 	if (pdata && pdata->phy_resume)
@@ -315,9 +307,6 @@ static int s5p_ehci_runtime_resume(struct device *dev)
 
 		ehci->rh_state = EHCI_RH_SUSPENDED;
 	}
-
-	pm_qos_update_request(&s5p_ehci->mif_qos, MIF_QOS_VALUE);
-
 #if defined(CONFIG_LINK_DEVICE_HSIC)
 	pr_info("%s: usage=%d, child=%d\n", __func__,
 					atomic_read(&dev->power.usage_count),
@@ -360,53 +349,6 @@ static const struct hc_driver s5p_ehci_hc_driver = {
 
 	.clear_tt_buffer_complete	= ehci_clear_tt_buffer_complete,
 };
-
-void ehci_power(struct device *dev, int on)
-{
-	struct platform_device *pdev = to_platform_device(dev);
-	struct s5p_ehci_platdata *pdata = pdev->dev.platform_data;
-	struct s5p_ehci_hcd *s5p_ehci = platform_get_drvdata(pdev);
-	struct usb_hcd *hcd = s5p_ehci->hcd;
-	int irq;
-	int retval;
-	int power_on = on;
-
-	device_lock(dev);
-
-	if (!power_on && s5p_ehci->power_on) {
-		printk(KERN_DEBUG "%s: EHCI turns off\n", __func__);
-		s5p_ehci->power_on = 0;
-		usb_remove_hcd(hcd);
-
-		if (pdata && pdata->phy_exit)
-			pdata->phy_exit(pdev, S5P_USB_PHY_HOST);
-		clk_disable(s5p_ehci->clk);
-	} else if (power_on) {
-		printk(KERN_DEBUG "%s: EHCI turns on\n", __func__);
-		clk_enable(s5p_ehci->clk);
-		if (s5p_ehci->power_on)
-			usb_remove_hcd(hcd);
-		else
-			s5p_ehci_phy_init(pdev);
-
-		irq = platform_get_irq(pdev, 0);
-		retval = usb_add_hcd(hcd, irq, IRQF_SHARED);
-		if (retval < 0) {
-			dev_err(dev, "Power On Fail\n");
-			goto exit;
-		}
-
-		/*
-		 * EHCI root hubs are expected to handle remote wakeup.
-		 * So, wakeup flag init defaults for root hubs.
-		 */
-		device_wakeup_enable(&hcd->self.root_hub->dev);
-
-		s5p_ehci->power_on = 1;
-	}
-exit:
-	device_unlock(dev);
-}
 
 static ssize_t show_ehci_power(struct device *dev,
 			       struct device_attribute *attr,
@@ -610,15 +552,6 @@ static int __devinit s5p_ehci_probe(struct platform_device *pdev)
 	pm_runtime_enable(&pdev->dev);
 	pm_runtime_get(hcd->self.controller);
 #endif
-	if (soc_is_exynos3470()) {
-		pm_qos_update_request(&s5p_ehci->mif_qos, 0);
-		s5p_ehci->power_on = 0;
-		usb_remove_hcd(hcd);
-
-		if (pdata && pdata->phy_exit)
-			pdata->phy_exit(pdev, S5P_USB_PHY_HOST);
-		clk_disable(s5p_ehci->clk);
-	}
 	return 0;
 
 fail:

@@ -1087,11 +1087,6 @@ static int exynos_ss_udc_ep_queue(struct usb_ep *ep,
 			    __func__, udc_ep->name, req, req->length, req->buf,
 			    req->no_interrupt, req->zero, req->short_not_ok);
 
-	if (!udc->enabled || !udc_ep->enabled || !udc->pullup_state) {
-		dev_warn(udc->dev, "%s: udc is disconnected\n", __func__);
-		return -ESHUTDOWN;
-	}
-
 	/* initialise status of the request */
 	INIT_LIST_HEAD(&udc_req->queue);
 

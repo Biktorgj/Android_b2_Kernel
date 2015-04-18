@@ -272,6 +272,7 @@ config USB_S3C_OTGD
 	tristate "S3C HS USB OTG Device"
 	depends on S3C_DEV_USB_HSOTG
 	select USB_GADGET_DUALSPEED
+	select USB_GADGET_SWITCH
 	help
 	  Samsung's S3C64XX processors include high speed USB OTG2.0
 	  controller. It has 15 configurable endpoints, as well as
@@ -881,6 +882,15 @@ config USB_G_PRINTER
 	  For more information, see Documentation/usb/gadget_printer.txt
 	  which includes sample code for accessing the device file.
 
+config USB_G_SLP
+	boolean "SLP Composite Gadget (similar to Android)"
+	help
+	  The SLP gadget driver supports multiple USB functions.
+	  The functions can be configured via a board file and may be
+	  enabled and disabled dynamically.
+	  Support functions: sdb, acm, mtp, mass storage, rndis,
+	  android accessory(AOA 1.0 only), diag.
+
 config USB_G_ANDROID
 	boolean "Android Composite Gadget"
 	help
@@ -907,23 +917,6 @@ config USB_ANDROID_SAMSUNG_MTP
 	  for samsung gadget driver.
 	  If you enable this option,
 	  google mtp will be changed to samsung mtp.
-
-config USB_ANDROID_SAMSUNG_SIDESYNC
-	boolean "Samsung SideSync function"
-	depends on USB_G_ANDROID && USB_ANDROID_SAMSUNG_COMPOSITE
-	default y
-	help
-		Provides SideSync support
-		for samsung gadget driver.
-		If you enable this option,
-		SideSync will be added to android composite.
-
-config USB_RNDIS_MULTI_PACKET
-	boolean "RNDIS multi packet support"
-	depends on USB_G_ANDROID
-	default y
-	help
-	  data aggregation support using RNDIS Multi Packet feature
 
 config USB_DUN_SUPPORT
 	boolean "DUN support function"

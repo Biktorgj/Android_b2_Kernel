@@ -31,14 +31,12 @@ static int interfaceCount;
  */
 unsigned set_config_number(unsigned num)
 {
-	if (is_multi_configuration()){
+	if (num != 0)
 		USB_DBG_ESS("multi config_num=%d(zero base)\n", num);
-		if(num < MAX_MULTI_CONFIG_NUM)
-			multi = num;	/* save config number from Host request */
-	} else {
-		USB_DBG_ESS("single config num=%d\n", num);
-		multi = 0; /* single config */
-	}
+	else
+		USB_DBG_ESS("single config\n");
+
+	multi = num;	/* save config number from Host request */
 	return 0;	/* always return 0 config */
 }
 
