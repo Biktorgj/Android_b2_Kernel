@@ -296,7 +296,6 @@ config S3C24XX_PWM
 
 config S5P_DEV_MIPI_DSIM0
 	bool
-	depends on FB_MIPI_DSIM && S5P_DEV_FIMD0
 	default y
 	help
 	  Compile in platform device definitions for MIPI_DSIM0

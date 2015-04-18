@@ -428,6 +428,8 @@ unsigned int exynos_mipi_dsi_is_lane_state(struct mipi_dsim_device *dsim)
 			 (reg & DSIM_TX_READY_HS_CLK)))
 		return 1;
 
+	dev_info(dsim->dev, "DSI Master status is [0x%x].\n", reg);
+
 	return 0;
 }
 

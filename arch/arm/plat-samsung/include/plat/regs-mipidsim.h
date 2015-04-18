@@ -29,24 +29,20 @@
 #define S5P_DSIM_SDRESOL	(0x28)
 #define S5P_DSIM_INTSRC		(0x2c)	/* Interrupt source
 register */
-#define S5P_DSIM_INTMSK		(0x30)	/* Interrupt mask register*/
-
-#define S5P_DSIM_PKTHDR		(0x34)	/* Packet Header FIFOregister */
-
+#define S5P_DSIM_INTMSK		(0x30)	/* Interrupt mask register
+*/
+#define S5P_DSIM_PKTHDR		(0x34)	/* Packet Header FIFO
+register */
 #define S5P_DSIM_PAYLOAD	(0x38)	/* Payload FIFO register */
 #define S5P_DSIM_RXFIFO		(0x3c)	/* Read FIFO register */
 #define S5P_DSIM_FIFOTHLD	(0x40)	/* FIFO threshold level register */
-#define S5P_DSIM_FIFOCTRL	(0x44)	/* FIFO status and control register */
-#define DSIM_FULL_PH_SFR	(1 << 23)	/* SFR packet header FIFO full */
-#define DSIM_FULL_PL_SFR	(1 << 21)	/* SFR payload FIFO full */
-#define DSIM_INIT_SFR		(1 << 3)	/* SFR FIFO write point initialize */
+#define S5P_DSIM_FIFOCTRL	(0x44)	/* FIFO status and control register
+*/
 
 /* PLL ctrl register */
 #define S5P_DSIM_PLLCTRL	(0x4c)  /* PLL control register */
 /* PLL timer register */
-#if defined(CONFIG_SOC_EXYNOS5250) ||	\
-defined(CONFIG_SOC_EXYNOS3250) ||	\
-defined(CONFIG_SOC_EXYNOS3470) || defined(CONFIG_SOC_EXYNOS3472)
+#if defined(CONFIG_SOC_EXYNOS3250) || defined(CONFIG_SOC_EXYNOS5250) || defined(CONFIG_SOC_EXYNOS3470)
 #define S5P_DSIM_PLLTMR		(0x50)
 #else
 #define S5P_DSIM_PLLTMR		(0x58)
@@ -107,16 +103,10 @@ defined(CONFIG_SOC_EXYNOS3470) || defined(CONFIG_SOC_EXYNOS3472)
 #define DSIM_HFP_MODE_SHIFT		(22)
 #define DSIM_HSE_MODE_SHIFT		(23)
 #define DSIM_AUTO_MODE_SHIFT		(24)
-#define DSIM_CLKLANE_SHIFT		(30)
+#define DSIM_CLKLANE_ENABLE		(1 << 30)
 #define DSIM_LANE_ENx(x)		(((x) & 0x1f) << 0)
 
 #define DSIM_NUM_OF_DATA_LANE(x)	((x) << DSIM_NUM_OF_DATALANE_SHIFT)
-
-#if defined(CONFIG_SOC_EXYNOS3470) || defined(CONFIG_SOC_EXYNOS5260)
-#define DSIM_CLKLANE_ENABLE		(1)
-#else
-#define DSIM_CLKLANE_ENABLE		(0)	/* some of exynos are 30th is reserved bit */
-#endif
 
 /* S5P_DSIM_ESCMODE */
 #define DSIM_TX_ULPS_CLK_EXIT		(1 << 0)
@@ -133,7 +123,7 @@ defined(CONFIG_SOC_EXYNOS3470) || defined(CONFIG_SOC_EXYNOS3472)
 /* S5P_DSIM_MDRESOL */
 #define DSIM_MAIN_STAND_BY		(1 << 31)
 #define DSIM_MAIN_VRESOL(x)		(((x) & 0x7ff) << 16)
-#define DSIM_MAIN_HRESOL(x)		(((x) & 0x7ff) << 0)
+#define DSIM_MAIN_HRESOL(x)		(((x) & 0X7ff) << 0)
 
 /* S5P_DSIM_MVPORCH */
 #define DSIM_CMD_ALLOW_SHIFT		(28)
@@ -167,7 +157,6 @@ defined(CONFIG_SOC_EXYNOS3470) || defined(CONFIG_SOC_EXYNOS3472)
 #define INTSRC_FRAME_DONE		(1 << 24)
 #define INTSRC_PLL_STABLE		(1 << 31)
 #define INTSRC_SFR_FIFO_EMPTY		(1 << 29)
-#define INTSRC_PH_FIFO_EMPTY		(1 << 28)
 
 /* S5P_DSIM_INTMSK */
 #define INTMSK_FRAME_DONE		(1 << 24)
@@ -181,38 +170,5 @@ defined(CONFIG_SOC_EXYNOS3470) || defined(CONFIG_SOC_EXYNOS3472)
 /* S5P_DSIM_PLLCTRL */
 #define DSIM_PLL_EN_SHIFT		(23)
 #define DSIM_FREQ_BAND_SHIFT		(24)
-
-#if defined(CONFIG_SOC_EXYNOS5250) ||	\
-defined(CONFIG_SOC_EXYNOS3250) ||	\
-defined(CONFIG_SOC_EXYNOS3470) || defined(CONFIG_SOC_EXYNOS3472) ||	\
-defined(CONFIG_SOC_EXYNOS4210) || defined(CONFIG_SOC_EXYNOS4212) || defined(CONFIG_SOC_EXYNOS4412)
-#define dphy_support_upto_1GHz()	1
-#else
-#define dphy_support_upto_1GHz()	0
-#endif
-
-#if defined(CONFIG_SOC_EXYNOS3250)
-#define DPHY_PLL_STABLE_TIME		20000
-#elif defined(CONFIG_SOC_EXYNOS3470)
-#define DPHY_PLL_STABLE_TIME		32000
-#elif defined(CONFIG_SOC_EXYNOS3472)
-#define DPHY_PLL_STABLE_TIME		20000
-#elif defined(CONFIG_SOC_EXYNOS4415)
-#define DPHY_PLL_STABLE_TIME		20000
-#elif defined(CONFIG_SOC_EXYNOS5260)
-#define DPHY_PLL_STABLE_TIME		22200
-#elif defined(CONFIG_SOC_EXYNOS5410)
-#define DPHY_PLL_STABLE_TIME		20000
-#elif defined(CONFIG_SOC_EXYNOS5420)
-#define DPHY_PLL_STABLE_TIME		20000
-#elif defined(CONFIG_SOC_EXYNOS5422)
-#define DPHY_PLL_STABLE_TIME		20000
-#elif defined(CONFIG_SOC_EXYNOS5430)
-#define DPHY_PLL_STABLE_TIME		22200
-#elif defined(CONFIG_SOC_EXYNOS5433)
-#define DPHY_PLL_STABLE_TIME		22200
-#else
-#define DPHY_PLL_STABLE_TIME		32000
-#endif
 
 #endif /* _REGS_MIPIDSIM_H */

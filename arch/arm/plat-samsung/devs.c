@@ -439,12 +439,15 @@ struct platform_device s5p_device_jpeg = {
 #ifdef CONFIG_S5P_DEV_FIMD0
 static struct resource s5p_fimd0_resource[] = {
 	[0] = DEFINE_RES_MEM(S5P_PA_FIMD0, SZ_256K),
-	[1] = DEFINE_RES_IRQ(IRQ_FIMD0_VSYNC),
-	[2] = DEFINE_RES_IRQ(IRQ_FIMD0_FIFO),
-	[3] = DEFINE_RES_IRQ(IRQ_FIMD0_SYSTEM),
-	[4] = DEFINE_RES_MEM(0, SZ_1), /* to be populated later */
+	[1] = DEFINE_RES_IRQ_NAMED(IRQ_FIMD0_VSYNC, "vsync"),
+	[2] = DEFINE_RES_IRQ_NAMED(IRQ_FIMD0_FIFO, "fifo"),
+	[3] = DEFINE_RES_IRQ_NAMED(IRQ_FIMD0_SYSTEM, "lcd_sys"),
 #if defined(CONFIG_FB_I80_COMMAND_MODE)
-	[5] = DEFINE_RES_IRQ(IRQ_EINT(3)),
+#if defined(CONFIG_MACH_ESPRESSO3250)
+	[4] = DEFINE_RES_IRQ(IRQ_EINT(31)),
+#else
+	[4] = DEFINE_RES_IRQ(IRQ_EINT(6)),
+#endif
 #endif
 };
 
@@ -991,9 +994,6 @@ void __init s3c_i2c7_set_platdata(struct s3c2410_platform_i2c *pd)
 	}
 	if (!npd->cfg_gpio)
 		npd->cfg_gpio = s3c_i2c7_cfg_gpio;
-
-	if (!npd->cfg_mux)
-		npd->cfg_mux = s3c_i2c7_cfg_mux;
 }
 #endif /* CONFIG_S3C_DEV_I2C7 */
 
@@ -1159,6 +1159,12 @@ struct platform_device s5p_device_mfc = {
 	.id		= -1,
 	.num_resources	= ARRAY_SIZE(s5p_mfc_resource),
 	.resource	= s5p_mfc_resource,
+#ifdef CONFIG_DMA_CMA
+	.dev		= {
+		.dma_mask		= &samsung_device_dma_mask,
+		.coherent_dma_mask	= DMA_BIT_MASK(32),
+	},
+#endif
 };
 
 /*
@@ -1816,24 +1822,6 @@ void __init s3c_hsotg_set_platdata(struct s3c_hsotg_plat *pd)
 		npd->phy_init = s5p_usb_phy_init;
 	if (!npd->phy_exit)
 		npd->phy_exit = s5p_usb_phy_exit;
-
-#ifdef CONFIG_MACH_KMINI
-	/* Sqrxtune [13:11] 5b101 : -10% */
-	npd->phy_tune_mask |= (0x7 << 11);
-	npd->phy_tune |= (0x5 << 11);
-
-	/* Txvreftune [ 3: 0] 9b1001 : +12% */
-	npd->phy_tune_mask |= (0xf);
-	npd->phy_tune |= (0x9);
-#else
-	/* Sqrxtune [13:11] 6b110 : -15% */
-	npd->phy_tune_mask |= (0x7 << 11);
-	npd->phy_tune |= (0x6 << 11);
-
-	/* Txvreftune [ 3: 0] 9b1001 : +12% */
-	npd->phy_tune_mask |= (0xf);
-	npd->phy_tune |= (0x9);
-#endif
 }
 #endif /* CONFIG_S3C_DEV_USB_HSOTG */
 

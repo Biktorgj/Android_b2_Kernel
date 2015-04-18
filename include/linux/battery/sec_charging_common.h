@@ -31,9 +31,11 @@
 #include <linux/power_supply.h>
 #include <linux/slab.h>
 #include <linux/device.h>
+#include <linux/wakelock.h>
+
 
 /* definitions */
-#define	SEC_SIZEOF_POWER_SUPPLY_TYPE	POWER_SUPPLY_TYPE_WIRELESS_REMOVE
+#define	SEC_SIZEOF_POWER_SUPPLY_TYPE	13
 
 enum sec_battery_voltage_mode {
 	/* average voltage */
@@ -91,6 +93,8 @@ enum sec_battery_charging_mode {
 	SEC_BATTERY_CHARGING_2ND,
 	/* recharging */
 	SEC_BATTERY_CHARGING_RECHARGING,
+	/* abs charging*/
+	SEC_BATTERY_CHARGING_ABS,
 };
 
 struct sec_bat_adc_api {
@@ -151,7 +155,7 @@ enum sec_battery_full_charged {
 /* SEC_BATTERY_FULL_CONDITION_SLEEPINFULL
   * change polling time as sleep polling time even in full-charged
   */
-#define SEC_BATTERY_FULL_CONDITION_NOSLEEPINFULL	2
+#define SEC_BATTERY_FULL_CONDITION_SLEEPINFULL	2
 /* SEC_BATTERY_FULL_CONDITION_SOC
   * use capacity for full-charged check
   */
@@ -343,15 +347,9 @@ enum sec_battery_temp_check {
  * @adc: adc value
  * @temperature: temperature(C) * 10
  */
-
 struct sec_bat_adc_table_data {
-#ifdef CONFIG_OF
-	unsigned int adc;
-	unsigned int data;
-#else
 	int adc;
-	int data;
-#endif
+	int temperature;
 };
 #define sec_bat_adc_table_data_t \
 	struct sec_bat_adc_table_data
@@ -364,17 +362,10 @@ struct sec_bat_adc_region {
 	struct sec_bat_adc_region
 
 struct sec_charging_current {
-#ifdef CONFIG_OF
-	unsigned int input_current_limit;
-	unsigned int fast_charging_current;
-	unsigned int full_check_current_1st;
-	unsigned int full_check_current_2nd;
-#else
 	int input_current_limit;
 	int fast_charging_current;
 	int full_check_current_1st;
 	int full_check_current_2nd;
-#endif
 };
 #define sec_charging_current_t \
 	struct sec_charging_current
@@ -412,10 +403,7 @@ struct sec_battery_platform_data {
 	sec_bat_adc_region_t *cable_adc_value;
 	/* charging current for type (0: not use) */
 	sec_charging_current_t *charging_current;
-
-	unsigned int *polling_time;
-	char *chip_vendor;
-	unsigned int temp_adc_type;
+	int *polling_time;
 	/* NO NEED TO BE CHANGED */
 
 	char *pmic_name;
@@ -430,7 +418,6 @@ struct sec_battery_platform_data {
 	/* 1 : active high, 0 : active low */
 	int bat_polarity_ta_nconnected;
 	int bat_irq;
-	int bat_irq_gpio;
 	unsigned long bat_irq_attr;
 	int jig_irq;
 	unsigned long jig_irq_attr;
@@ -440,6 +427,10 @@ struct sec_battery_platform_data {
 	bool use_LED;				/* use charging LED */
 
 	bool event_check;
+	/* event masking : no event check for this senario */
+	int event_mask;
+	/* these events will be clear immediately without any timer */
+	int event_immediate;
 	/* sustaining event after deactivated (second) */
 	unsigned int event_waiting_time;
 
@@ -462,14 +453,9 @@ struct sec_battery_platform_data {
 	sec_battery_ovp_uvlo_t ovp_uvlo_check_type;
 
 	sec_battery_thermal_source_t thermal_source;
-#ifdef CONFIG_OF
-	sec_bat_adc_table_data_t *temp_adc_table;
-	sec_bat_adc_table_data_t *temp_amb_adc_table;
-#else
 	const sec_bat_adc_table_data_t *temp_adc_table;
-	const sec_bat_adc_table_data_t *temp_amb_adc_table;
-#endif
 	unsigned int temp_adc_table_size;
+	const sec_bat_adc_table_data_t *temp_amb_adc_table;
 	unsigned int temp_amb_adc_table_size;
 
 	sec_battery_temp_check_t temp_check_type;
@@ -479,20 +465,14 @@ struct sec_battery_platform_data {
 	 * depending on temp_check_type
 	 * temperature should be temp x 10 (0.1 degree)
 	 */
-	int temp_highlimit_threshold_event;
-	int temp_highlimit_recovery_event;
 	int temp_high_threshold_event;
 	int temp_high_recovery_event;
 	int temp_low_threshold_event;
 	int temp_low_recovery_event;
-	int temp_highlimit_threshold_normal;
-	int temp_highlimit_recovery_normal;
 	int temp_high_threshold_normal;
 	int temp_high_recovery_normal;
 	int temp_low_threshold_normal;
 	int temp_low_recovery_normal;
-	int temp_highlimit_threshold_lpm;
-	int temp_highlimit_recovery_lpm;
 	int temp_high_threshold_lpm;
 	int temp_high_recovery_lpm;
 	int temp_low_threshold_lpm;
@@ -506,6 +486,8 @@ struct sec_battery_platform_data {
 	/* 2nd full check */
 	sec_battery_full_charged_t full_check_type_2nd;
 	unsigned int full_check_count;
+	unsigned int full_check_adc_1st;
+	unsigned int full_check_adc_2nd;
 	int chg_gpio_full_check;
 	/* 1 : active high, 0 : active low */
 	int chg_polarity_full_check;
@@ -558,11 +540,7 @@ struct sec_battery_platform_data {
 	int chg_irq;
 	unsigned long chg_irq_attr;
 	/* float voltage (mV) */
-#ifdef CONFIG_OF
-	unsigned int chg_float_voltage;
-#else
 	int chg_float_voltage;
-#endif
 	sec_charger_functions_t chg_functions_setting;
 
 	/* ADC setting */
@@ -582,7 +560,7 @@ static inline struct power_supply *get_power_supply_by_name(char *name)
 }
 
 #define psy_do_property(name, function, property, value) \
-{	\
+do {	\
 	struct power_supply *psy;	\
 	int ret;	\
 	psy = get_power_supply_by_name((name));	\
@@ -598,9 +576,8 @@ static inline struct power_supply *get_power_supply_by_name(char *name)
 			value.intval = 0;	\
 		}	\
 	}	\
-}
+} while(0)
 
-#ifndef CONFIG_OF
 #define adc_init(pdev, pdata, channel)	\
 	(((pdata)->adc_api)[((((pdata)->adc_type[(channel)]) <	\
 	SEC_BATTERY_ADC_TYPE_NUM) ? ((pdata)->adc_type[(channel)]) :	\
@@ -611,7 +588,6 @@ static inline struct power_supply *get_power_supply_by_name(char *name)
 
 #define adc_read(pdata, channel)	\
 	(((pdata)->adc_api)[((pdata)->adc_type[(channel)])].read((channel)))
-#endif
 
 #define get_battery_data(driver)	\
 	(((struct battery_data_t *)(driver)->pdata->battery_data)	\

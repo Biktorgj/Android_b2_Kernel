@@ -38,7 +38,7 @@ void s3c_i2c7_cfg_gpio(struct platform_device *dev)
 				      S3C_GPIO_SFN(3), S3C_GPIO_PULL_UP);
 }
 
-void s3c_i2c7_cfg_mux()
+void s3c_i2c7_cfg_mux(void)
 {
 #if 0
 	if (soc_is_exynos3472())

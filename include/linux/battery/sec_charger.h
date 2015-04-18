@@ -34,14 +34,10 @@
 #include <linux/battery/charger/dummy_charger.h>
 #elif defined(CONFIG_CHARGER_MAX8903)
 #include <linux/battery/charger/max8903_charger.h>
-#elif defined(CONFIG_CHARGER_SMB327)
-#include <linux/battery/charger/smb327_charger.h>
 #elif defined(CONFIG_CHARGER_SMB328)
 #include <linux/battery/charger/smb328_charger.h>
 #elif defined(CONFIG_CHARGER_SMB347)
 #include <linux/battery/charger/smb347_charger.h>
-#elif defined(CONFIG_CHARGER_SMB358)
-#include <linux/battery/charger/smb358_charger.h>
 #elif defined(CONFIG_CHARGER_BQ24157)
 #include <linux/battery/charger/bq24157_charger.h>
 #elif defined(CONFIG_CHARGER_BQ24190) || \
@@ -49,20 +45,14 @@
 #include <linux/battery/charger/bq24190_charger.h>
 #elif defined(CONFIG_CHARGER_BQ24260)
 #include <linux/battery/charger/bq24260_charger.h>
+#elif defined(CONFIG_CHARGER_MAX14577)
+#include <linux/battery/charger/max14577_charger.h>
 #elif defined(CONFIG_CHARGER_MAX77803)
 #include <linux/battery/charger/max77803_charger.h>
-#elif defined(CONFIG_CHARGER_MAX77804)
-#include <linux/battery/charger/max77804_charger.h>
-#elif defined(CONFIG_CHARGER_MAX77823)
-#include <linux/battery/charger/max77823_charger.h>
 #elif defined(CONFIG_CHARGER_MAX77693)
 #include <linux/battery/charger/max77693_charger.h>
 #elif defined(CONFIG_CHARGER_NCP1851)
 #include <linux/battery/charger/ncp1851_charger.h>
-#elif defined(CONFIG_CHARGER_RT5033)
-#include <linux/battery/charger/rt5033_charger.h>
-#elif defined(CONFIG_CHARGER_SM5414)
-#include <linux/battery/charger/sm5414_charger.h>
 #endif
 
 struct sec_charger_info {
@@ -75,17 +65,11 @@ struct sec_charger_info {
 	int status;
 	bool is_charging;
 
-#if defined(CONFIG_BATTERY_SAMSUNG) && defined(CONFIG_CHARGER_BQ24157)
-	struct sec_chg_info info;
-#endif
-
-	/* used only by sm5414 for store of charger interrupt
-	 *values for next health/charger status
+	/* HW-dedicated charger info structure
+	 * used in individual charger file only
+	 * (ex. dummy_charger.c)
 	 */
-#if defined(CONFIG_CHARGER_SM5414)
-	bool is_fullcharged;
-	struct sec_chg_info sm5414_chg_inf;
-#endif
+	struct sec_chg_info	info;
 
 	/* charging current : + charging, - OTG */
 	int charging_current;
@@ -95,23 +79,19 @@ struct sec_charger_info {
 	int reg_addr;
 	int reg_data;
 	int irq_base;
-
-	int siop_level;
 };
 
-bool sec_hal_chg_init(struct i2c_client *);
-bool sec_hal_chg_suspend(struct i2c_client *);
-bool sec_hal_chg_shutdown(struct i2c_client *);
-bool sec_hal_chg_resume(struct i2c_client *);
-bool sec_hal_chg_get_property(struct i2c_client *,
+bool sec_hal_chg_init(charger_variable_t *);
+bool sec_hal_chg_suspend(charger_variable_t *);
+bool sec_hal_chg_resume(charger_variable_t *);
+bool sec_hal_chg_shutdown(charger_variable_t *);
+bool sec_hal_chg_get_property(charger_variable_t *,
 				enum power_supply_property,
 				union power_supply_propval *);
-bool sec_hal_chg_set_property(struct i2c_client *,
+bool sec_hal_chg_set_property(charger_variable_t *,
 				enum power_supply_property,
 				const union power_supply_propval *);
-#if defined(CONFIG_CHARGER_SM5414)
-int sec_get_charging_health(struct i2c_client *client);
-#endif
+
 ssize_t sec_hal_chg_show_attrs(struct device *dev,
 				const ptrdiff_t offset, char *buf);
 
@@ -138,7 +118,5 @@ enum {
 	CHG_DATA,
 	CHG_REGS,
 };
-
-extern sec_battery_platform_data_t sec_battery_pdata;
 
 #endif /* __SEC_CHARGER_H */

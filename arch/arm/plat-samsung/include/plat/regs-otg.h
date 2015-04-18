@@ -131,8 +131,6 @@
 /* S3C_UDC_OTG_GRSTCTL */
 #define AHB_MASTER_IDLE			(1u<<31)
 #define CORE_SOFT_RESET			(0x1<<0)
-#define TxFFlush			(0x1<<5)
-#define TxFIFONum(x)			((x)<<6)
 
 /* S3C_UDC_OTG_GINTSTS/S3C_UDC_OTG_GINTMSK core interrupt register */
 #define INT_RESUME			(1u<<31)
@@ -192,8 +190,6 @@
 #define TEST_SE0_NAK_MODE		(0x3<<4)
 #define TEST_PACKET_MODE		(0x4<<4)
 #define TEST_FORCE_ENABLE_MODE		(0x5<<4)
-#define SGOUTNak			(0x1<<9)
-#define CGOUTNak			(0x1<<10)
 
 /* S3C_UDC_OTG_DAINT device all endpoint interrupt register */
 #define DAINT_OUT_BIT			(16)

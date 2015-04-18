@@ -76,7 +76,6 @@ IS_SAMSUNG_CPU(exynos5260, EXYNOS5260_SOC_ID, EXYNOS5_SOC_MASK)
 IS_SAMSUNG_CPU(exynos5410, EXYNOS5410_SOC_ID, EXYNOS5_SOC_MASK)
 IS_SAMSUNG_CPU(exynos5420, EXYNOS5420_SOC_ID, EXYNOS5_SOC_MASK)
 IS_SAMSUNG_CPU(exynos3250, EXYNOS3250_SOC_ID, EXYNOS3_SOC_MASK)
-IS_SAMSUNG_CPU(exynos3472, EXYNOS3250_SOC_ID, EXYNOS3_SOC_MASK)
 
 #if defined(CONFIG_CPU_S3C2410) || defined(CONFIG_CPU_S3C2412) || \
     defined(CONFIG_CPU_S3C2416) || defined(CONFIG_CPU_S3C2440) || \
@@ -121,12 +120,6 @@ IS_SAMSUNG_CPU(exynos3472, EXYNOS3250_SOC_ID, EXYNOS3_SOC_MASK)
 # define soc_is_exynos3250()    is_samsung_exynos3250()
 #else
 # define soc_is_exynos3250()    0
-#endif
-
-#if defined(CONFIG_SOC_EXYNOS3472)
-# define soc_is_exynos3472()    is_samsung_exynos3472()
-#else
-# define soc_is_exynos3472()    0
 #endif
 
 #if defined(CONFIG_CPU_EXYNOS4210)

@@ -36,9 +36,9 @@
 #include "exynos_mipi_dsi_lowlevel.h"
 #include "exynos_mipi_dsi_common.h"
 
-#define MIPI_FIFO_TIMEOUT	msecs_to_jiffies(250)
+#define MIPI_FIFO_TIMEOUT	msecs_to_jiffies(60)
 #define MIPI_RX_FIFO_READ_DONE  0x30800002
-#define MIPI_MAX_RX_FIFO        20
+#define MIPI_RX_MAX_FIFO        256	/* 4byte x 64depth */
 #define MHZ			(1000 * 1000)
 #define FIN_HZ			(24 * MHZ)
 
@@ -49,12 +49,27 @@
 #define DFVCO_MAX_HZ		(1000 * MHZ)
 
 #define TRY_GET_FIFO_TIMEOUT	(5000 * 2)
-#define TRY_FIFO_CLEAR		(10)
+#define TRY_FIFO_CLEAR		(100)
+
+#define MAKE_TX_HEADER(di,d0,d1)	(((d1) << 16) | ((d0) << 8) | \
+					(((di) & 0x3f) << 0))
+#define MAKE_RX_HEADER(di,d0)		(((d0) << 8) | ((di) << 0))
+
+static unsigned int atomic_fifo_empty;
+
+#define WAIT_FOR_ATOMIC_FIFO_EMPTY(d)	do {				\
+						udelay(d);		\
+					} while (!atomic_fifo_empty);
 
 /* MIPI-DSIM status types. */
 enum {
 	DSIM_STATE_INIT,	/* should be initialized. */
-	DSIM_STATE_STOP,	/* CPU and LCDC are LP mode. */
+	DSIM_STATE_STOP
+};
+
+/* MIPI-DSI transfer mode types. */
+enum {
+	DSIM_STATE_LPDT,	/* CPU and LCDC are LP mode. */
 	DSIM_STATE_HSCLKEN,	/* HS clock was enabled. */
 	DSIM_STATE_ULPS
 };
@@ -74,6 +89,33 @@ static unsigned int dpll_table[15] = {
 	640, 690, 770, 870, 950
 };
 
+static void wait_for_data_lane_stop_state(struct mipi_dsim_device *dsim,
+						unsigned int atomic)
+{
+	struct mipi_dsim_config *cfg = dsim->dsim_config;
+	unsigned int lane_mask = 0;
+	unsigned int repeat = 500;
+	unsigned int pos;
+
+	for (pos = 0; pos < cfg->e_no_data_lane + 1; pos++)
+		lane_mask |= 1 << pos;
+
+	/* Wait until all data lanes would be stop state. */
+	do {
+		if ((readl(dsim->reg_base + EXYNOS_DSIM_STATUS) & lane_mask)
+								== lane_mask)
+			break;
+
+		if (atomic)
+			udelay(2);
+		else
+			usleep_range(1, 2);
+	} while (repeat--);
+
+	if (!repeat)
+		dev_warn(dsim->dev, "data lane state is not stop.\n");
+}
+
 irqreturn_t exynos_mipi_dsi_interrupt_handler(int irq, void *dev_id)
 {
 	unsigned int intsrc = 0;
@@ -92,17 +134,19 @@ irqreturn_t exynos_mipi_dsi_interrupt_handler(int irq, void *dev_id)
 
 	intmsk = ~(intmsk) & intsrc;
 
-	switch (intmsk) {
-	case INTMSK_RX_DONE:
-		complete(&dsim_rd_comp);
+	if (intsrc & INTMSK_RX_DONE) {
+		complete(&dsim->rd_comp);
 		dev_dbg(dsim->dev, "MIPI INTMSK_RX_DONE\n");
-		break;
-	case INTMSK_FIFO_EMPTY:
-		complete(&dsim_wr_comp);
+	}
+	if (intsrc & INTMSK_FIFO_EMPTY) {
+		atomic_fifo_empty = 1;
+		complete(&dsim->wr_comp);
 		dev_dbg(dsim->dev, "MIPI INTMSK_FIFO_EMPTY\n");
-		break;
-	default:
-		break;
+	}
+	if (intsrc & INTMSK_FRAME_DONE) {
+		exynos_mipi_dsi_set_hs_enable(dsim, 0);
+		complete(&dsim->fd_comp);
+		dev_dbg(dsim->dev, "MIPI INTMAK_FRAME_DONE\n");
 	}
 
 	exynos_mipi_dsi_clear_interrupt(dsim, intmsk);
@@ -167,19 +211,81 @@ static void exynos_mipi_dsi_long_data_wr(struct mipi_dsim_device *dsim,
 	}
 }
 
+int exynos_mipi_dsi_atomic_wr_data(struct mipi_dsim_device *dsim,
+						unsigned int data_id,
+						const unsigned char *data0,
+						unsigned int data_size)
+{
+	unsigned int tx_header = 0;
+
+	if (dsim->tm_state == DSIM_STATE_ULPS) {
+		dev_err(dsim->dev, "state is ULPS.\n");
+		return -EINVAL;
+	}
+
+	/* Wait for data lane stop status in atomic. */
+	wait_for_data_lane_stop_state(dsim, 1);
+
+	switch (data_id) {
+	/* short packet types of packet types for command. */
+	case MIPI_DSI_GENERIC_SHORT_WRITE_0_PARAM:
+	case MIPI_DSI_GENERIC_SHORT_WRITE_1_PARAM:
+	case MIPI_DSI_GENERIC_SHORT_WRITE_2_PARAM:
+	case MIPI_DSI_DCS_SHORT_WRITE:
+	case MIPI_DSI_DCS_SHORT_WRITE_PARAM:
+	case MIPI_DSI_SET_MAXIMUM_RETURN_PACKET_SIZE:
+		tx_header = MAKE_TX_HEADER(data_id, data0[0], data0[1]);
+		writel_relaxed(tx_header, dsim->reg_base + EXYNOS_DSIM_PKTHDR);
+		return 0;
+	case MIPI_DSI_GENERIC_LONG_WRITE:
+	case MIPI_DSI_DCS_LONG_WRITE:
+	{
+		/* if data count is less then 4, then send 3bytes data.  */
+		if (data_size < 4) {
+			unsigned int payload = 0;
+
+			payload = data0[0] | data0[1] << 8 | data0[2] << 16;
+
+			writel_relaxed(payload,
+					dsim->reg_base + EXYNOS_DSIM_PAYLOAD);
+
+		/* in case that data count is more then 4 */
+		} else
+			exynos_mipi_dsi_long_data_wr(dsim, data0, data_size);
+
+		WAIT_FOR_ATOMIC_FIFO_EMPTY(1);
+
+		tx_header = MAKE_TX_HEADER(data_id, data_size & 0xff,
+						(data_size & 0xff00) >> 8);
+
+		/* put data into header fifo */
+		writel_relaxed(tx_header, dsim->reg_base + EXYNOS_DSIM_PKTHDR);
+
+		return 0;
+	}
+	default:
+		dev_warn(dsim->dev,
+			"data id %x is not supported for atomic interface.\n",
+			data_id);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 int exynos_mipi_dsi_wr_data(struct mipi_dsim_device *dsim, unsigned int data_id,
 	const unsigned char *data0, unsigned int data_size)
 {
-	unsigned int check_rx_ack = 0;
+	unsigned int tx_header = 0;
 
-	if (dsim->state == DSIM_STATE_ULPS) {
+	if (dsim->tm_state == DSIM_STATE_ULPS) {
 		dev_err(dsim->dev, "state is ULPS.\n");
 
 		return -EINVAL;
 	}
 
-	/* FIXME!!! why does it need this delay? */
-	msleep(20);
+	/* Wait for data lane stop status. */
+	wait_for_data_lane_stop_state(dsim, 0);
 
 	mutex_lock(&dsim->lock);
 
@@ -191,31 +297,19 @@ int exynos_mipi_dsi_wr_data(struct mipi_dsim_device *dsim, unsigned int data_id,
 	case MIPI_DSI_DCS_SHORT_WRITE:
 	case MIPI_DSI_DCS_SHORT_WRITE_PARAM:
 	case MIPI_DSI_SET_MAXIMUM_RETURN_PACKET_SIZE:
-		exynos_mipi_dsi_wr_tx_header(dsim, data_id, data0[0], data0[1]);
-		if (check_rx_ack) {
-			/* process response func should be implemented */
-			mutex_unlock(&dsim->lock);
-			return 0;
-		} else {
-			mutex_unlock(&dsim->lock);
-			return -EINVAL;
-		}
-
+		tx_header = MAKE_TX_HEADER(data_id, data0[0], data0[1]);
+		writel_relaxed(tx_header, dsim->reg_base + EXYNOS_DSIM_PKTHDR);
+		mutex_unlock(&dsim->lock);
+		return 0;
 	/* general command */
 	case MIPI_DSI_COLOR_MODE_OFF:
 	case MIPI_DSI_COLOR_MODE_ON:
 	case MIPI_DSI_SHUTDOWN_PERIPHERAL:
 	case MIPI_DSI_TURN_ON_PERIPHERAL:
-		exynos_mipi_dsi_wr_tx_header(dsim, data_id, data0[0], data0[1]);
-		if (check_rx_ack) {
-			/* process response func should be implemented. */
-			mutex_unlock(&dsim->lock);
-			return 0;
-		} else {
-			mutex_unlock(&dsim->lock);
-			return -EINVAL;
-		}
-
+		tx_header = MAKE_TX_HEADER(data_id, data0[0], data0[1]);
+		writel_relaxed(tx_header, dsim->reg_base + EXYNOS_DSIM_PKTHDR);
+		mutex_unlock(&dsim->lock);
+		return 0;
 	/* packet types for video data */
 	case MIPI_DSI_V_SYNC_START:
 	case MIPI_DSI_V_SYNC_END:
@@ -224,7 +318,6 @@ int exynos_mipi_dsi_wr_data(struct mipi_dsim_device *dsim, unsigned int data_id,
 	case MIPI_DSI_END_OF_TRANSMISSION:
 		mutex_unlock(&dsim->lock);
 		return 0;
-
 	/* long packet type and null packet */
 	case MIPI_DSI_NULL_PACKET:
 	case MIPI_DSI_BLANKING_PACKET:
@@ -234,7 +327,6 @@ int exynos_mipi_dsi_wr_data(struct mipi_dsim_device *dsim, unsigned int data_id,
 	case MIPI_DSI_DCS_LONG_WRITE:
 	{
 		unsigned int size, payload = 0;
-		INIT_COMPLETION(dsim_wr_comp);
 
 		size = data_size * 4;
 
@@ -244,7 +336,7 @@ int exynos_mipi_dsi_wr_data(struct mipi_dsim_device *dsim, unsigned int data_id,
 				data0[1] << 8 |
 				data0[2] << 16;
 
-			exynos_mipi_dsi_wr_tx_data(dsim, payload);
+			writel_relaxed(payload, dsim->reg_base + EXYNOS_DSIM_PAYLOAD);
 
 			dev_dbg(dsim->dev, "count = %d payload = %x,%x %x %x\n",
 				data_size, payload, data0[0],
@@ -254,25 +346,31 @@ int exynos_mipi_dsi_wr_data(struct mipi_dsim_device *dsim, unsigned int data_id,
 		} else
 			exynos_mipi_dsi_long_data_wr(dsim, data0, data_size);
 
-		/* put data into header fifo */
-		exynos_mipi_dsi_wr_tx_header(dsim, data_id, data_size & 0xff,
-			(data_size & 0xff00) >> 8);
-
-		if (!wait_for_completion_interruptible_timeout(&dsim_wr_comp,
+		if (!wait_for_completion_interruptible_timeout(&dsim->wr_comp,
 							MIPI_FIFO_TIMEOUT)) {
-			dev_warn(dsim->dev, "command write timeout.\n");
+			dev_warn(dsim->dev, "0x%02x, 0x%02x, 0x%02x"\
+				" command write timeout.\n",
+				data0[0], data0[1], data0[2]);
+
+			dev_warn(dsim->dev,
+					"tm_state[%d]sz[%d]reg[0x%x 0x%x]intr[0x%x 0x%x]\n",
+					dsim->tm_state, data_size,
+					readl(dsim->reg_base + EXYNOS_DSIM_ESCMODE),
+					readl(dsim->reg_base + EXYNOS_DSIM_CLKCTRL),
+					exynos_mipi_dsi_read_interrupt(dsim),
+					exynos_mipi_dsi_read_interrupt_mask(dsim));
+
 			mutex_unlock(&dsim->lock);
 			return -EAGAIN;
 		}
 
-		if (check_rx_ack) {
-			/* process response func should be implemented. */
-			mutex_unlock(&dsim->lock);
-			return 0;
-		} else {
-			mutex_unlock(&dsim->lock);
-			return -EINVAL;
-		}
+		tx_header = MAKE_TX_HEADER(data_id, data_size & 0xff,
+						(data_size & 0xff00) >> 8);
+
+		/* put data into header fifo */
+		writel_relaxed(tx_header, dsim->reg_base + EXYNOS_DSIM_PKTHDR);
+		mutex_unlock(&dsim->lock);
+		return 0;
 	}
 
 	/* packet typo for video data */
@@ -280,14 +378,7 @@ int exynos_mipi_dsi_wr_data(struct mipi_dsim_device *dsim, unsigned int data_id,
 	case MIPI_DSI_PACKED_PIXEL_STREAM_18:
 	case MIPI_DSI_PIXEL_STREAM_3BYTE_18:
 	case MIPI_DSI_PACKED_PIXEL_STREAM_24:
-		if (check_rx_ack) {
-			/* process response func should be implemented. */
-			mutex_unlock(&dsim->lock);
-			return 0;
-		} else {
-			mutex_unlock(&dsim->lock);
-			return -EINVAL;
-		}
+		break;
 	default:
 		dev_warn(dsim->dev,
 			"data id %x is not supported current DSI spec.\n",
@@ -297,7 +388,6 @@ int exynos_mipi_dsi_wr_data(struct mipi_dsim_device *dsim, unsigned int data_id,
 		return -EINVAL;
 	}
 
-	mutex_unlock(&dsim->lock);
 	return 0;
 }
 
@@ -344,7 +434,7 @@ err:
 	return -EINVAL;
 }
 
-static unsigned int exynos_mipi_dsi_response_size(unsigned int req_size)
+static inline unsigned int exynos_mipi_dsi_response_size(unsigned int req_size)
 {
 	switch (req_size) {
 	case 1:
@@ -356,39 +446,48 @@ static unsigned int exynos_mipi_dsi_response_size(unsigned int req_size)
 	}
 }
 
+static inline unsigned int exynos_mipi_dsi_dcs_response_size(unsigned int req_size)
+{
+	switch (req_size) {
+	case 1:
+		return MIPI_DSI_RX_DCS_SHORT_READ_RESPONSE_1BYTE;
+	case 2:
+		return MIPI_DSI_RX_DCS_SHORT_READ_RESPONSE_2BYTE;
+	default:
+		return MIPI_DSI_RX_DCS_LONG_READ_RESPONSE;
+	}
+}
+
 int exynos_mipi_dsi_rd_data(struct mipi_dsim_device *dsim, unsigned int data_id,
 	unsigned int data0, unsigned int req_size, u8 *rx_buf)
 {
-	unsigned int rx_data, rcv_pkt, i;
+	unsigned int rx_data, rcv_pkt;
+	unsigned int rx_header = 0;
+	unsigned int fifo_depth_len;
 	u8 response = 0;
 	u16 rxsize;
 
-	if (dsim->state == DSIM_STATE_ULPS) {
+	if (dsim->tm_state == DSIM_STATE_ULPS) {
 		dev_err(dsim->dev, "state is ULPS.\n");
-
 		return -EINVAL;
 	}
 
-	/* FIXME!!! */
-	msleep(20);
+	/* Wait for data lane stop status. */
+	wait_for_data_lane_stop_state(dsim, 0);
 
 	mutex_lock(&dsim->lock);
-	INIT_COMPLETION(dsim_rd_comp);
-	exynos_mipi_dsi_rd_tx_header(dsim,
-		MIPI_DSI_SET_MAXIMUM_RETURN_PACKET_SIZE, req_size);
-
-	response = exynos_mipi_dsi_response_size(req_size);
 
 	switch (data_id) {
 	case MIPI_DSI_GENERIC_READ_REQUEST_0_PARAM:
 	case MIPI_DSI_GENERIC_READ_REQUEST_1_PARAM:
 	case MIPI_DSI_GENERIC_READ_REQUEST_2_PARAM:
+		response = exynos_mipi_dsi_response_size(req_size);
+		break;
 	case MIPI_DSI_DCS_READ:
-		exynos_mipi_dsi_rd_tx_header(dsim,
-			data_id, data0);
-		/* process response func should be implemented. */
+		response = exynos_mipi_dsi_dcs_response_size(req_size);
 		break;
 	default:
+		mutex_unlock(&dsim->lock);
 		dev_warn(dsim->dev,
 			"data id %x is not supported current DSI spec.\n",
 			data_id);
@@ -396,25 +495,31 @@ int exynos_mipi_dsi_rd_data(struct mipi_dsim_device *dsim, unsigned int data_id,
 		return -EINVAL;
 	}
 
-	if (!wait_for_completion_interruptible_timeout(&dsim_rd_comp,
+	rx_header = MAKE_RX_HEADER(MIPI_DSI_SET_MAXIMUM_RETURN_PACKET_SIZE,
+					req_size);
+	writel_relaxed(rx_header, dsim->reg_base + EXYNOS_DSIM_PKTHDR);
+
+	rx_header = MAKE_RX_HEADER(data_id, data0);
+	writel_relaxed(rx_header, dsim->reg_base + EXYNOS_DSIM_PKTHDR);
+
+	if (!wait_for_completion_interruptible_timeout(&dsim->rd_comp,
 				MIPI_FIFO_TIMEOUT)) {
-		pr_err("RX done interrupt timeout\n");
+		dev_err(dsim->dev, "RX done interrupt timeout\n");
 		mutex_unlock(&dsim->lock);
 		return 0;
 	}
 
-	msleep(20);
-
-	rx_data = exynos_mipi_dsi_rd_rx_fifo(dsim);
-
+	rx_data = readl(dsim->reg_base + EXYNOS_DSIM_RXFIFO);
 	if ((u8)(rx_data & 0xff) != response) {
-		printk(KERN_ERR
+		dev_err(dsim->dev,
 			"mipi dsi wrong response rx_data : %x, response:%x\n",
 			rx_data, response);
 		goto clear_rx_fifo;
 	}
 
 	if (req_size <= 2) {
+		unsigned int i;
+
 		/* for short packet */
 		for (i = 0; i < req_size; i++)
 			rx_buf[i] = (rx_data >> (8 + (i * 8))) & 0xff;
@@ -427,12 +532,10 @@ int exynos_mipi_dsi_rd_data(struct mipi_dsim_device *dsim, unsigned int data_id,
 			goto clear_rx_fifo;
 	}
 
-	rcv_pkt = exynos_mipi_dsi_rd_rx_fifo(dsim);
-
-	msleep(20);
-
+	/* FIXME */
+	rcv_pkt = readl(dsim->reg_base + EXYNOS_DSIM_RXFIFO);
 	if (rcv_pkt != MIPI_RX_FIFO_READ_DONE) {
-		dev_info(dsim->dev,
+		dev_err(dsim->dev,
 			"Can't found RX FIFO READ DONE FLAG : %x\n", rcv_pkt);
 		goto clear_rx_fifo;
 	}
@@ -442,18 +545,16 @@ int exynos_mipi_dsi_rd_data(struct mipi_dsim_device *dsim, unsigned int data_id,
 	return rxsize;
 
 clear_rx_fifo:
-	i = 0;
-	while (1) {
-		rcv_pkt = exynos_mipi_dsi_rd_rx_fifo(dsim);
-		if ((rcv_pkt == MIPI_RX_FIFO_READ_DONE)
-				|| (i > MIPI_MAX_RX_FIFO))
+	fifo_depth_len = MIPI_RX_MAX_FIFO >> 2;
+
+	do {
+		rcv_pkt = readl(dsim->reg_base + EXYNOS_DSIM_RXFIFO);
+		if (rcv_pkt == MIPI_RX_FIFO_READ_DONE)
 			break;
+
 		dev_dbg(dsim->dev,
 				"mipi dsi clear rx fifo : %08x\n", rcv_pkt);
-		i++;
-	}
-	dev_info(dsim->dev,
-		"mipi dsi rx done count : %d, rcv_pkt : %08x\n", i, rcv_pkt);
+	} while (--fifo_depth_len);
 
 	mutex_unlock(&dsim->lock);
 
@@ -698,11 +799,11 @@ void exynos_mipi_dsi_init_interrupt(struct mipi_dsim_device *dsim)
 {
 	unsigned int src = 0;
 
-	src = (INTSRC_SFR_FIFO_EMPTY | INTSRC_RX_DATA_DONE);
+	src = (INTSRC_SFR_FIFO_EMPTY | INTSRC_RX_DATA_DONE | INTSRC_FRAME_DONE);
 	exynos_mipi_dsi_set_interrupt(dsim, src, 1);
 
 	src = 0;
-	src = ~(INTMSK_RX_DONE | INTMSK_FIFO_EMPTY);
+	src = ~(INTMSK_RX_DONE | INTMSK_FIFO_EMPTY | INTSRC_FRAME_DONE);
 	exynos_mipi_dsi_set_interrupt_mask(dsim, src, 1);
 }
 
@@ -715,13 +816,45 @@ int exynos_mipi_dsi_enable_frame_done_int(struct mipi_dsim_device *dsim,
 	return 0;
 }
 
-void exynos_mipi_dsi_stand_by(struct mipi_dsim_device *dsim,
-		unsigned int enable)
+void exynos_mipi_dsi_standby(struct mipi_dsim_device *dsim,
+				unsigned int enable, unsigned int wait)
 {
+	unsigned int reg;
 
-	/* consider Main display and Sub display. */
+	reg = readl(dsim->reg_base + EXYNOS_DSIM_MDRESOL);
 
-	exynos_mipi_dsi_set_main_stand_by(dsim, enable);
+	reg &= ~DSIM_MAIN_STAND_BY;
+
+	if (enable) {
+		reg |= DSIM_MAIN_STAND_BY;
+		if (wait && dsim->dsim_lcd_drv->if_type == DSIM_COMMAND)
+			dsim->master_ops->stop_trigger(dsim, false);
+	} else {
+		/*
+		 * The case that when MIPI-DSI tries to transfer some commands
+		 * to lcd panel while image data is being transferred to lcd
+		 * panel, makes LCD panel controller to be malfunction. So
+		 * make sure that FIMD trigger is stopped, and it waits for
+		 * the completion FIMD vblank and TE signel from LCD panel
+		 * before it transfers some commands to LCD panel.
+		 */
+		if (wait) {
+			if (dsim->dsim_lcd_drv->if_type == DSIM_COMMAND) {
+				/*
+				 * Make sure that FIMD isn't triggered.
+				 */
+				dsim->master_ops->stop_trigger(dsim, true);
+			}
+
+			/*
+			 * Wait for the completion of FIMD vblank
+			 * and TE signal.
+			 */
+			dsim->master_ops->wait_for_frame_done(dsim);
+		}
+	}
+
+	writel_relaxed(reg, dsim->reg_base + EXYNOS_DSIM_MDRESOL);
 }
 
 int exynos_mipi_dsi_set_display_mode(struct mipi_dsim_device *dsim,
@@ -754,7 +887,7 @@ int exynos_mipi_dsi_set_display_mode(struct mipi_dsim_device *dsim,
 
 	exynos_mipi_dsi_display_config(dsim, dsim_config);
 
-	dev_info(dsim->dev, "lcd panel ==> width = %d, height = %d\n",
+	dev_dbg(dsim->dev, "lcd panel ==> width = %d, height = %d\n",
 			timing->xres, timing->yres);
 
 	return 0;
@@ -789,9 +922,9 @@ int exynos_mipi_dsi_init_link(struct mipi_dsim_device *dsim)
 			}
 		}
 		if (time_out != 0) {
-			dev_info(dsim->dev,
+			dev_dbg(dsim->dev,
 				"DSI Master driver has been completed.\n");
-			dev_info(dsim->dev, "DSI Master state is stop state\n");
+			dev_dbg(dsim->dev, "DSI Master state is stop state\n");
 		}
 
 		dsim->state = DSIM_STATE_STOP;
@@ -813,7 +946,8 @@ int exynos_mipi_dsi_init_link(struct mipi_dsim_device *dsim)
 	return 0;
 }
 
-int exynos_mipi_dsi_set_hs_enable(struct mipi_dsim_device *dsim)
+int exynos_mipi_dsi_set_hs_enable(struct mipi_dsim_device *dsim,
+					unsigned int enable)
 {
 	if (dsim->state != DSIM_STATE_STOP) {
 		dev_warn(dsim->dev, "DSIM is not in stop state.\n");
@@ -825,12 +959,20 @@ int exynos_mipi_dsi_set_hs_enable(struct mipi_dsim_device *dsim)
 		return 0;
 	}
 
-	dsim->state = DSIM_STATE_HSCLKEN;
+	if (enable) {
+		 /* set LCDC and CPU transfer mode to HS. */
+		exynos_mipi_dsi_set_lcdc_transfer_mode(dsim, 0);
+		exynos_mipi_dsi_set_cpu_transfer_mode(dsim, 0);
+		exynos_mipi_dsi_enable_hs_clock(dsim, 1);
 
-	 /* set LCDC and CPU transfer mode to HS. */
-	exynos_mipi_dsi_set_lcdc_transfer_mode(dsim, 0);
-	exynos_mipi_dsi_set_cpu_transfer_mode(dsim, 0);
-	exynos_mipi_dsi_enable_hs_clock(dsim, 1);
+		dsim->tm_state = DSIM_STATE_HSCLKEN;
+	} else {
+		exynos_mipi_dsi_set_lcdc_transfer_mode(dsim, 1);
+		exynos_mipi_dsi_set_cpu_transfer_mode(dsim, 1);
+		exynos_mipi_dsi_enable_hs_clock(dsim, 0);
+
+		dsim->tm_state = DSIM_STATE_LPDT;
+	}
 
 	return 0;
 }
@@ -839,17 +981,17 @@ int exynos_mipi_dsi_set_data_transfer_mode(struct mipi_dsim_device *dsim,
 		unsigned int mode)
 {
 	if (mode) {
-		if (dsim->state != DSIM_STATE_HSCLKEN) {
+		if (dsim->tm_state != DSIM_STATE_HSCLKEN) {
 			dev_err(dsim->dev, "HS Clock lane is not enabled.\n");
 			return -EINVAL;
 		}
 
 		exynos_mipi_dsi_set_lcdc_transfer_mode(dsim, 0);
 	} else {
-		if (dsim->state == DSIM_STATE_INIT || dsim->state ==
-			DSIM_STATE_ULPS) {
+		if (dsim->tm_state != DSIM_STATE_LPDT && dsim->tm_state ==
+			DSIM_STATE_HSCLKEN) {
 			dev_err(dsim->dev,
-				"DSI Master is not STOP or HSDT state.\n");
+				"DSI Master is not LPDT or HSDT state.\n");
 			return -EINVAL;
 		}
 

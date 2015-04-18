@@ -18,16 +18,14 @@ extern struct mipi_dsim_lcd_driver s6e8ab0_mipi_lcd_driver;
 extern struct mipi_dsim_lcd_driver s6e8aa0_mipi_lcd_driver;
 #elif defined(CONFIG_LCD_MIPI_D6EA8061)
 extern struct mipi_dsim_lcd_driver d6ea8061_mipi_lcd_driver;
-#elif defined(CONFIG_LCD_MIPI_EA8061)
-extern struct mipi_dsim_lcd_driver ea8061_mipi_lcd_driver;
+#elif defined(CONFIG_LCD_MIPI_EA8061V)
+extern struct mipi_dsim_lcd_driver ea8061v_mipi_lcd_driver;
 #elif defined(CONFIG_LCD_MIPI_S6E3FA0)
 extern struct mipi_dsim_lcd_driver s6e3fa0_mipi_lcd_driver;
 #elif defined(CONFIG_LCD_MIPI_AMS480GYXX)
 extern struct mipi_dsim_lcd_driver ams480gyxx_mipi_lcd_driver;
 #elif defined(CONFIG_LCD_MIPI_S6E8AA4)
 extern struct mipi_dsim_lcd_driver s6e8aa4_mipi_lcd_driver;
-#elif defined(CONFIG_LCD_MIPI_EA8061V)
-extern struct mipi_dsim_lcd_driver ea8061v_mipi_lcd_driver;
 #elif defined(CONFIG_LCD_MIPI_S6E63M0)
 extern struct mipi_dsim_lcd_driver s6e63m0_mipi_lcd_driver;
 #elif defined(CONFIG_LCD_MIPI_TC358764)
@@ -42,8 +40,6 @@ extern struct mipi_dsim_lcd_driver tc358764_lvds_mipi_lcd_driver;
 extern struct mipi_dsim_lcd_driver hx8369_mipi_lcd_driver;
 #elif defined(CONFIG_LCD_MIPI_S6E63J0X03)
 extern struct mipi_dsim_lcd_driver s6e63j0x03_mipi_lcd_driver;
-#elif defined(CONFIG_LCD_MIPI_S6D7AA0)
-extern struct mipi_dsim_lcd_driver s6d7aa0_mipi_lcd_driver;
 #endif
 extern int s5p_mipi_dsi_wr_data(struct mipi_dsim_device *dsim,
 	u8 cmd, const u8 *buf, u32 len);

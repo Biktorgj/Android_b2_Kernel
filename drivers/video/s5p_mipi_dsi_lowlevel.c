@@ -71,7 +71,7 @@ void s5p_mipi_dsi_init_fifo_pointer(struct mipi_dsim_device *dsim,
 	reg = readl(dsim->reg_base + S5P_DSIM_FIFOCTRL);
 
 	writel(reg & ~(cfg), dsim->reg_base + S5P_DSIM_FIFOCTRL);
-	/*usleep_range(10000, 12000);*/
+	usleep_range(10000, 12000);
 	reg |= cfg;
 
 	writel(reg, dsim->reg_base + S5P_DSIM_FIFOCTRL);
@@ -85,9 +85,9 @@ void s5p_mipi_dsi_set_main_disp_resol(struct mipi_dsim_device *dsim,
 	/* standby should be set after configuration so set to not ready*/
 	reg = (readl(dsim->reg_base + S5P_DSIM_MDRESOL)) &
 		~(DSIM_MAIN_STAND_BY);
-	/* writel(reg, dsim->reg_base + S5P_DSIM_MDRESOL); */
+	writel(reg, dsim->reg_base + S5P_DSIM_MDRESOL);
 
-	reg &= ~(0xfff << 16) & ~(0xfff << 0);
+	reg &= ~(0x7ff << 16) & ~(0x7ff << 0);
 	reg |= DSIM_MAIN_VRESOL(vert_resol) | DSIM_MAIN_HRESOL(hori_resol);
 
 	reg |= DSIM_MAIN_STAND_BY;
@@ -163,13 +163,8 @@ void s5p_mipi_dsi_init_config(struct mipi_dsim_device *dsim)
 	unsigned int cfg = (readl(dsim->reg_base + S5P_DSIM_CONFIG)) &
 		~(1 << 29) & ~(1 << 28) & ~(0x1f << 20) & ~(0x3 << 5);
 
-	/* clear first to setup clk lane toggle */
-	cfg &= ~(1 << DSIM_CLKLANE_SHIFT);
-
-	if (dsim->pd->dsim_config->e_interface == DSIM_VIDEO)
-		cfg |= (DSIM_CLKLANE_ENABLE << DSIM_CLKLANE_SHIFT);	/* enable */
-	else if (dsim->pd->dsim_config->e_interface == DSIM_COMMAND)
-		cfg |= (!DSIM_CLKLANE_ENABLE << DSIM_CLKLANE_SHIFT);	/* disable */
+	if (soc_is_exynos5260())
+		cfg |= DSIM_CLKLANE_ENABLE;
 
 	cfg |=	(dsim_config->auto_flush << 29) |
 		(dsim_config->eot_disable << 28) |
@@ -191,10 +186,9 @@ void s5p_mipi_dsi_display_config(struct mipi_dsim_device *dsim)
 
 	if (dsim->pd->dsim_config->e_interface == DSIM_VIDEO)
 		reg |= (1 << 25);
-	else if (dsim->pd->dsim_config->e_interface == DSIM_COMMAND) {
+	else if (dsim->pd->dsim_config->e_interface == DSIM_COMMAND)
 		reg &= ~(1 << 25);
-		reg |= (1 << 30);
-	} else {
+	else {
 		dev_err(dsim->dev, "this ddi is not MIPI interface.\n");
 		return;
 	}
@@ -468,7 +462,7 @@ void s5p_mipi_dsi_dp_dn_swap(struct mipi_dsim_device *dsim,
 {
 	unsigned int reg;
 
-	if (soc_is_exynos5250() || soc_is_exynos3250() || soc_is_exynos3470() || soc_is_exynos3472()) {
+	if (soc_is_exynos5250() || soc_is_exynos3250() || soc_is_exynos3470()) {
 		reg = readl(dsim->reg_base + S5P_DSIM_PHYACCHR1);
 		reg &= ~(0x3 << 0);
 		reg |= (swap_en & 0x3) << 0;

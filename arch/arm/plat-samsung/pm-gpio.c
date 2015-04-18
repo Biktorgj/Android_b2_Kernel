@@ -273,6 +273,16 @@ static void samsung_gpio_pm_4bit_resume(struct samsung_gpio_chip *chip)
 	if (soc_is_exynos4415() && !strcmp(chip->chip.label, "GPL1"))
 		return;
 
+#ifdef CONFIG_MACH_B2
+	/*
+	 * Workaround: change the pm_save data of GPK0DAT[2]
+	 * to inprove mmc0 resume time.
+	 */
+
+	if (!strcmp(chip->chip.label, "GPK0") && (old_gpdat & 0x00000004))
+		chip->pm_save[2] |= 0x00000004;
+#endif
+
 	/* First, modify the CON settings */
 
 	old_gpcon[0] = 0;

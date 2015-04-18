@@ -293,7 +293,7 @@ static int s3c_pm_enter(suspend_state_t state)
 	s3c_pm_arch_stop_clocks();
 
 #ifdef CONFIG_SEC_PM
-		pr_info("PM: SLEEP\n");
+	pr_info("PM: SLEEP\n");
 #endif
 
 	/* this will also act as our return point from when
@@ -301,6 +301,10 @@ static int s3c_pm_enter(suspend_state_t state)
 	 * during the resume.  */
 
 	cpu_suspend(0, pm_cpu_sleep);
+
+#ifdef CONFIG_SEC_PM
+	pr_info("PM: SLEEP-\n");
+#endif
 
 	/* restore the system state */
 

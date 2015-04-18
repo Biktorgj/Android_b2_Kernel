@@ -146,6 +146,9 @@ unsigned long clk_get_rate(struct clk *clk)
 	if (IS_ERR(clk))
 		return 0;
 
+	if (clk->rate != 0)
+		return clk->rate;
+
 	if (clk->ops != NULL && clk->ops->get_rate != NULL)
 		return (clk->ops->get_rate)(clk);
 

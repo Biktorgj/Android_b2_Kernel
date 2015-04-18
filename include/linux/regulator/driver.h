@@ -171,6 +171,12 @@ struct regulator_desc {
 	int irq;
 	enum regulator_type type;
 	struct module *owner;
+	int min_uV;
+	int uV_step;
+	int vsel_reg;
+	int vsel_mask;
+	int enable_reg;
+	int enable_mask;
 };
 
 /*

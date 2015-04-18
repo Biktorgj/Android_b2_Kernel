@@ -23,6 +23,7 @@
 
 #include <video/s5p-dp.h>
 
+#include <mach/setup-disp-clock.h>
 #include <plat/cpu.h>
 #include <plat/clock.h>
 
@@ -1058,9 +1059,10 @@ static int s5p_dp_enable(struct s5p_dp_device *dp)
 	int retry = 0;
 	struct s5p_dp_platdata *pdata = dp->dev->platform_data;
 
-	if (pdata->clock_init) {
-		if (pdata->clock_init() < 0)
+	if ((pdata->clock_reinit == true )&& (dp->clock_status == false)) {
+		if (s5p_dp_clock_reinit() < 0)
 			pr_err("failed to get disp clock\n");
+		dp->clock_status = true;
 	}
 
 	mutex_lock(&dp->lock);
@@ -1161,7 +1163,10 @@ out:
 static void s5p_dp_disable(struct s5p_dp_device *dp)
 {
 	struct s5p_dp_platdata *pdata = dp->dev->platform_data;
-
+#if defined(CONFIG_SOC_EXYNOS5260)
+	if ((pdata->clock_reinit == true) && (dp->clock_status == true))
+		dp->clock_status = false;
+#endif
 	mutex_lock(&dp->lock);
 
 	if (!dp->enabled)
@@ -1226,6 +1231,8 @@ static int __devinit s5p_dp_probe(struct platform_device *pdev)
 	mutex_init(&dp->lock);
 
 	dp->dev = &pdev->dev;
+	if (pdata->clock_reinit == true)
+		dp->clock_status = true;
 
 	dp->clock = clk_get(&pdev->dev, "dp");
 	if (IS_ERR(dp->clock)) {

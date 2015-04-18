@@ -19,37 +19,16 @@
 #ifndef __SEC_FUELGAUGE_H
 #define __SEC_FUELGAUGE_H __FILE__
 
-#if defined(CONFIG_FUELGAUGE_MFD)
-#define fuelgauge_variable fuelgauge
-#define fuelgauge_variable_t struct sec_fuelgauge_info
-#else
-#define fuelgauge_variable (fuelgauge->client)
-#define fuelgauge_variable_t struct i2c_client
-#endif
-
 #include <linux/battery/sec_charging_common.h>
 
-#if defined(CONFIG_FUELGAUGE_DUMMY) || \
-	defined(CONFIG_FUELGAUGE_PM8917)
+#if defined(CONFIG_FUELGAUGE_DUMMY)
 #include <linux/battery/fuelgauge/dummy_fuelgauge.h>
 #elif defined(CONFIG_FUELGAUGE_MAX17042)
 #include <linux/battery/fuelgauge/max17042_fuelgauge.h>
 #elif defined(CONFIG_FUELGAUGE_MAX17048)
 #include <linux/battery/fuelgauge/max17048_fuelgauge.h>
-#elif defined(CONFIG_FUELGAUGE_MAX77823)
-#include <linux/battery/fuelgauge/max77823_fuelgauge.h>
 #elif defined(CONFIG_FUELGAUGE_MAX17050)
 #include <linux/battery/fuelgauge/max17050_fuelgauge.h>
-#elif defined(CONFIG_FUELGAUGE_STC3115)
-#include <linux/battery/fuelgauge/stc3115_fuelgauge.h>
-#elif defined(CONFIG_FUELGAUGE_STC3117)
-#include <linux/battery/fuelgauge/stc3117_fuelgauge.h>
-#elif defined(CONFIG_FUELGAUGE_RT5033)
-#include <linux/battery/fuelgauge/rt5033_fuelgauge.h>
-#else
-struct sec_fg_info {
-	bool dummy;
-};
 #endif
 
 struct sec_fuelgauge_reg_data {
@@ -86,7 +65,7 @@ struct sec_fuelgauge_info {
 	int reg_addr;
 	u8 reg_data[2];
 
-	int fg_irq;
+	int irq;
 };
 
 bool sec_hal_fg_init(struct i2c_client *);
@@ -117,6 +96,8 @@ ssize_t sec_fg_show_attrs(struct device *dev,
 ssize_t sec_fg_store_attrs(struct device *dev,
 				struct device_attribute *attr,
 				const char *buf, size_t count);
+
+extern void sec_hibernation_setting(struct i2c_client *client);
 
 #define SEC_FG_ATTR(_name)				\
 {							\

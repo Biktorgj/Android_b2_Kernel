@@ -34,6 +34,7 @@ struct s5p_dp_device {
 	void __iomem		*reg_base;
 	int 			enabled;
 	bool			user_disabled;
+	bool			clock_status;
 	struct mutex		lock;
 
 	struct video_info	*video_info;

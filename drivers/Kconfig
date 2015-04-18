@@ -155,4 +155,7 @@ source "drivers/fingerprint/Kconfig"
 source "drivers/irda/Kconfig"
 
 source "drivers/ice4_fpga/Kconfig"
+
+source "drivers/sensorhub/Kconfig"
+
 endmenu

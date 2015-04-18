@@ -22,7 +22,6 @@ static const char * const booster_device_name[BOOSTER_DEVICE_MAX] = {
 	"pen",
 };
 
-static struct input_booster *g_data;
 static unsigned int DbgLevel;
 
 /* Key */
@@ -426,26 +425,6 @@ out:
 	return;
 }
 
-void change_boost_level(unsigned char level, enum booster_device_type device_type)
-{
-	struct booster_dvfs *dvfs = &g_data->dvfses[device_type];
-
-	if (!g_data) {
-		pr_err("%s: booster is not loaded\n", __func__);
-		return;
-	}
-
-	if (!dvfs || !dvfs->initialized) {
-		dev_info(g_data->dev, "%s: Dvfs is not initialized\n",
-			__func__);
-		return;
-	}
-
-	dvfs->level = level;
-	dev_info(g_data->dev, "%s: %s's LEVEL [%d]\n",
-			__func__, dvfs->name, dvfs->level);
-}
-
 static void input_booster_event_work(struct work_struct *work)
 {
 	struct input_booster *data =
@@ -481,6 +460,112 @@ static void input_booster_event_work(struct work_struct *work)
 	}
 }
 
+#ifdef BOOSTER_USE_INPUT_HANDLER
+static void input_booster_event(struct input_handle *handle, unsigned int type,
+			   unsigned int code, int value)
+{
+	struct input_booster *data = handle->private;
+	enum booster_device_type device_type;
+	struct booster_event event;
+
+	if (!test_bit(code, data->keybit))
+		return;
+
+	DVFS_DEV_DBG(DBG_EVENT, data->dev, "Event type[%u] code[%u] value[%u] is reached from %s\n",
+		type, code, value, handle->dev->name);
+
+	event.device_type = data->get_device_type(code);
+	if (event.device_type == BOOSTER_DEVICE_NOT_DEFINED)
+		return;
+
+	event.mode = value;
+	/* put the event in to the buffer */
+	spin_lock(&data->buffer_lock);
+	data->buffer[data->rear] = event;
+	data->rear = (data->rear + 1) % data->buffer_size;
+	spin_unlock(&data->buffer_lock);
+
+	/* call the workqueue */
+	schedule_work(&data->event_work);
+}
+
+static bool input_booster_match(struct input_handler *handler, struct input_dev *dev)
+{
+	int i;
+	struct input_booster *data =
+		container_of(handler, struct input_booster, input_handler);
+
+	for (i = 0; i < KEY_MAX; i++) {
+		if (test_bit(i, data->keybit) && test_bit(i, dev->keybit))
+			break;
+	}
+
+	if (i == KEY_MAX)
+		return false;
+
+	return true;
+}
+
+static int input_booster_connect(struct input_handler *handler,
+					  struct input_dev *dev,
+					  const struct input_device_id *id)
+{
+	int ret;
+	struct input_handle *handle;
+	struct input_booster *data =
+		container_of(handler, struct input_booster, input_handler);
+
+
+	handle = kzalloc(sizeof(*handle), GFP_KERNEL);
+	if (!handle)
+		return -ENOMEM;
+
+	handle->dev = dev;
+	handle->handler = handler;
+	handle->name = INPUT_BOOSTER_NAME;
+	handle->private = data;
+
+	ret = input_register_handle(handle);
+	if (ret)
+		goto err_input_register_handle;
+
+	ret = input_open_device(handle);
+	if (ret)
+		goto err_input_open_device;
+
+	dev_info(data->dev, "Connect input dev %s for input booster\n", dev->name);
+
+	return 0;
+
+err_input_open_device:
+	input_unregister_handle(handle);
+err_input_register_handle:
+	kfree(handle);
+	return ret;
+}
+
+static void input_booster_disconnect(struct input_handle *handle)
+{
+	struct input_booster *data = handle->private;
+
+	dev_info(data->dev, "Disconnect input dev %s for input booster\n", handle->dev->name);
+
+	input_close_device(handle);
+	input_unregister_handle(handle);
+	kfree(handle);
+}
+
+static const struct input_device_id input_booster_ids[] = {
+	{
+		.flags = INPUT_DEVICE_ID_MATCH_EVBIT,
+		.evbit = { BIT_MASK(EV_KEY) },
+	},
+	{ },
+};
+MODULE_DEVICE_TABLE(input, input_booster_ids);
+#else
+static struct input_booster *g_data;
+
 /* Caution: do not use amu sleep code in below function */
 void input_booster_send_event(unsigned int code, int value)
 {
@@ -503,6 +588,7 @@ void input_booster_send_event(unsigned int code, int value)
 	schedule_work(&g_data->event_work);
 }
 EXPORT_SYMBOL(input_booster_send_event);
+#endif
 
 static void	input_booster_lookup_freqs(struct booster_dvfs *dvfs)
 {
@@ -776,19 +862,11 @@ static void input_booster_init_dvfs(struct input_booster *data, struct booster_k
 #endif
 }
 
-extern unsigned int lpcharge;
-
 static int __devinit input_booster_probe(struct platform_device *pdev)
 {
 	int ret = 0, i;
 	struct input_booster *data;
 	const struct input_booster_platform_data *pdata = pdev->dev.platform_data;
-
-	if (lpcharge == 1) {
-		dev_err(&pdev->dev, "%s : Do not load driver due to : lpm %d\n",
-			 __func__, lpcharge);
-		return -ENODEV;
-	}
 
 	if (!pdata)
 		return -EINVAL;
@@ -814,7 +892,16 @@ static int __devinit input_booster_probe(struct platform_device *pdev)
 	data->nkeys = pdata->nkeys;
 	data->get_device_type = pdata->get_device_type;
 	data->dev = &pdev->dev;
+#ifdef BOOSTER_USE_INPUT_HANDLER
+	data->input_handler.event = input_booster_event;
+	data->input_handler.match = input_booster_match;
+	data->input_handler.connect = input_booster_connect;
+	data->input_handler.disconnect = input_booster_disconnect;
+	data->input_handler.name = INPUT_BOOSTER_NAME;
+	data->input_handler.id_table = input_booster_ids;
+#else
 	g_data = data;
+#endif
 
 #ifdef BOOSTER_SYSFS
 	ret = input_booster_init_sysfs(data);
@@ -834,10 +921,22 @@ static int __devinit input_booster_probe(struct platform_device *pdev)
 		__set_bit(data->keys[i].code, data->keybit);
 	}
 
+#ifdef BOOSTER_USE_INPUT_HANDLER
+	ret = input_register_handler(&data->input_handler);
+	if (ret)
+		goto err_register_handler;
+#endif
 	platform_set_drvdata(pdev, data);
 
 	return 0;
 
+#ifdef BOOSTER_USE_INPUT_HANDLER
+err_register_handler:
+	input_booster_free_dvfs(data);
+#ifdef BOOSTER_SYSFS
+	input_booster_free_sysfs(data);
+#endif
+#endif
 err_init_sysfs:
 	kfree(data);
 
@@ -847,6 +946,9 @@ err_init_sysfs:
 static int __devexit input_booster_remove(struct platform_device *pdev)
 {
 	struct input_booster *data = platform_get_drvdata(pdev);
+#ifdef BOOSTER_USE_INPUT_HANDLER
+	input_unregister_handler(&data->input_handler);
+#endif
 	input_booster_free_dvfs(data);
 #ifdef BOOSTER_SYSFS
 	input_booster_free_sysfs(data);

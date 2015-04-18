@@ -262,14 +262,12 @@ struct mipi_dsim_device {
 	unsigned int			e_clk_src;
 	bool				enabled;
 
-	struct mutex			lock;
-
 	struct s5p_platform_mipi_dsim	*pd;
 
 	struct notifier_block		fb_notif;
 	struct lcd_device		*lcd;
 
-	unsigned int cmd_transfer;
+	bool clock_status;
 };
 
 /**
@@ -280,18 +278,24 @@ struct mipi_dsim_device {
  * @dsim_lcd_info: pointer to structure for configuring
  *	mipi-dsi based lcd panel.
  * @mipi_power: callback pointer for enabling or disabling mipi power.
+ * @part_reset: callback pointer for reseting mipi phy.
  * @init_d_phy: callback pointer for enabing d_phy of dsi master.
  * @get_fb_frame_done: callback pointer for getting frame done status of
  *	the display controller(FIMD).
  * @trigger: callback pointer for triggering display controller(FIMD)
  *	in case of CPU mode.
+ * @delay_for_stabilization: specifies stable time.
+ *	this delay needs when writing data on SFR
+ *	after mipi mode became LP mode.
  */
 struct s5p_platform_mipi_dsim {
 	const char	clk_name[16];
+	bool		clock_reinit;
 
 	struct mipi_dsim_config *dsim_config;
 	struct mipi_dsim_lcd_config *dsim_lcd_config;
 
+	unsigned int delay_for_stabilization;
 	unsigned int bootlogo;
 	unsigned int common_mode;
 	unsigned int lcd_connected;
@@ -300,6 +304,7 @@ struct s5p_platform_mipi_dsim {
 
 	int (*mipi_power) (struct mipi_dsim_device *dsim, unsigned int
 		enable);
+	int (*part_reset) (struct mipi_dsim_device *dsim);
 	int (*init_d_phy) (struct mipi_dsim_device *dsim, unsigned int enable);
 	int (*get_fb_frame_done) (struct fb_info *info);
 	void (*trigger) (struct fb_info *info);
@@ -307,8 +312,6 @@ struct s5p_platform_mipi_dsim {
 	void (*backlight_on_off) (unsigned int enable);
 	void (*lcd_reset) (void);
 	void (*lcd_power_on_off) (unsigned int enable);
-
-	int (*clock_init)(void);
 };
 
 /**
@@ -331,12 +334,11 @@ struct mipi_dsim_lcd_driver {
  * to mipi-dsi driver.
  */
 extern int s5p_dsim_phy_enable(struct platform_device *pdev, bool on);
+extern int s5p_dsim_part_reset(struct mipi_dsim_device *dsim);
 extern int s5p_dsim_init_d_phy(struct mipi_dsim_device *dsim,
 	unsigned int enable);
 extern void s5p_dsim0_set_platdata(struct s5p_platform_mipi_dsim *pd);
 extern void s5p_dsim1_set_platdata(struct s5p_platform_mipi_dsim *pd);
-extern void s5p_mipi_dsi_hs_ctrl_by_fimd(struct device *dsim,
-	unsigned int enable);
 extern int s5p_mipi_dsi_enable_by_fimd(struct device *dsim);
 extern int s5p_mipi_dsi_disable_by_fimd(struct device *dsim);
 extern int s5p_mipi_dsi_displayon_by_fimd(struct device *dsim);

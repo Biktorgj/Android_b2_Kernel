@@ -304,6 +304,11 @@ int s3c_adc_read(struct s3c_adc_client *client, unsigned int ch)
 	 * (since nobody else can access this structure until it's placed
 	 * into adc_pending), but it seems cleaner to just lock.
 	 */
+	if (!adc_dev) {
+		pr_err("%s: adc nodev\n", __func__);
+		return -ENODEV;
+	}
+
 	spin_lock_irqsave(&adc_dev->lock, flags);
 	client->convert_cb = s3c_convert_done;
 	client->wait = &wake;
@@ -478,8 +483,6 @@ static void s3c_adc_hw_init(struct adc_device *adc)
 	} else {
 		value = SAMSUNG_ADC2_CON1_SOFT_RESET;
 		writel(value, adc->regs + SAMSUNG_ADC2_CON1);
-		/* add wait for 25 PCLK */
-		udelay(1);
 
 		value = SAMSUNG_ADC2_CON2_OSEL | SAMSUNG_ADC2_CON2_ESEL |
 			SAMSUNG_ADC2_CON2_HIGHF | SAMSUNG_ADC2_CON2_C_TIME(0);
@@ -571,7 +574,7 @@ static int s3c_adc_probe(struct platform_device *pdev)
 
 	adc->pdev = pdev;
 
-	adc->vdd = regulator_get(dev, "vdd");
+	adc->vdd = regulator_get(NULL, "vdd");
 	if (IS_ERR(adc->vdd)) {
 		dev_err(dev, "operating without regulator \"vdd\" .\n");
 		adc->vdd = NULL;

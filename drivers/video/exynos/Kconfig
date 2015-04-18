@@ -27,11 +27,41 @@ config EXYNOS_LCD_S6E8AX0
 	  If you have an S6E8AX0 MIPI AMOLED LCD Panel, say Y to enable its
 	  LCD control driver.
 
+config EXYNOS_LCD_S6E63J0X03
+	bool "S6E63J0X03 MIPI AMOLED LCD Driver"
+	depends on (EXYNOS_MIPI_DSI && BACKLIGHT_CLASS_DEVICE && LCD_CLASS_DEVICE)
+	default n
+	help
+	  If you have an S6E63J0X03 MIPI AMOLED LCD Panel, say Y to enable its
+	  LCD control driver.
+
+config LCD_ESD
+	bool "LCD ESD function"
+	depends on EXYNOS_MIPI_DSI && BACKLIGHT_CLASS_DEVICE
+	help
+	  If you need a LCD ESD function to improve ESD stability,
+	  Say Y to enable its ESD routine.
+	  If ESD is detected, LCD will blink shortly.
+	  This function depends on hardware support.
+
 config EXYNOS_DP
 	bool "EXYNOS DP driver support"
 	depends on ARCH_EXYNOS
 	default n
 	help
 	  This enables support for DP device.
+
+config EXYNOS_SMIES
+	bool "Samsung SMIES"
+	depends on SOC_EXYNOS3250
+	#select EXYNOS_SMIES_ENABLE_BOOTTIME
+
+config EXYNOS_SMIES_ENABLE_BOOTTIME
+	bool "Samsung SMIES Enable at Boot Time"
+	depends on EXYNOS_SMIES
+
+config EXYNOS_SMIES_DEFALUT_ENABLE
+	bool "Samsung SMIES Block Default Enable"
+	depends on (SOC_EXYNOS3250 && EXYNOS_SMIES)
 
 endif # EXYNOS_VIDEO

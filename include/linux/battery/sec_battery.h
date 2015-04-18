@@ -23,24 +23,12 @@
 #include <linux/battery/sec_charging_common.h>
 #if defined(ANDROID_ALARM_ACTIVATED)
 #include <linux/android_alarm.h>
-#else
-#include <linux/alarmtimer.h>
 #endif
+#include <linux/alarmtimer.h>
 #include <linux/wakelock.h>
 #include <linux/workqueue.h>
 #include <linux/proc_fs.h>
 #include <linux/jiffies.h>
-
-#if defined(CONFIG_MUIC_NOTIFIER)
-#include <linux/muic/muic.h>
-#include <linux/muic/muic_notifier.h>
-#endif /* CONFIG_MUIC_NOTIFIER */
-
-#if defined(CONFIG_MUIC_NOTIFIER) 
-#include <linux/muic/muic.h> 
-#include <linux/muic/muic_notifier.h> 
-#endif /* CONFIG_MUIC_NOTIFIER */ 
-
 
 #define ADC_CH_COUNT		10
 #define ADC_SAMPLE_COUNT	10
@@ -60,11 +48,7 @@ struct sec_battery_info {
 	struct power_supply psy_bat;
 	struct power_supply psy_usb;
 	struct power_supply psy_ac;
-	struct power_supply psy_wireless;
-	struct power_supply psy_ps;
 	unsigned int irq;
-
-	struct notifier_block batt_nb;
 
 	int status;
 	int health;
@@ -87,9 +71,6 @@ struct sec_battery_info {
 	struct wake_lock monitor_wake_lock;
 	struct workqueue_struct *monitor_wqueue;
 	struct delayed_work monitor_work;
-#ifdef CONFIG_SAMSUNG_BATTERY_FACTORY
-	struct wake_lock lpm_wake_lock;
-#endif
 	unsigned int polling_count;
 	unsigned int polling_time;
 	bool polling_in_sleep;
@@ -126,14 +107,11 @@ struct sec_battery_info {
 	int temp_adc;
 	int temp_ambient_adc;
 
-	int temp_highlimit_threshold;
-	int temp_highlimit_recovery;
 	int temp_high_threshold;
 	int temp_high_recovery;
 	int temp_low_threshold;
 	int temp_low_recovery;
 
-	unsigned int temp_highlimit_cnt;
 	unsigned int temp_high_cnt;
 	unsigned int temp_low_cnt;
 	unsigned int temp_recover_cnt;
@@ -141,9 +119,7 @@ struct sec_battery_info {
 	/* charging */
 	unsigned int charging_mode;
 	bool is_recharging;
-	bool is_jig_on;
 	int cable_type;
-	int muic_cable_type;
 	int extended_cable_type;
 	struct wake_lock cable_wake_lock;
 	struct work_struct cable_work;
@@ -153,25 +129,13 @@ struct sec_battery_info {
 
 	/* wireless charging enable*/
 	int wc_enable;
-	int wc_status;
-
-	int wire_status;
-
-	/* wearable charging */
-	int ps_enable;
-	int ps_status;
-	int ps_changed;
 
 	/* test mode */
-	int test_mode;
+	int test_activated;
 	bool factory_mode;
 	bool slate_mode;
 
 	int siop_level;
-#if defined(CONFIG_SAMSUNG_BATTERY_ENG_TEST)
-	int stability_test;
-	int eng_not_full_status;
-#endif
 };
 
 ssize_t sec_bat_show_attrs(struct device *dev,
@@ -219,7 +183,6 @@ enum {
 	BATT_CURRENT_UA_NOW,
 	BATT_CURRENT_UA_AVG,
 
-	BATT_TEMP,
 	BATT_TEMP_ADC,
 	BATT_TEMP_AVER,
 	BATT_TEMP_ADC_AVER,
@@ -260,17 +223,9 @@ enum {
 	BATT_EVENT_LCD,
 	BATT_EVENT_GPS,
 	BATT_EVENT,
-	BATT_TEMP_TABLE,
 #if defined(CONFIG_SAMSUNG_BATTERY_ENG_TEST)
 	BATT_TEST_CHARGE_CURRENT,
-	BATT_STABILITY_TEST,
 #endif
 };
-
-#ifdef CONFIG_OF
-extern int adc_read(struct sec_battery_info *battery, int channel);
-extern void adc_init(struct platform_device *pdev, struct sec_battery_info *battery);
-extern void adc_exit(struct sec_battery_info *battery);
-#endif
 
 #endif /* __SEC_BATTERY_H */

@@ -136,6 +136,9 @@ struct input_booster {
 #ifdef BOOSTER_SYSFS
 	struct class *class;
 #endif
+#ifdef BOOSTER_USE_INPUT_HANDLER
+	struct input_handler input_handler;
+#endif
 	unsigned long keybit[BITS_TO_LONGS(KEY_CNT)];
 	struct booster_dvfs dvfses[BOOSTER_DEVICE_MAX];
 	enum booster_device_type (*get_device_type) (int code);

@@ -35,7 +35,6 @@ struct s3c2410_platform_i2c {
 	unsigned int	sda_delay;
 
 	void	(*cfg_gpio)(struct platform_device *dev);
-	void	(*cfg_mux)(void);
 };
 
 /**
@@ -72,7 +71,6 @@ extern void s3c_i2c4_cfg_gpio(struct platform_device *dev);
 extern void s3c_i2c5_cfg_gpio(struct platform_device *dev);
 extern void s3c_i2c6_cfg_gpio(struct platform_device *dev);
 extern void s3c_i2c7_cfg_gpio(struct platform_device *dev);
-extern void s3c_i2c7_cfg_mux(void);
 
 extern struct s3c2410_platform_i2c default_i2c_data;
 

@@ -32,6 +32,7 @@
 #include <linux/notifier.h>
 #include <linux/regulator/consumer.h>
 #include <linux/pm_runtime.h>
+#include <drm/exynos_drm.h>
 
 #include <video/exynos_mipi_dsim.h>
 
@@ -47,38 +48,43 @@ struct mipi_dsim_ddi {
 	struct mipi_dsim_lcd_driver	*dsim_lcd_drv;
 };
 
+struct mipi_dsim_partial_region {
+	unsigned int x;
+	unsigned int y;
+	unsigned int w;
+	unsigned int h;
+};
+
 static LIST_HEAD(dsim_ddi_list);
-
 static DEFINE_MUTEX(mipi_dsim_lock);
-
+#define dev_to_dsim(a)	platform_get_drvdata(to_platform_device(a))
 static struct mipi_dsim_platform_data *to_dsim_plat(struct platform_device
 							*pdev)
 {
 	return pdev->dev.platform_data;
 }
 
-static struct regulator_bulk_data supplies[] = {
-	{ .supply = "vdd10", },
-	{ .supply = "vdd18", },
-};
-
 static int exynos_mipi_regulator_enable(struct mipi_dsim_device *dsim)
 {
+	struct mipi_dsim_driverdata *ddata = dsim->ddata;
+
 	int ret;
 
 	mutex_lock(&dsim->lock);
-	ret = regulator_bulk_enable(ARRAY_SIZE(supplies), supplies);
+	ret = regulator_bulk_enable(ddata->num_supply, ddata->supplies);
 	mutex_unlock(&dsim->lock);
 
+	dev_dbg(dsim->dev, "MIPI regulator enable success.\n");
 	return ret;
 }
 
 static int exynos_mipi_regulator_disable(struct mipi_dsim_device *dsim)
 {
+	struct mipi_dsim_driverdata *ddata = dsim->ddata;
 	int ret;
 
 	mutex_lock(&dsim->lock);
-	ret = regulator_bulk_disable(ARRAY_SIZE(supplies), supplies);
+	ret = regulator_bulk_disable(ddata->num_supply, ddata->supplies);
 	mutex_unlock(&dsim->lock);
 
 	return ret;
@@ -87,96 +93,75 @@ static int exynos_mipi_regulator_disable(struct mipi_dsim_device *dsim)
 /* update all register settings to MIPI DSI controller. */
 static void exynos_mipi_update_cfg(struct mipi_dsim_device *dsim)
 {
-	/*
-	 * data from Display controller(FIMD) is not transferred in video mode
-	 * but in case of command mode, all settings is not updated to
-	 * registers.
-	 */
-	exynos_mipi_dsi_stand_by(dsim, 0);
 
 	exynos_mipi_dsi_init_dsim(dsim);
 	exynos_mipi_dsi_init_link(dsim);
 
-	exynos_mipi_dsi_set_hs_enable(dsim);
+	usleep_range(10000, 10000);
+
+	exynos_mipi_dsi_set_hs_enable(dsim, 0);
 
 	/* set display timing. */
 	exynos_mipi_dsi_set_display_mode(dsim, dsim->dsim_config);
 
-	/*
-	 * data from Display controller(FIMD) is transferred in video mode
-	 * but in case of command mode, all settigs is updated to registers.
-	 */
-	exynos_mipi_dsi_stand_by(dsim, 1);
+	exynos_mipi_dsi_init_interrupt(dsim);
+
 }
 
 static int exynos_mipi_dsi_early_blank_mode(struct mipi_dsim_device *dsim,
 		int power)
 {
-	struct mipi_dsim_lcd_driver *client_drv = dsim->dsim_lcd_drv;
-	struct mipi_dsim_lcd_device *client_dev = dsim->dsim_lcd_dev;
+	int ret = 0;
+
+	pr_info("[mipi]pw_down:cur_dpms[%d]", dsim->dpms);
 
 	switch (power) {
 	case FB_BLANK_POWERDOWN:
-		if (dsim->suspended)
-			return 0;
-
-		if (client_drv && client_drv->suspend)
-			client_drv->suspend(client_dev);
-
-		clk_disable(dsim->clock);
-
-		exynos_mipi_regulator_disable(dsim);
-
-		dsim->suspended = true;
-
+		if (dsim->dpms == FB_BLANK_UNBLANK)
+			pm_runtime_put_sync(dsim->dev);
+		else {
+			pr_err("%s:invalid dpms state.\n", __func__);
+			ret = -EINVAL;
+		}
 		break;
 	default:
+		pr_err("%s:invalid power mode[%d].\n", __func__, power);
+		ret = -EINVAL;
 		break;
 	}
 
-	return 0;
+	pr_info("[mipi]pw_down:done:cur_dpms[%d]ret[%d]", dsim->dpms, ret);
+
+	return ret;
 }
 
 static int exynos_mipi_dsi_blank_mode(struct mipi_dsim_device *dsim, int power)
 {
-	struct platform_device *pdev = to_platform_device(dsim->dev);
-	struct mipi_dsim_lcd_driver *client_drv = dsim->dsim_lcd_drv;
-	struct mipi_dsim_lcd_device *client_dev = dsim->dsim_lcd_dev;
+	int ret = 0;
+
+	pr_info("[mipi]blank:cur_dpms[%d]", dsim->dpms);
 
 	switch (power) {
 	case FB_BLANK_UNBLANK:
-		if (!dsim->suspended)
-			return 0;
-
-		/* lcd panel power on. */
-		if (client_drv && client_drv->power_on)
-			client_drv->power_on(client_dev, 1);
-
-		exynos_mipi_regulator_disable(dsim);
-
-		/* enable MIPI-DSI PHY. */
-		if (dsim->pd->phy_enable)
-			dsim->pd->phy_enable(pdev, true);
-
-		clk_enable(dsim->clock);
-
-		exynos_mipi_update_cfg(dsim);
-
-		/* set lcd panel sequence commands. */
-		if (client_drv && client_drv->set_sequence)
-			client_drv->set_sequence(client_dev);
-
-		dsim->suspended = false;
-
+		if (dsim->dpms == FB_BLANK_POWERDOWN) {
+			atomic_set(&dsim->dpms_on, 1);
+			pm_runtime_get_sync(dsim->dev);
+			atomic_set(&dsim->dpms_on, 0);
+		} else {
+			pr_err("%s:invalid dpms state.\n", __func__);
+			ret = -EINVAL;
+		}
 		break;
 	case FB_BLANK_NORMAL:
-		/* TODO. */
-		break;
 	default:
+		pr_err("%s:invalid power mode[%d].\n", __func__, power);
+		ret = -EINVAL;
 		break;
 	}
 
-	return 0;
+	pr_info("[mipi]blank:done:cur_dpms[%d]ret[%d]", dsim->dpms, ret);
+
+	return ret;
 }
 
 int exynos_mipi_dsi_register_lcd_device(struct mipi_dsim_lcd_device *lcd_dev)
@@ -203,7 +188,8 @@ int exynos_mipi_dsi_register_lcd_device(struct mipi_dsim_lcd_device *lcd_dev)
 	return 0;
 }
 
-struct mipi_dsim_ddi *exynos_mipi_dsi_find_lcd_device(struct mipi_dsim_lcd_driver *lcd_drv)
+struct mipi_dsim_ddi *exynos_mipi_dsi_find_lcd_device
+		(struct mipi_dsim_lcd_driver *lcd_drv)
 {
 	struct mipi_dsim_ddi *dsim_ddi, *next;
 	struct mipi_dsim_lcd_device *lcd_dev;
@@ -263,8 +249,8 @@ int exynos_mipi_dsi_register_lcd_driver(struct mipi_dsim_lcd_driver *lcd_drv)
 
 }
 
-struct mipi_dsim_ddi *exynos_mipi_dsi_bind_lcd_ddi(struct mipi_dsim_device *dsim,
-						const char *name)
+struct mipi_dsim_ddi *exynos_mipi_dsi_bind_lcd_ddi
+		(struct mipi_dsim_device *dsim, const char *name)
 {
 	struct mipi_dsim_ddi *dsim_ddi, *next;
 	struct mipi_dsim_lcd_driver *lcd_drv;
@@ -315,14 +301,236 @@ struct mipi_dsim_ddi *exynos_mipi_dsi_bind_lcd_ddi(struct mipi_dsim_device *dsim
 	return NULL;
 }
 
+static int exynos_mipi_dsi_set_refresh_rate(struct mipi_dsim_device *dsim,
+	int refresh)
+{
+	struct mipi_dsim_lcd_driver *client_drv = dsim->dsim_lcd_drv;
+	struct mipi_dsim_lcd_device *client_dev = dsim->dsim_lcd_dev;
+
+	if (client_drv && client_drv->set_refresh_rate)
+		client_drv->set_refresh_rate(client_dev, refresh);
+
+	return 0;
+}
+
+static int exynos_mipi_dsi_set_partial_region(struct mipi_dsim_device *dsim,
+	void *pos)
+{
+	struct mipi_dsim_lcd_driver *client_drv = dsim->dsim_lcd_drv;
+	struct mipi_dsim_lcd_device *client_dev = dsim->dsim_lcd_dev;
+	struct mipi_dsim_partial_region *region = pos;
+
+	if (client_drv && client_drv->set_partial_region) {
+		exynos_mipi_dsi_set_main_disp_resol(dsim, region->w, region->h);
+		client_drv->set_partial_region(client_dev, region->x, region->y,
+						region->w, region->h);
+	}
+
+	return 0;
+}
+
+static int exynos_mipi_dsi_wait_for_frame_done(struct mipi_dsim_device *dsim)
+{
+	struct exynos_drm_fimd_pdata *src_pd;
+	struct platform_device *src_pdev;
+
+	src_pdev = dsim->src_pdev;
+	if (!src_pdev)
+		return -EINVAL;
+
+	src_pd = src_pdev->dev.platform_data;
+	if (src_pd && src_pd->wait_for_frame_done)
+		src_pd->wait_for_frame_done(&src_pdev->dev);
+
+	return 0;
+}
+
+static void exynos_mipi_dsi_stop_trigger(struct mipi_dsim_device *dsim,
+						unsigned int stop)
+{
+	struct exynos_drm_fimd_pdata *src_pd;
+	struct platform_device *src_pdev;
+
+	src_pdev = dsim->src_pdev;
+	if (!src_pdev)
+		return;
+
+	src_pd = src_pdev->dev.platform_data;
+	if (src_pd && src_pd->stop_trigger)
+		src_pd->stop_trigger(&src_pdev->dev, stop);
+}
+
+int exynos_mipi_dsi_runtime_active(struct mipi_dsim_device *dsim, bool enable)
+{
+	int ret = 0;
+
+	pr_info("[mipi]gate[%d]cur_dpms[%d]", enable, dsim->dpms);
+
+	atomic_set(&dsim->pwr_gate, 1);
+
+	if (enable) {
+		if (dsim->dpms == FB_BLANK_VSYNC_SUSPEND)
+			pm_runtime_get_sync(dsim->dev);
+		else {
+			pr_err("%s:invalid dpms state.\n", __func__);
+			ret = -EINVAL;
+			goto out;
+		}
+	} else {
+		if (dsim->dpms == FB_BLANK_UNBLANK)
+			pm_runtime_put_sync(dsim->dev);
+		else {
+			pr_err("%s:invalid dpms state.\n", __func__);
+			ret = -EINVAL;
+			goto out;
+		}
+	}
+
+out:
+	atomic_set(&dsim->pwr_gate, 0);
+	pr_info("[mipi]gate:done[%d]cur_dpms[%d]ret[%d]",
+		enable, dsim->dpms, ret);
+
+	return ret;
+}
+
+static int exynos_mipi_dsi_set_runtime_active
+		(struct mipi_dsim_device *dsim)
+{
+	struct exynos_drm_fimd_pdata *src_pd;
+	struct platform_device *src_pdev;
+	int ret = 0;
+
+	src_pdev = dsim->src_pdev;
+	if (!src_pdev)
+		return -ENOMEM;
+
+	src_pd = src_pdev->dev.platform_data;
+	if (src_pd && src_pd->set_runtime_activate)
+		ret = src_pd->set_runtime_activate(&src_pdev->dev);
+
+	return ret;
+}
+
+static int exynos_mipi_dsi_set_smies_active
+		(struct mipi_dsim_device *dsim, bool enable)
+{
+	struct exynos_drm_fimd_pdata *src_pd;
+	struct platform_device *src_pdev;
+	int ret = 0;
+
+	src_pdev = dsim->src_pdev;
+	if (!src_pdev)
+		return -ENOMEM;
+
+	src_pd = src_pdev->dev.platform_data;
+	if (src_pd && src_pd->set_smies_activate)
+		ret = src_pd->set_smies_activate(&src_pdev->dev, enable);
+
+	return ret;
+}
+
+static int exynos_mipi_dsi_set_smies_mode
+		(struct mipi_dsim_device *dsim, int mode)
+{
+	struct exynos_drm_fimd_pdata *src_pd;
+	struct platform_device *src_pdev;
+	int ret = 0;
+
+	src_pdev = dsim->src_pdev;
+	if (!src_pdev)
+		return -ENOMEM;
+
+	src_pd = src_pdev->dev.platform_data;
+	if (src_pd && src_pd->set_smies_mode)
+		ret = src_pd->set_smies_mode(&src_pdev->dev, mode);
+
+	return ret;
+}
+
+static int exynos_mipi_dsi_set_fimd_trigger(struct mipi_dsim_device *dsim)
+{
+	struct platform_device *src_pdev;
+	struct exynos_drm_fimd_pdata *src_pdata;
+	int ret = 0;
+
+	src_pdev = dsim->src_pdev;
+	if (!src_pdev)
+		return -ENOMEM;
+
+	src_pdata = src_pdev->dev.platform_data;
+
+	if (src_pdata->trigger)
+		src_pdata->trigger(&src_pdev->dev);
+
+	return ret;
+}
+
+static void exynos_mipi_dsi_notify_panel_self_refresh
+		(struct mipi_dsim_device *dsim, unsigned int rate)
+{
+	struct exynos_drm_fimd_pdata *src_pd;
+	struct platform_device *src_pdev;
+
+	src_pdev = dsim->src_pdev;
+	if (!src_pdev)
+		return;
+
+	src_pd = src_pdev->dev.platform_data;
+	if (src_pd && src_pd->update_panel_refresh)
+		src_pd->update_panel_refresh(&src_pdev->dev, rate);
+
+}
+
+static void exynos_mipi_dsi_power_gate(struct mipi_dsim_device *dsim,
+		bool enable)
+{
+	struct platform_device *pdev = to_platform_device(dsim->dev);
+
+	if (enable) {
+		exynos_mipi_regulator_enable(dsim);
+
+		if (dsim->pd->phy_enable)
+			dsim->pd->phy_enable(pdev, true);
+		clk_enable(dsim->clock);
+
+		usleep_range(10000, 10000);
+
+		exynos_mipi_update_cfg(dsim);
+
+		exynos_mipi_dsi_standby(dsim, 1, 1);
+
+	} else {
+		exynos_mipi_dsi_stop_trigger(dsim, true);
+		exynos_mipi_dsi_standby(dsim, 0, 0);
+
+		if (dsim->pd->phy_enable)
+			dsim->pd->phy_enable(pdev, false);
+		clk_disable(dsim->clock);
+
+		exynos_mipi_regulator_disable(dsim);
+	}
+}
+
 /* define MIPI-DSI Master operations. */
 static struct mipi_dsim_master_ops master_ops = {
 	.cmd_read			= exynos_mipi_dsi_rd_data,
 	.cmd_write			= exynos_mipi_dsi_wr_data,
-	.get_dsim_frame_done		= exynos_mipi_dsi_get_frame_done_status,
-	.clear_dsim_frame_done		= exynos_mipi_dsi_clear_frame_done,
+	.atomic_cmd_write		= exynos_mipi_dsi_atomic_wr_data,
+	.wait_for_frame_done		= exynos_mipi_dsi_wait_for_frame_done,
+	.stop_trigger			= exynos_mipi_dsi_stop_trigger,
+	.standby			= exynos_mipi_dsi_standby,
 	.set_early_blank_mode		= exynos_mipi_dsi_early_blank_mode,
 	.set_blank_mode			= exynos_mipi_dsi_blank_mode,
+	.set_refresh_rate	= exynos_mipi_dsi_set_refresh_rate,
+	.update_panel_refresh	= exynos_mipi_dsi_notify_panel_self_refresh,
+	.set_clock_mode			= exynos_mipi_dsi_set_hs_enable,
+	.runtime_active			= exynos_mipi_dsi_runtime_active,
+	.set_runtime_active		= exynos_mipi_dsi_set_runtime_active,
+	.set_partial_region		= exynos_mipi_dsi_set_partial_region,
+	.set_smies_active		= exynos_mipi_dsi_set_smies_active,
+	.set_smies_mode		= exynos_mipi_dsi_set_smies_mode,
+	.fimd_trigger		= exynos_mipi_dsi_set_fimd_trigger,
 };
 
 static int exynos_mipi_dsi_probe(struct platform_device *pdev)
@@ -331,6 +539,7 @@ static int exynos_mipi_dsi_probe(struct platform_device *pdev)
 	struct mipi_dsim_device *dsim;
 	struct mipi_dsim_config *dsim_config;
 	struct mipi_dsim_platform_data *dsim_pd;
+	struct mipi_dsim_driverdata *ddata;
 	struct mipi_dsim_ddi *dsim_ddi;
 	int ret = -EINVAL;
 
@@ -343,6 +552,16 @@ static int exynos_mipi_dsi_probe(struct platform_device *pdev)
 	dsim->pd = to_dsim_plat(pdev);
 	dsim->dev = &pdev->dev;
 	dsim->id = pdev->id;
+	dsim->src_pdev = dsim->pd->src_pdev;
+
+	/* get mipi_dsim_drvierdata. */
+	ddata = (struct mipi_dsim_driverdata *)
+			platform_get_device_id(pdev)->driver_data;
+	if (ddata == NULL) {
+		dev_err(&pdev->dev, "failed to get driver data for dsim.\n");
+		goto err_clock_get;
+	}
+	dsim->ddata = ddata;
 
 	/* get mipi_dsim_platform_data. */
 	dsim_pd = (struct mipi_dsim_platform_data *)dsim->pd;
@@ -362,13 +581,14 @@ static int exynos_mipi_dsi_probe(struct platform_device *pdev)
 
 	mutex_init(&dsim->lock);
 
-	ret = regulator_bulk_get(&pdev->dev, ARRAY_SIZE(supplies), supplies);
+	ret = regulator_bulk_get(&pdev->dev, ddata->num_supply,
+			ddata->supplies);
 	if (ret) {
 		dev_err(&pdev->dev, "Failed to get regulators: %d\n", ret);
 		goto err_clock_get;
 	}
 
-	dsim->clock = clk_get(&pdev->dev, "dsim0");
+	dsim->clock = clk_get(&pdev->dev, ddata->clk_name);
 	if (IS_ERR(dsim->clock)) {
 		dev_err(&pdev->dev, "failed to get dsim clock source\n");
 		goto err_clock_get;
@@ -397,8 +617,6 @@ static int exynos_mipi_dsi_probe(struct platform_device *pdev)
 		goto err_ioremap;
 	}
 
-	mutex_init(&dsim->lock);
-
 	/* bind lcd ddi matched with panel name. */
 	dsim_ddi = exynos_mipi_dsi_bind_lcd_ddi(dsim, dsim_pd->lcd_panel_name);
 	if (!dsim_ddi) {
@@ -413,6 +631,10 @@ static int exynos_mipi_dsi_probe(struct platform_device *pdev)
 		goto err_platform_get_irq;
 	}
 
+	init_completion(&dsim->wr_comp);
+	init_completion(&dsim->rd_comp);
+	init_completion(&dsim->fd_comp);
+
 	ret = request_irq(dsim->irq, exynos_mipi_dsi_interrupt_handler,
 			IRQF_SHARED, pdev->name, dsim);
 	if (ret != 0) {
@@ -421,9 +643,6 @@ static int exynos_mipi_dsi_probe(struct platform_device *pdev)
 		goto err_bind;
 	}
 
-	init_completion(&dsim_wr_comp);
-	init_completion(&dsim_rd_comp);
-
 	/* enable interrupt */
 	exynos_mipi_dsi_init_interrupt(dsim);
 
@@ -431,32 +650,30 @@ static int exynos_mipi_dsi_probe(struct platform_device *pdev)
 	if (dsim_ddi->dsim_lcd_drv && dsim_ddi->dsim_lcd_drv->probe)
 		dsim_ddi->dsim_lcd_drv->probe(dsim_ddi->dsim_lcd_dev);
 
-	/* in case that mipi got enabled at bootloader. */
-	if (dsim_pd->enabled)
-		goto out;
-
-	/* lcd panel power on. */
-	if (dsim_ddi->dsim_lcd_drv && dsim_ddi->dsim_lcd_drv->power_on)
-		dsim_ddi->dsim_lcd_drv->power_on(dsim_ddi->dsim_lcd_dev, 1);
-
-	exynos_mipi_regulator_enable(dsim);
-
-	/* enable MIPI-DSI PHY. */
-	if (dsim->pd->phy_enable)
-		dsim->pd->phy_enable(pdev, true);
-
-	exynos_mipi_update_cfg(dsim);
-
-	/* set lcd panel sequence commands. */
-	if (dsim_ddi->dsim_lcd_drv && dsim_ddi->dsim_lcd_drv->set_sequence)
-		dsim_ddi->dsim_lcd_drv->set_sequence(dsim_ddi->dsim_lcd_dev);
-
-	dsim->suspended = false;
-
-out:
 	platform_set_drvdata(pdev, dsim);
+	/* in case that mipi got enabled at bootloader. */
+	if (dsim_pd->enabled) {
+		/* lcd panel power on. */
+		if (dsim_ddi->dsim_lcd_drv && dsim_ddi->dsim_lcd_drv->power_on)
+			dsim_ddi->dsim_lcd_drv->power_on(dsim_ddi->dsim_lcd_dev, 1);
 
-	dev_dbg(&pdev->dev, "mipi-dsi driver(%s mode) has been probed.\n",
+		exynos_mipi_regulator_enable(dsim);
+
+		if (dsim_ddi->dsim_lcd_drv && dsim_ddi->dsim_lcd_drv->check_mtp)
+			dsim_ddi->dsim_lcd_drv->check_mtp(dsim_ddi->dsim_lcd_dev);
+
+		exynos_mipi_update_cfg(dsim);
+	} else {
+		/* TODO:
+		 * add check_mtp callback function
+		 * if mipi dsim is off on bootloader, it causes kernel panic */
+		dsim->dpms = FB_BLANK_POWERDOWN;
+	}
+
+	pm_runtime_enable(&pdev->dev);
+	pm_runtime_get_sync(&pdev->dev);
+
+	dev_info(&pdev->dev, "mipi-dsi driver(%s mode) has been probed.\n",
 		(dsim_config->e_interface == DSIM_COMMAND) ?
 			"CPU" : "RGB");
 
@@ -486,6 +703,7 @@ static int __devexit exynos_mipi_dsi_remove(struct platform_device *pdev)
 	struct mipi_dsim_device *dsim = platform_get_drvdata(pdev);
 	struct mipi_dsim_ddi *dsim_ddi, *next;
 	struct mipi_dsim_lcd_driver *dsim_lcd_drv;
+	struct mipi_dsim_driverdata *ddata = dsim->ddata;
 
 	iounmap(dsim->reg_base);
 
@@ -509,91 +727,273 @@ static int __devexit exynos_mipi_dsi_remove(struct platform_device *pdev)
 		}
 	}
 
-	regulator_bulk_free(ARRAY_SIZE(supplies), supplies);
+	regulator_bulk_free(ddata->num_supply, ddata->supplies);
 	kfree(dsim);
 
 	return 0;
 }
 
+static int exynos_mipi_dsi_power_on(struct mipi_dsim_device *dsim, bool enable)
+{
+	struct mipi_dsim_lcd_driver *client_drv = dsim->dsim_lcd_drv;
+	struct mipi_dsim_lcd_device *client_dev = dsim->dsim_lcd_dev;
+	struct platform_device *pdev = to_platform_device(dsim->dev);
+	struct platform_device *src_pdev;
+	struct exynos_drm_fimd_pdata *src_pdata;
+	int ret = 0;
+
+	pr_info("[mipi]pm[%d]cur_dpms[%d][%s]\n",
+		enable, dsim->dpms,
+		atomic_read(&dsim->pwr_gate) ? "pwr_gate" : "dpms");
+
+	if (enable) {
+		if (atomic_read(&dsim->pwr_gate)) {
+			if (dsim->dpms != FB_BLANK_VSYNC_SUSPEND) {
+				pr_err("%s:invalid dpms state.\n", __func__);
+				ret = -EINVAL;
+				goto out;
+			}
+
+			exynos_mipi_dsi_power_gate(dsim, enable);
+			dsim->dpms = FB_BLANK_UNBLANK;
+			goto out;
+		}
+
+		if (dsim->dpms != FB_BLANK_POWERDOWN) {
+			pr_info("%s:bypass.\n", __func__);
+			goto out;
+		}
+
+		exynos_mipi_regulator_enable(dsim);
+
+		/* enable MIPI-DSI PHY. */
+		if (dsim->pd->phy_enable)
+			dsim->pd->phy_enable(pdev, true);
+
+		clk_enable(dsim->clock);
+
+		exynos_mipi_dsi_standby(dsim, 0, 0);
+
+		exynos_mipi_update_cfg(dsim);
+
+		if (client_drv && client_drv->panel_pm_check) {
+			bool pm_skip;
+
+			client_drv->panel_pm_check(client_dev, &pm_skip);
+			if (pm_skip) {
+				exynos_mipi_dsi_standby(dsim, 1, 1);
+				dsim->dpms = FB_BLANK_UNBLANK;
+				return 0;
+			}
+		}
+		/* lcd panel power on. */
+		if (client_drv && client_drv->power_on)
+			client_drv->power_on(client_dev, 1);
+
+		exynos_mipi_dsi_stop_trigger(dsim, true);
+		/* set lcd panel sequence commands. */
+		if (client_drv && client_drv->set_sequence)
+			client_drv->set_sequence(client_dev);
+
+		exynos_mipi_dsi_standby(dsim, 1, 1);
+
+		src_pdev = dsim->src_pdev;
+		src_pdata = src_pdev->dev.platform_data;
+
+		if (src_pdata->trigger)
+			src_pdata->trigger(&src_pdev->dev);
+
+		exynos_mipi_dsi_stop_trigger(dsim, true);
+
+		INIT_COMPLETION(dsim->fd_comp);
+		if (!wait_for_completion_timeout(&dsim->fd_comp,
+			msecs_to_jiffies(50)))
+			dev_warn(dsim->dev, "timeout for frame done\n");
+
+		if (client_drv->display_on)
+			client_drv->display_on(client_dev, 1);
+
+		exynos_mipi_dsi_standby(dsim, 1, 1);
+
+		if (client_drv && client_drv->resume)
+			client_drv->resume(client_dev);
+
+		dsim->dpms = FB_BLANK_UNBLANK;
+	} else {
+		if (dsim->dpms != FB_BLANK_UNBLANK) {
+			pr_err("%s:invalid dpms state.\n", __func__);
+			ret = -EINVAL;
+			goto out;
+		}
+
+		if (atomic_read(&dsim->pwr_gate)) {
+			exynos_mipi_dsi_power_gate(dsim, enable);
+			dsim->dpms = FB_BLANK_VSYNC_SUSPEND;
+			goto out;
+		}
+
+		exynos_mipi_dsi_standby(dsim, 0, 1);
+
+		if (client_drv && client_drv->suspend)
+			client_drv->suspend(client_dev);
+
+		/* disable MIPI-DSI PHY. */
+		if (dsim->pd->phy_enable)
+			dsim->pd->phy_enable(pdev, false);
+
+		clk_disable(dsim->clock);
+
+		exynos_mipi_regulator_disable(dsim);
+
+		dsim->dpms = FB_BLANK_POWERDOWN;
+	}
+
+out:
+	pr_info("[mipi]pm[%d]done:cur_dpms[%d][%s]ret[%d]\n",
+		enable, dsim->dpms,
+		atomic_read(&dsim->pwr_gate) ? "pwr_gate" : "dpms",
+		ret);
+
+	return ret;
+}
+
 #ifdef CONFIG_PM
-static int exynos_mipi_dsi_suspend(struct platform_device *pdev,
-		pm_message_t state)
+static int exynos_mipi_dsi_suspend(struct device *dev)
 {
-	struct mipi_dsim_device *dsim = platform_get_drvdata(pdev);
-	struct mipi_dsim_lcd_driver *client_drv = dsim->dsim_lcd_drv;
-	struct mipi_dsim_lcd_device *client_dev = dsim->dsim_lcd_dev;
+	struct mipi_dsim_device *dsim = dev_to_dsim(dev);
 
-	disable_irq(dsim->irq);
-
-	if (dsim->suspended)
+	if (pm_runtime_suspended(dev))
 		return 0;
 
-	if (client_drv && client_drv->suspend)
-		client_drv->suspend(client_dev);
+	dev_info(dsim->dev, "%s\n", __func__);
 
-	/* enable MIPI-DSI PHY. */
-	if (dsim->pd->phy_enable)
-		dsim->pd->phy_enable(pdev, false);
+	/*
+	 * do not use pm_runtime_suspend(). if pm_runtime_suspend() is
+	 * called here, an error would be returned by that interface
+	 * because the usage_count of pm runtime is more than 1.
+	 */
+	return exynos_mipi_dsi_power_on(dsim, false);
+}
 
-	clk_disable(dsim->clock);
+static int exynos_mipi_dsi_resume(struct device *dev)
+{
+	struct mipi_dsim_device *dsim = dev_to_dsim(dev);
 
-	exynos_mipi_regulator_disable(dsim);
-
-	dsim->suspended = true;
+	/*
+	 * if entering to sleep when lcd panel is on, the usage_count
+	 * of pm runtime would still be 1 so in this case, mipi dsi driver
+	 * should be on directly not drawing on pm runtime interface.
+	 */
+	if (!pm_runtime_suspended(dev)) {
+		dev_info(dsim->dev, "%s\n", __func__);
+		return exynos_mipi_dsi_power_on(dsim, true);
+	}
 
 	return 0;
 }
-
-static int exynos_mipi_dsi_resume(struct platform_device *pdev)
-{
-	struct mipi_dsim_device *dsim = platform_get_drvdata(pdev);
-	struct mipi_dsim_lcd_driver *client_drv = dsim->dsim_lcd_drv;
-	struct mipi_dsim_lcd_device *client_dev = dsim->dsim_lcd_dev;
-
-	enable_irq(dsim->irq);
-
-	if (!dsim->suspended)
-		return 0;
-
-	/* lcd panel power on. */
-	if (client_drv && client_drv->power_on)
-		client_drv->power_on(client_dev, 1);
-
-	exynos_mipi_regulator_enable(dsim);
-
-	/* enable MIPI-DSI PHY. */
-	if (dsim->pd->phy_enable)
-		dsim->pd->phy_enable(pdev, true);
-
-	clk_enable(dsim->clock);
-
-	exynos_mipi_update_cfg(dsim);
-
-	/* set lcd panel sequence commands. */
-	if (client_drv && client_drv->set_sequence)
-		client_drv->set_sequence(client_dev);
-
-	dsim->suspended = false;
-
-	return 0;
-}
-#else
-#define exynos_mipi_dsi_suspend NULL
-#define exynos_mipi_dsi_resume NULL
 #endif
+#ifdef CONFIG_PM_RUNTIME
+static int exynos_mipi_dsi_runtime_suspend(struct device *dev)
+{
+	struct mipi_dsim_device *dsim = dev_to_dsim(dev);
+
+	dev_dbg(dsim->dev, "%s\n", __func__);
+
+	return exynos_mipi_dsi_power_on(dsim, false);
+}
+
+static int exynos_mipi_dsi_runtime_resume(struct device *dev)
+{
+	struct mipi_dsim_device *dsim = dev_to_dsim(dev);
+
+	dev_dbg(dsim->dev, "%s\n", __func__);
+
+	return exynos_mipi_dsi_power_on(dsim, true);
+}
+#endif
+
+static const struct dev_pm_ops exynos_mipi_dsi_pm_ops = {
+	.suspend		= exynos_mipi_dsi_suspend,
+	.resume			= exynos_mipi_dsi_resume,
+	.runtime_suspend	= exynos_mipi_dsi_runtime_suspend,
+	.runtime_resume		= exynos_mipi_dsi_runtime_resume,
+};
+
+static struct regulator_bulk_data exynos3_supplies[] = {
+	{ .supply = "vap_mipi_1.0v", },
+};
+
+static struct mipi_dsim_driverdata exynos3_ddata = {
+	.clk_name = "dsim0",
+	.num_supply = ARRAY_SIZE(exynos3_supplies),
+	.supplies = exynos3_supplies,
+};
+
+static struct regulator_bulk_data exynos4_supplies[] = {
+	{ .supply = "vdd10", },
+	{ .supply = "vdd18", },
+};
+
+static struct mipi_dsim_driverdata exynos4_ddata = {
+	.clk_name = "dsim0",
+	.num_supply = ARRAY_SIZE(exynos4_supplies),
+	.supplies = exynos4_supplies,
+};
+
+static struct mipi_dsim_driverdata exynos5210_ddata = {
+	.clk_name = "dsim0",
+	.num_supply = ARRAY_SIZE(exynos4_supplies),
+	.supplies = exynos4_supplies,
+};
+
+static struct mipi_dsim_driverdata exynos5410_ddata = {
+	.clk_name = "dsim0",
+	.num_supply = ARRAY_SIZE(exynos4_supplies),
+	.supplies = exynos4_supplies,
+};
+
+static struct platform_device_id exynos_mipi_driver_ids[] = {
+	{
+		.name		= "exynos3-mipi",
+		.driver_data	= (unsigned long)&exynos3_ddata,
+	}, {
+		.name		= "exynos4-mipi",
+		.driver_data	= (unsigned long)&exynos4_ddata,
+	}, {
+		.name		= "exynos5250-mipi",
+		.driver_data	= (unsigned long)&exynos5210_ddata,
+	}, {
+		.name		= "exynos5410-mipi",
+		.driver_data	= (unsigned long)&exynos5410_ddata,
+	},
+	{},
+};
+MODULE_DEVICE_TABLE(platform, exynos_mipi_driver_ids);
 
 static struct platform_driver exynos_mipi_dsi_driver = {
 	.probe = exynos_mipi_dsi_probe,
 	.remove = __devexit_p(exynos_mipi_dsi_remove),
-	.suspend = exynos_mipi_dsi_suspend,
-	.resume = exynos_mipi_dsi_resume,
+	.id_table	= exynos_mipi_driver_ids,
 	.driver = {
 		   .name = "exynos-mipi-dsim",
 		   .owner = THIS_MODULE,
+		   .pm = &exynos_mipi_dsi_pm_ops,
 	},
 };
 
-module_platform_driver(exynos_mipi_dsi_driver);
+static int exynos_mipi_dsi_register(void)
+{
+	platform_driver_register(&exynos_mipi_dsi_driver);
+	return 0;
+}
+
+static void exynos_mipi_dsi_unregister(void)
+{
+	platform_driver_unregister(&exynos_mipi_dsi_driver);
+}
+
+late_initcall(exynos_mipi_dsi_register);
+module_exit(exynos_mipi_dsi_unregister);
 
 MODULE_AUTHOR("InKi Dae <inki.dae@samsung.com>");
 MODULE_DESCRIPTION("Samusung SoC MIPI-DSI driver");

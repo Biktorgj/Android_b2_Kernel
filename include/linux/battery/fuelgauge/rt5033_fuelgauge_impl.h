@@ -41,12 +41,12 @@
 #define RT5033_MFA_LSB				0xFF
 
 #define EOC_LOCK_TH					99			/* unit : % */
-#define VALRT_LOCK_TH			1				/* unit : % */
-#define SMOOTH_SOC_STEP		1				/* unit : % */
-#define CHG_IR_EXCEPT_SOC		10				/* unit : % */
-#define QUICK_ROUTINE_TIME		1			/* unit : sec */
+#define VALRT_LOCK_TH 			1				/* unit : % */
+#define SMOOTH_SOC_STEP 		1				/* unit : % */
+#define CHG_IR_EXCEPT_SOC 	10 			/* unit : % */
+#define QUICK_ROUTINE_TIME 	1 			/* unit : sec */
 #define NORMAL_ROUTINE_TIME 30			/* unit : sec */
-#define MFA_CMD_EOC_SOC		0x8664
+#define MFA_CMD_EOC_SOC 		0x8664
 #define MFA_CMD_VALRT_SOC		0x8600
 #define SOC_ALRT_TOP				12
 #define SOC_ALRT_HIGH				6
@@ -56,10 +56,9 @@
 #define ROUNDUP_SOC_TH			5
 #define VALRT_LOCK_TH				1
 #define MFA_CMD_EXIT_HIB    0x7400
-#define MFA_CMD_ENTRY_HIB		0x74AA
 #define FULL_SOC						100
 
-#define VOLT_ALRT_TH				0	//disable		/* unit : 20mV*/
+#define VOLT_ALRT_TH				0xAA 		//=3400mV		/* unit : 20mV*/
 #define VALRT_SOC						0				/* unit : % */
 
 
@@ -83,14 +82,19 @@
 #define LOOKUP_GAIN	1
 #define LOOKUP_OFFS	2
 
-#define	R5_TEMP								10			/* unit : oC */
-#define MFA_CMD_R5_DEFAULT		0x8501
-#define MFA_CMD_R5_LOW_TEMP		0x8503
+#define	R5_TEMP								10 				/* unit : oC */	
+#define MFA_CMD_R5_DEFAULT		0x8500
+#define MFA_CMD_R5_LOW_TEMP		0x8502
 
 #define	ENABLE_SOC_OFFSET_COMP		0
 #define	ENABLE_LOCK_SOC				0
 #define	ENABLE_SMOOTH_SOC			0
 #define	ENABLE_SOC_IRREVERSIBLE	0
 
+int my_gain_search(gain_table_prop* target_list, int nKey, int nSize);
+int my_interpolation(int x_key, int x1, int x2, int y1, int y2);
+int my_offs_search(offset_table_prop* target_list, int nKey, int nSize);
+gain_table_prop Gain_Search(struct i2c_client *client, int nTemp, int nVolt);
+offset_table_prop Offs_Search(struct i2c_client *client, int speci_case_flag, int nChg, int nTemp, int nVolt);
 
 #endif // RT5033_FUELGAUGE_IMPL_H

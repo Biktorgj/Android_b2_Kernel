@@ -30,8 +30,10 @@ obj-y				+= platformdata.o
 
 obj-y				+= devs.o
 obj-y				+= dev-uart.o
+obj-$(CONFIG_FB_SMIES)		+= dev-smies.o
+obj-$(CONFIG_EXYNOS_SMIES)		+= dev-smies.o
 
-obj-$(CONFIG_FB_MIPI_DSIM)	+= dev-mipidsim.o
+obj-y	+= dev-mipidsim.o
 obj-$(CONFIG_S5P_DEV_DP)	+= dev-dp.o
 
 obj-$(CONFIG_SAMSUNG_DEV_BACKLIGHT)	+= dev-backlight.o
