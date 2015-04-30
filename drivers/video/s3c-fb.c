@@ -1315,9 +1315,7 @@ static void s3c_fb_deactivate_vsync(struct s3c_fb *sfb)
 		dev_info(sfb->dev, "s3c_fb_disable_irq\n");
 	}
 	//delay(100);
-	printk("\ns3cfb : Previous to vsync mutex unlock");
 	mutex_unlock(&sfb->vsync_info.irq_lock);
-	printk ("\ns3cfb : passed vsync mutex unlock!");
 }
 
 /**
@@ -2306,14 +2304,10 @@ static void s3c_fb_update_regs(struct s3c_fb *sfb, struct s3c_reg_data *regs)
 	int count = 100;
 #endif
 	int i;
-	printk ("\nS3CFB: Update regs- MEMSET");
 
 	memset(&old_dma_bufs, 0, sizeof(old_dma_bufs));
 
-
-printk ("\nS3CFB: GET SYNC!");
 	pm_runtime_get_sync(sfb->dev);
-printk ("\nS3CFB: DMA BUF FENCE LOOP");
 	for (i = 0; i < sfb->variant.nr_windows; i++) {
 		if (!sfb->windows[i]->local) {
 			old_dma_bufs[i] = sfb->windows[i]->dma_buf_data;
@@ -2322,7 +2316,6 @@ printk ("\nS3CFB: DMA BUF FENCE LOOP");
 					regs->dma_buf_data[i].fence);
 		}
 	}
-printk ("\nS3CFB: PM QOS UPDATE REQUEST");
 #if defined(CONFIG_FIMD_USE_BUS_DEVFREQ)
 #if defined(CONFIG_ARM_EXYNOS3250_BUS_DEVFREQ) && defined(CONFIG_LCD_MIPI_NT35510)
 	pm_qos_update_request(&exynos5_fimd_mif_qos, 200000);
@@ -2336,7 +2329,6 @@ printk ("\nS3CFB: PM QOS UPDATE REQUEST");
 	}
 #endif
 #elif defined(CONFIG_FIMD_USE_WIN_OVERLAP_CNT)
-printk ("\nS3CFB: use window overlap");
 	if (prev_overlap_cnt < regs->win_overlap_cnt) {
 		exynos5_update_media_layers(TYPE_FIMD1, regs->win_overlap_cnt);
 		if (regs->win_overlap_cnt >= 2)
@@ -2348,14 +2340,6 @@ printk ("\nS3CFB: use window overlap");
 
 	do {
 		__s3c_fb_update_regs(sfb, regs);
-#ifdef CONFIG_FB_I80_COMMAND_MODE
-printk ("\nS3CFB: Low power to high speed fb i80");
-	//	pd->dsim_hs_ctrl(dsim_device, 1); /* LP TO HS */
-	//	udelay(1);
-	//	sfb->vsync_info.draw_request++;
-	//	dsim->pd->fb_draw_done = sfb->vsync_info.draw_request ;
-#endif
-printk ("\nS3CFB: Wait for vsync ");
 		s3c_fb_wait_for_vsync(sfb, VSYNC_TIMEOUT_MSEC);
 		wait_for_vsync = false;
 
@@ -2386,7 +2370,6 @@ printk ("\nS3CFB: Wait for vsync ");
 
 
 #if defined(CONFIG_FB_I80_COMMAND_MODE)
-printk ("\nS3CFB: sw trugget fir 80");
 	s3c_fb_sw_trigger(sfb, TRIG_MASK);
 #endif
 
@@ -3648,10 +3631,8 @@ static int __devinit s3c_fb_clear_fb(struct s3c_fb *sfb,
 	size_t i;
 
 	int ret;
-printk ("s3c-fb -- s3c_fb_clear_fb: BUF BEGIN CPU ACCESS");
 	ret = dma_buf_begin_cpu_access(dest_buf, 0, dest_buf->size,
 			DMA_TO_DEVICE);
-			printk ("\ns3c-fb -- s3c_fb_clear_fb: BUF BEGIN CPU ACCESS- DONE");
 	if (ret < 0) {
 		dev_warn(sfb->dev, "dma_buf_begin_cpu_access() failed while clearing framebuffer: %u\n",
 				ret);
@@ -4324,7 +4305,7 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 		if (i == default_win)
 			win = 0;
 
-		printk ("s3c-fb : Probing Framebuffer %i\n", win);
+		//printk ("s3c-fb : Probing Framebuffer %i\n", win);
 		ret = s3c_fb_probe_win(sfb, win, fbdrv->win[win],
 				       &sfb->windows[win]);
 		if (ret < 0) {
@@ -4431,21 +4412,13 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 	if (ret < 0) {
 		struct s3c_fb_win *win = sfb->windows[default_win];
 		dev_warn(sfb->dev, "couldn't copy bootloader framebuffer into default window; clearing instead\n");
-		printk ("s3c-fb -- s3c fb clear fb -- start\n");
 		s3c_fb_clear_fb(sfb, win->dma_buf_data.dma_buf,
 				PAGE_ALIGN(win->fbinfo->fix.smem_len));
-				printk ("s3c-fb -- s3c fb clear fb -- end\n");
 	}
 #endif
 #endif
 
-
 	sfb->output_on = true;
-
-printk ("s3c-fb -- s3c fb activate window dma");
-
-
-
 	s3c_fb_set_par(sfb->windows[default_win]->fbinfo);
 
 #ifdef CONFIG_ION_EXYNOS
@@ -4454,10 +4427,8 @@ printk ("s3c-fb -- s3c fb activate window dma");
 #endif
 #if !defined(CONFIG_FB_EXYNOS_FIMD_SYSMMU_DISABLE)
 #ifdef CONFIG_S5P_DEV_FIMD0
-printk ("s3c-fb -- IOVMMU: Activate Fimd0\n");
 	ret = iovmm_activate(&s5p_device_fimd0.dev);
 #else
-	printk ("s3c-fb -- IOVMMU: Activate Fimd1\n");
 	ret = iovmm_activate(&s5p_device_fimd1.dev);
 #endif
 #else
@@ -4472,28 +4443,25 @@ printk ("s3c-fb -- IOVMMU: Activate Fimd0\n");
 		goto err_iovmm;
 	}
 #endif
-printk ("\ns3c-fb: following up, about to enable IRQ");
+
 #if defined(CONFIG_FB_I80_COMMAND_MODE)
 	sfb->irq_enabled = false;
 	s3c_fb_enable_irq(sfb);
 #endif
-printk ("\ns3c-fb: following up, about to activate window %i",default_win);
+
 	s3c_fb_activate_window_dma(sfb, default_win);
 	s3c_fb_activate_window(sfb, default_win);
 
 	dev_dbg(sfb->dev, "about to register framebuffer\n");
-printk("s3c-fb: register framework");
 	/* run the check_var and set_par on our configuration. */
 
 	fbinfo = sfb->windows[default_win]->fbinfo;
-	printk ("s3c-fb: zap! register framework now");
 	ret = register_framebuffer(fbinfo);
 	if (ret < 0) {
 		dev_err(sfb->dev, "failed to register framebuffer\n");
 		goto err_fb;
 	}
 
-	printk ("s3c-fb: sec debug segment!\n");
 #ifdef CONFIG_SEC_DEBUG
 	if (win == sfb->pdata->default_win) {
 		sec_getlog_supply_fbinfo((void *)fbinfo->fix.smem_start,
@@ -4504,7 +4472,6 @@ printk("s3c-fb: register framework");
 #endif
 
 	dev_info(sfb->dev, "window %d: fb %s\n", default_win, fbinfo->fix.id);
-printk ("s3c-fb: bts initialize\n");
 	bts_initialize("pd-disp1", true);
 
 	decon_display_driver_init(pdev);
