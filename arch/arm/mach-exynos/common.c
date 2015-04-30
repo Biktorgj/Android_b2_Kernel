@@ -1160,7 +1160,7 @@ static void __init exynos3_map_io(void)
 	s3c_adc_setname("samsung-adc-v5");
 	s3c_wdt_setname("s3c2410-wdt-v2");
 
-	s5p_fb_setname(0, "exynos3-fb");
+	s5p_fb_setname(0, "exynos4-fb");
 
 }
 

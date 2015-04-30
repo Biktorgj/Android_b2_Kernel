@@ -1314,8 +1314,10 @@ static void s3c_fb_deactivate_vsync(struct s3c_fb *sfb)
 		s3c_fb_disable_irq(sfb);
 		dev_info(sfb->dev, "s3c_fb_disable_irq\n");
 	}
-
+	//delay(100);
+	printk("\ns3cfb : Previous to vsync mutex unlock");
 	mutex_unlock(&sfb->vsync_info.irq_lock);
+	printk ("\ns3cfb : passed vsync mutex unlock!");
 }
 
 /**
@@ -2304,14 +2306,14 @@ static void s3c_fb_update_regs(struct s3c_fb *sfb, struct s3c_reg_data *regs)
 	int count = 100;
 #endif
 	int i;
-
+	printk ("\nS3CFB: Update regs- MEMSET");
 
 	memset(&old_dma_bufs, 0, sizeof(old_dma_bufs));
 
 
-
+printk ("\nS3CFB: GET SYNC!");
 	pm_runtime_get_sync(sfb->dev);
-
+printk ("\nS3CFB: DMA BUF FENCE LOOP");
 	for (i = 0; i < sfb->variant.nr_windows; i++) {
 		if (!sfb->windows[i]->local) {
 			old_dma_bufs[i] = sfb->windows[i]->dma_buf_data;
@@ -2320,7 +2322,7 @@ static void s3c_fb_update_regs(struct s3c_fb *sfb, struct s3c_reg_data *regs)
 					regs->dma_buf_data[i].fence);
 		}
 	}
-
+printk ("\nS3CFB: PM QOS UPDATE REQUEST");
 #if defined(CONFIG_FIMD_USE_BUS_DEVFREQ)
 #if defined(CONFIG_ARM_EXYNOS3250_BUS_DEVFREQ) && defined(CONFIG_LCD_MIPI_NT35510)
 	pm_qos_update_request(&exynos5_fimd_mif_qos, 200000);
@@ -2334,6 +2336,7 @@ static void s3c_fb_update_regs(struct s3c_fb *sfb, struct s3c_reg_data *regs)
 	}
 #endif
 #elif defined(CONFIG_FIMD_USE_WIN_OVERLAP_CNT)
+printk ("\nS3CFB: use window overlap");
 	if (prev_overlap_cnt < regs->win_overlap_cnt) {
 		exynos5_update_media_layers(TYPE_FIMD1, regs->win_overlap_cnt);
 		if (regs->win_overlap_cnt >= 2)
@@ -2346,11 +2349,13 @@ static void s3c_fb_update_regs(struct s3c_fb *sfb, struct s3c_reg_data *regs)
 	do {
 		__s3c_fb_update_regs(sfb, regs);
 #ifdef CONFIG_FB_I80_COMMAND_MODE
-		pd->dsim_hs_ctrl(dsim_device, 1); /* LP TO HS */
-		udelay(1);
-		sfb->vsync_info.draw_request++;
-		dsim->pd->fb_draw_done = sfb->vsync_info.draw_request ;
+printk ("\nS3CFB: Low power to high speed fb i80");
+	//	pd->dsim_hs_ctrl(dsim_device, 1); /* LP TO HS */
+	//	udelay(1);
+	//	sfb->vsync_info.draw_request++;
+	//	dsim->pd->fb_draw_done = sfb->vsync_info.draw_request ;
 #endif
+printk ("\nS3CFB: Wait for vsync ");
 		s3c_fb_wait_for_vsync(sfb, VSYNC_TIMEOUT_MSEC);
 		wait_for_vsync = false;
 
@@ -2381,6 +2386,7 @@ static void s3c_fb_update_regs(struct s3c_fb *sfb, struct s3c_reg_data *regs)
 
 
 #if defined(CONFIG_FB_I80_COMMAND_MODE)
+printk ("\nS3CFB: sw trugget fir 80");
 	s3c_fb_sw_trigger(sfb, TRIG_MASK);
 #endif
 
@@ -5523,10 +5529,10 @@ static struct platform_device_id s3c_fb_driver_ids[] = {
 		.name		= "s5pv210-fb",
 		.driver_data	= (unsigned long)&s3c_fb_data_s5pv210,
 	}, {
-		.name		= "exynos3-fb",
+		.name		= "exynos4-fb",
 		.driver_data	= (unsigned long)&s3c_fb_data_exynos3,
 	}, {
-		.name		= "exynos4-fb",
+		.name		= "exynos3-fb",
 		.driver_data	= (unsigned long)&s3c_fb_data_exynos4,
 	}, {
 		.name		= "exynos5-fb",

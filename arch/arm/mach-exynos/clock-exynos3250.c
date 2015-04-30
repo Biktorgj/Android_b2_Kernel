@@ -1075,7 +1075,7 @@ static struct clk exynos3_clk_pdma1 = {
 
 static struct clk exynos3_clk_fimd0 = {
 	.name           = "fimd",
-	.devname        = "exynos3-fb.0",
+	.devname        = "exynos4-fb.0",
 	.enable         = exynos3_clk_ip_lcd_ctrl,
 	.ctrlbit        = (1 << 0),
 };
@@ -1789,7 +1789,7 @@ static struct clk exynos3_init_clocks[] = {
 	},
 	{
 		.name		= "axi_disp1", /* the name can be changed after it is verified */
-		.devname	= "exynos3-fb.0",
+		.devname	= "exynos4-fb.0",
 		.enable		= exynos3_clk_bus_lcd_ctrl,
 		.ctrlbit	= (1 << 3),
 	},
@@ -2019,7 +2019,7 @@ static struct clk exynos3_init_clocks_off[] = {
 	},
 	{
 		.name		= "lcd",/* use lcd as con_id, it is fimd0 in sfr. */
-		.devname	= "exynos3-fb.0",
+		.devname	= "exynos4-fb.0",
 		.enable		= exynos3_clk_ip_lcd_ctrl,
 		.ctrlbit	= (1 << 0) | (1 << 6) | (1 << 7),
 	},
@@ -2418,7 +2418,7 @@ static struct clksrc_clk exynos3_clksrcs[] = {
 	{
 		.clk    = {
 			.name		= "sclk_fimd",
-			.devname	= "exynos3-fb.0",
+			.devname	= "exynos4-fb.0",
 			.enable		= exynos3_clksrc_mask_lcd_ctrl,
 			.ctrlbit		= (1 << 0),
 		},
@@ -2785,7 +2785,7 @@ static struct clk_lookup exynos3_clk_lookup[] = {
 	CLKDEV_INIT("exynos4210-uart.1", "clk_uart_baud0", &exynos3_clksrcs_uart[1].clk),
 	CLKDEV_INIT("exynos4210-uart.2", "clk_uart_baud0", &exynos3_clksrcs_uart[2].clk),
 	CLKDEV_INIT("exynos4210-uart.3", "clk_uart_baud0", &exynos3_clksrcs_uart[3].clk),
-	CLKDEV_INIT("exynos3-fb.0", "lcd", &exynos3_clk_fimd0),
+	CLKDEV_INIT("exynos4-fb.0", "lcd", &exynos3_clk_fimd0),
 	CLKDEV_INIT("dma-pl330.0", "apb_pclk", &exynos3_clk_pdma0),
 	CLKDEV_INIT("dma-pl330.1", "apb_pclk", &exynos3_clk_pdma1),
 	CLKDEV_INIT("s3c64xx-spi.0", "spi_busclk0", &exynos3_clksrcs_spi[0].clk),
