@@ -52,8 +52,8 @@ static int __init lcdtype_setup(char *str)
 }
 __setup("lcdtype=", lcdtype_setup);
 
-phys_addr_t bootloaderfb_start = 0;
-phys_addr_t bootloaderfb_size = 0;
+phys_addr_t bootloaderfb_start = 0x48000000;
+phys_addr_t bootloaderfb_size = 320 * 320 * 4;
 EXPORT_SYMBOL(bootloaderfb_start);
 EXPORT_SYMBOL(bootloaderfb_size);
 static int __init bootloaderfb_start_setup(char *str)
@@ -62,8 +62,8 @@ static int __init bootloaderfb_start_setup(char *str)
 #if defined(CONFIG_LCD_MIPI_S6E63J0X03)
 	bootloaderfb_size = 320 * 320 * 4;
 #else
-	bootloaderfb_start = 0; // disable for copying bootloaderfb
-	bootloaderfb_size = 0;
+	bootloaderfb_start = 0x48000000; // disable for copying bootloaderfb
+	bootloaderfb_size = 320 * 320 * 4;
 #endif
 	return 1;
 }
@@ -111,8 +111,102 @@ static struct s3c_fb_pd_win universal3250_fb_win0 = {
 	.max_bpp		= UNIVERSAL3250_MAX_BPP,
 	.default_bpp		= UNIVERSAL3250_DEFAULT_BPP,
 };
-
-
+static struct s3c_fb_pd_win universal3250_fb_win1 = {
+	.win_mode = {
+		.left_margin	= UNIVERSAL3250_HBP,
+		.right_margin	= UNIVERSAL3250_HFP,
+		.upper_margin	= UNIVERSAL3250_VBP,
+		.lower_margin	= UNIVERSAL3250_VFP,
+		.xres		= UNIVERSAL3250_XRES,
+		.yres		= UNIVERSAL3250_YRES,
+		.hsync_len	= UNIVERSAL3250_HSP,
+		.vsync_len	= UNIVERSAL3250_VSW,
+		.cs_setup_time  = 1,
+		.wr_setup_time  = 0,
+		.wr_act_time    = 1,
+		.wr_hold_time   = 0,
+		.rs_pol         = 0,
+		.i80en          = 1,
+	},
+	.virtual_x		= UNIVERSAL3250_VIRTUAL_X,
+	.virtual_y		= UNIVERSAL3250_VIRTUAL_Y,
+	.width			= UNIVERSAL3250_WIDTH,
+	.height			= UNIVERSAL3250_HEIGHT,
+	.max_bpp		= UNIVERSAL3250_MAX_BPP,
+	.default_bpp		= UNIVERSAL3250_DEFAULT_BPP,
+};
+static struct s3c_fb_pd_win universal3250_fb_win2 = {
+	.win_mode = {
+		.left_margin	= UNIVERSAL3250_HBP,
+		.right_margin	= UNIVERSAL3250_HFP,
+		.upper_margin	= UNIVERSAL3250_VBP,
+		.lower_margin	= UNIVERSAL3250_VFP,
+		.xres		= UNIVERSAL3250_XRES,
+		.yres		= UNIVERSAL3250_YRES,
+		.hsync_len	= UNIVERSAL3250_HSP,
+		.vsync_len	= UNIVERSAL3250_VSW,
+		.cs_setup_time  = 1,
+		.wr_setup_time  = 0,
+		.wr_act_time    = 1,
+		.wr_hold_time   = 0,
+		.rs_pol         = 0,
+		.i80en          = 1,
+	},
+	.virtual_x		= UNIVERSAL3250_VIRTUAL_X,
+	.virtual_y		= UNIVERSAL3250_VIRTUAL_Y,
+	.width			= UNIVERSAL3250_WIDTH,
+	.height			= UNIVERSAL3250_HEIGHT,
+	.max_bpp		= UNIVERSAL3250_MAX_BPP,
+	.default_bpp		= UNIVERSAL3250_DEFAULT_BPP,
+};
+static struct s3c_fb_pd_win universal3250_fb_win3 = {
+	.win_mode = {
+		.left_margin	= UNIVERSAL3250_HBP,
+		.right_margin	= UNIVERSAL3250_HFP,
+		.upper_margin	= UNIVERSAL3250_VBP,
+		.lower_margin	= UNIVERSAL3250_VFP,
+		.xres		= UNIVERSAL3250_XRES,
+		.yres		= UNIVERSAL3250_YRES,
+		.hsync_len	= UNIVERSAL3250_HSP,
+		.vsync_len	= UNIVERSAL3250_VSW,
+		.cs_setup_time  = 1,
+		.wr_setup_time  = 0,
+		.wr_act_time    = 1,
+		.wr_hold_time   = 0,
+		.rs_pol         = 0,
+		.i80en          = 1,
+	},
+	.virtual_x		= UNIVERSAL3250_VIRTUAL_X,
+	.virtual_y		= UNIVERSAL3250_VIRTUAL_Y,
+	.width			= UNIVERSAL3250_WIDTH,
+	.height			= UNIVERSAL3250_HEIGHT,
+	.max_bpp		= UNIVERSAL3250_MAX_BPP,
+	.default_bpp		= UNIVERSAL3250_DEFAULT_BPP,
+};
+static struct s3c_fb_pd_win universal3250_fb_win4 = {
+	.win_mode = {
+		.left_margin	= UNIVERSAL3250_HBP,
+		.right_margin	= UNIVERSAL3250_HFP,
+		.upper_margin	= UNIVERSAL3250_VBP,
+		.lower_margin	= UNIVERSAL3250_VFP,
+		.xres		= UNIVERSAL3250_XRES,
+		.yres		= UNIVERSAL3250_YRES,
+		.hsync_len	= UNIVERSAL3250_HSP,
+		.vsync_len	= UNIVERSAL3250_VSW,
+		.cs_setup_time  = 1,
+		.wr_setup_time  = 0,
+		.wr_act_time    = 1,
+		.wr_hold_time   = 0,
+		.rs_pol         = 0,
+		.i80en          = 1,
+	},
+	.virtual_x		= UNIVERSAL3250_VIRTUAL_X,
+	.virtual_y		= UNIVERSAL3250_VIRTUAL_Y,
+	.width			= UNIVERSAL3250_WIDTH,
+	.height			= UNIVERSAL3250_HEIGHT,
+	.max_bpp		= UNIVERSAL3250_MAX_BPP,
+	.default_bpp		= UNIVERSAL3250_DEFAULT_BPP,
+};
 static int mipi_lcd_power_control(struct mipi_dsim_device *dsim,
 		unsigned int power)
 {
@@ -193,11 +287,11 @@ static void exynos_fimd_gpio_setup_24bpp(void)
 static struct s5p_platform_mipi_dsim dsim_platform_data;
 static struct s3c_fb_platdata universal3250_lcd0_pdata __initdata = {
 	.win[0]		= &universal3250_fb_win0,
-	.win[1]		= &universal3250_fb_win0,
-	.win[2]		= &universal3250_fb_win0,
-	.win[3]		= &universal3250_fb_win0,
-	.win[4]		= &universal3250_fb_win0,
-	.default_win	= 0,
+	.win[1]		= &universal3250_fb_win1,
+	.win[2]		= &universal3250_fb_win2,
+	.win[3]		= &universal3250_fb_win3,
+	.win[4]		= &universal3250_fb_win4,
+	.default_win	= 3,
 	.vidcon0	= VIDCON0_VIDOUT_RGB | VIDCON0_PNRMODE_RGB,
 	.vidcon1	= VIDCON1_INV_VCLK,
 	.setup_gpio	= exynos_fimd_gpio_setup_24bpp,
@@ -317,14 +411,12 @@ static struct exynos_scaler_platdata exynos3250_scaler_pd __initdata;
 void __init exynos3_universal3250_display_init(void)
 {
 struct resource *res;
-	printk ("\nB2 - Init Display: set platform data: Scaler");
+	printk ("B2 - Init Display\n");
 	s3c_set_platdata(&exynos3250_scaler_pd, sizeof(exynos3250_scaler_pd),
 			&exynos5_device_scaler0);
-	printk ("\nB2 - Set DSIM Platform data");
 	s5p_dsim0_set_platdata(&dsim_platform_data);
-	printk ("\nB2 - FIMD0 LCD0 Platform Data");
 	s5p_fimd0_set_platdata(&universal3250_lcd0_pdata);
-	printk ("\nB2 - Platform - Add devices to FB");
+	printk ("B2 - Platform - Add devices to FB\n");
 	platform_add_devices(universal3250_display_devices,
 			ARRAY_SIZE(universal3250_display_devices));
 

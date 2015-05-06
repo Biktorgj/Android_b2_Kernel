@@ -63,7 +63,7 @@ static struct clk *fout_vpll_clock = NULL;
 static struct clk *sclk_vpll_clock = NULL;
 static struct clk *mali_mout1_clock = NULL;
 static struct clk *mali_clock = NULL;
-
+unsigned int mali_dvfs_utilization;
 /* PegaW1 */
 #ifndef CONFIG_EXYNOS3_VPLL
 /* desired 133Mhz but need to specify 134 since 400/3 is 133.3 and is greater than 133 */

@@ -2779,6 +2779,7 @@ static void s3c_fb_release_win(struct s3c_fb *sfb, struct s3c_fb_win *win)
 			data &= ~SHADOWCON_CHx_LOCAL_ENABLE(win->index);
 			writel(data, sfb->regs + SHADOWCON);
 		}
+		unregister_framebuffer(win->fbinfo);
 		if (win->fbinfo->cmap.len)
 			fb_dealloc_cmap(&win->fbinfo->cmap);
 		s3c_fb_free_memory(sfb, win);
@@ -2894,7 +2895,17 @@ static int __devinit s3c_fb_probe_win(struct s3c_fb *sfb, unsigned int win_no,
 		fb_set_cmap(&fbinfo->cmap, fbinfo);
 	else
 		dev_err(sfb->dev, "failed to allocate fb cmap\n");
+	
+	s3c_fb_set_par(fbinfo);
+	dev_dbg(sfb->dev, "about to register framebuffer\n");
+	/* run the check_var and set_par on our configuration. */
+	ret = register_framebuffer(fbinfo);
+	if (ret < 0) {
+		dev_err(sfb->dev, "failed to register framebuffer\n");
+		return ret;
+	}
 
+	dev_info(sfb->dev, "window %d: fb %s\n", win_no, fbinfo->fix.id);
 	return 0;
 }
 
@@ -4304,8 +4315,8 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 			win = default_win;
 		if (i == default_win)
 			win = 0;
-
-		//printk ("s3c-fb : Probing Framebuffer %i\n", win);
+		
+		printk ("s3c-fb : Probing Framebuffer %i\n", win);
 		ret = s3c_fb_probe_win(sfb, win, fbdrv->win[win],
 				       &sfb->windows[win]);
 		if (ret < 0) {
@@ -4419,7 +4430,7 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 #endif
 
 	sfb->output_on = true;
-	s3c_fb_set_par(sfb->windows[default_win]->fbinfo);
+//	s3c_fb_set_par(sfb->windows[default_win]->fbinfo);
 
 #ifdef CONFIG_ION_EXYNOS
 #if !defined(CONFIG_FB_I80_COMMAND_MODE)
@@ -4449,13 +4460,13 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 	s3c_fb_enable_irq(sfb);
 #endif
 
-	s3c_fb_activate_window_dma(sfb, default_win);
-	s3c_fb_activate_window(sfb, default_win);
+	s3c_fb_activate_window_dma(sfb, pd->default_win);
+	s3c_fb_activate_window(sfb, pd->default_win);
 
-	dev_dbg(sfb->dev, "about to register framebuffer\n");
+//	dev_dbg(sfb->dev, "about to register framebuffer\n");
 	/* run the check_var and set_par on our configuration. */
 
-	fbinfo = sfb->windows[default_win]->fbinfo;
+/*	fbinfo = sfb->windows[default_win]->fbinfo;
 	ret = register_framebuffer(fbinfo);
 	if (ret < 0) {
 		dev_err(sfb->dev, "failed to register framebuffer\n");
@@ -4471,13 +4482,13 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 	}
 #endif
 
-	dev_info(sfb->dev, "window %d: fb %s\n", default_win, fbinfo->fix.id);
+	dev_info(sfb->dev, "window %d: fb %s\n", default_win, fbinfo->fix.id);*/
 	bts_initialize("pd-disp1", true);
 
 	decon_display_driver_init(pdev);
 
 	return 0;
-
+/*
 err_fb:
 #if !defined(CONFIG_FB_EXYNOS_FIMD_SYSMMU_DISABLE)
 #ifdef CONFIG_S5P_DEV_FIMD0
@@ -4486,7 +4497,7 @@ err_fb:
 	iovmm_deactivate(&s5p_device_fimd1.dev);
 #endif
 #endif
-
+*/
 err_iovmm:
 	device_remove_file(sfb->dev, &dev_attr_psr_info);
 
@@ -4549,7 +4560,7 @@ static int __devexit s3c_fb_remove(struct platform_device *pdev)
 
 	pm_runtime_get_sync(sfb->dev);
 
-	unregister_framebuffer(sfb->windows[sfb->pdata->default_win]->fbinfo);
+//	unregister_framebuffer(sfb->windows[sfb->pdata->default_win]->fbinfo);
 
 #ifdef CONFIG_ION_EXYNOS
 	if (sfb->update_regs_thread)
