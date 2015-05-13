@@ -37,16 +37,12 @@
 #include <mach/gpio.h>
 #include <plat/gpio-cfg.h>
 
-#define BT_UART_CFG
-#define BT_LPM_ENABLE
+#define GPIO_BT_HOST_WAKE		EXYNOS3_GPX2(6)
+
 #define GPIO_BT_EN			EXYNOS3_GPE0(0)
-#define GPIO_BT_WAKE		EXYNOS3_GPX3(1)
-#define GPIO_BT_HOST_WAKE	EXYNOS3_GPX2(6)
-/* Serial line */
-#define GPIO_BT_RXD		EXYNOS3_GPA0(0)
-#define GPIO_BT_TXD		EXYNOS3_GPA0(1)
-#define GPIO_BT_CTS		EXYNOS3_GPA0(2)
-#define GPIO_BT_RTS		EXYNOS3_GPA0(3)
+#define GPIO_BT_WAKE			EXYNOS3_GPX3(1)
+
+#define BT_LPM_ENABLE
 
 static struct rfkill *bt_rfkill;
 
@@ -55,6 +51,10 @@ struct bcm_bt_lpm {
 
 	struct hrtimer enter_lpm_timer;
 	ktime_t enter_lpm_delay;
+
+	struct hrtimer enter_lpm_rx_timer;
+	ktime_t enter_lpm_rx_delay;
+
 	struct uart_port *uport;
 
 	struct wake_lock host_wake_lock;
@@ -62,21 +62,21 @@ struct bcm_bt_lpm {
 	char wake_lock_name[100];
 } bt_lpm;
 
-
-
-
-#ifdef BT_UART_CFG
 int bt_is_running;
+
 EXPORT_SYMBOL(bt_is_running);
+
+static int bt_is_rx_running;
+static int bt_is_tx_running;
 
 extern int s3c_gpio_slp_cfgpin(unsigned int pin, unsigned int config);
 extern int s3c_gpio_slp_setpull_updown(unsigned int pin, unsigned int config);
 
 static unsigned int bt_uart_on_table[][4] = {
-	{GPIO_BT_RXD, 2, 2, S3C_GPIO_PULL_NONE},
-	{GPIO_BT_TXD, 2, 2, S3C_GPIO_PULL_NONE},
-	{GPIO_BT_CTS, 2, 2, S3C_GPIO_PULL_NONE},
-	{GPIO_BT_RTS, 2, 2, S3C_GPIO_PULL_NONE},
+	{EXYNOS3_GPA0(0), 2, 2, S3C_GPIO_PULL_NONE},
+	{EXYNOS3_GPA0(1), 2, 2, S3C_GPIO_PULL_NONE},
+	{EXYNOS3_GPA0(2), 2, 2, S3C_GPIO_PULL_NONE},
+	{EXYNOS3_GPA0(3), 2, 2, S3C_GPIO_PULL_NONE},
 };
 
 void bt_config_gpio_table(int array_size, unsigned int (*gpio_table)[4])
@@ -98,50 +98,47 @@ void bt_uart_rts_ctrl(int flag)
 		return;
 	if (flag) {
 		/* BT RTS Set to HIGH */
-		s3c_gpio_cfgpin(GPIO_BT_RTS, S3C_GPIO_OUTPUT);
-		s3c_gpio_setpull(GPIO_BT_RTS, S3C_GPIO_PULL_NONE);
-		gpio_set_value(GPIO_BT_RTS, 1);
+		s3c_gpio_cfgpin(EXYNOS3_GPA0(3), S3C_GPIO_OUTPUT);
+		s3c_gpio_setpull(EXYNOS3_GPA0(3), S3C_GPIO_PULL_NONE);
+		gpio_set_value(EXYNOS3_GPA0(3), 1);
 	} else {
 		/* restore BT RTS state */
-		s3c_gpio_cfgpin(GPIO_BT_RTS, S3C_GPIO_SFN(2));
-		s3c_gpio_setpull(GPIO_BT_RTS, S3C_GPIO_PULL_NONE);
+		s3c_gpio_cfgpin(EXYNOS3_GPA0(3), S3C_GPIO_SFN(2));
+		s3c_gpio_setpull(EXYNOS3_GPA0(3), S3C_GPIO_PULL_NONE);
 	}
 }
 
 EXPORT_SYMBOL(bt_uart_rts_ctrl);
-#endif
+
+static void update_bt_is_running(void)
+{
+	if (bt_is_rx_running || bt_is_tx_running)
+		bt_is_running = 1;
+	else
+		bt_is_running = 0;
+
+}
 
 static int bcm4334w_bt_rfkill_set_power(void *data, bool blocked)
-
-
 {
-
 	/* rfkill_ops callback. Turn transmitter on when blocked is false */
 	if (!blocked) {
 		pr_info("[BT] Bluetooth Power On.\n");
-#ifdef BT_UART_CFG
 		bt_config_gpio_table(ARRAY_SIZE(bt_uart_on_table),
 					bt_uart_on_table);
-#endif
 
 		gpio_set_value(GPIO_BT_EN, 1);
-#ifdef BT_UART_CFG
 		bt_is_running = 1;
-#endif
 		msleep(100);
 	} else {
 		pr_info("[BT] Bluetooth Power Off.\n");
-#ifdef BT_UART_CFG
 		bt_is_running = 0;
-#endif
 
 		gpio_set_value(GPIO_BT_EN, 0);
 	}
 
-
-
-
-
+	bt_is_rx_running =0;
+	bt_is_tx_running =0;
 
 	return 0;
 }
@@ -164,37 +161,24 @@ static enum hrtimer_restart enter_lpm(struct hrtimer *timer)
 	if (bt_lpm.uport != NULL)
 		set_wake_locked(0);
 
-#ifdef BT_UART_CFG
-	bt_is_running = 0;
-#endif
-
-
-
+	bt_is_tx_running = 0;
+	update_bt_is_running();
 
 	wake_lock_timeout(&bt_lpm.bt_wake_lock, HZ/2);
 
 	return HRTIMER_NORESTART;
 }
 
+static enum hrtimer_restart enter_rx_lpm(struct hrtimer *timer)
+{
+	pr_info("[BT] Unlock bt_is_rx_running");
+	bt_is_rx_running = 0;
+	update_bt_is_running();
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+	pr_info("[BT]bt_is_running =%d (tx=%d,rx=%d)", bt_is_running,
+				bt_is_tx_running, bt_is_rx_running);
+	return HRTIMER_NORESTART;
+}
 
 
 void bcm_bt_lpm_exit_lpm_locked(struct uart_port *uport)
@@ -202,13 +186,9 @@ void bcm_bt_lpm_exit_lpm_locked(struct uart_port *uport)
 	bt_lpm.uport = uport;
 
 	hrtimer_try_to_cancel(&bt_lpm.enter_lpm_timer);
-#ifdef BT_UART_CFG
 
-	bt_is_running = 1;
-#endif
-
-
-
+	bt_is_tx_running = 1;
+	update_bt_is_running();
 
 	set_wake_locked(1);
 
@@ -224,15 +204,10 @@ static void update_host_wake_locked(int host_wake)
 
 	bt_lpm.host_wake = host_wake;
 
-#ifdef BT_UART_CFG
-	bt_is_running = 1;
-#endif
 
 	if (host_wake) {
-
-
-
-
+		bt_is_rx_running = 1;
+		update_bt_is_running();
 
 		wake_lock(&bt_lpm.host_wake_lock);
 	} else  {
@@ -240,18 +215,13 @@ static void update_host_wake_locked(int host_wake)
 		 * The chipset deasserts the hostwake lock, when there is no
 		 * more data to send.
 		 */
-		wake_lock_timeout(&bt_lpm.host_wake_lock, HZ/2);
+		wake_lock_timeout(&bt_lpm.host_wake_lock, HZ*2);
 
-
-
-
-
-
-
-
-
-
-
+		pr_info("[BT] ISR is low");
+		/* udpate bt status value after timeout */
+		hrtimer_try_to_cancel(&bt_lpm.enter_lpm_rx_timer);
+		hrtimer_start(&bt_lpm.enter_lpm_rx_timer,
+				bt_lpm.enter_lpm_rx_delay, HRTIMER_MODE_REL);
 	}
 }
 
@@ -277,29 +247,21 @@ static int bcm_bt_lpm_init(struct platform_device *pdev)
 	int irq;
 	int ret;
 
-
-
+	/* For Tx */
 	hrtimer_init(&bt_lpm.enter_lpm_timer, CLOCK_MONOTONIC,
 			HRTIMER_MODE_REL);
-	bt_lpm.enter_lpm_delay = ktime_set(5, 0);  /* 1 sec */ /*1->3*//*3->4*/
+	bt_lpm.enter_lpm_delay = ktime_set(1, 0);  /* 1 sec */
 	bt_lpm.enter_lpm_timer.function = enter_lpm;
 
 
-
-
-
-
-
-
-
-
-
-
+	/* For Rx */
+	hrtimer_init(&bt_lpm.enter_lpm_rx_timer, CLOCK_MONOTONIC,
+			HRTIMER_MODE_REL);
+	bt_lpm.enter_lpm_rx_delay = ktime_set(1, NSEC_PER_SEC/2);  /* 1.5 sec */
+	bt_lpm.enter_lpm_rx_timer.function = enter_rx_lpm;
 
 	bt_lpm.host_wake = 0;
-#ifdef BT_UART_CFG
 	bt_is_running = 0;
-#endif
 
 	snprintf(bt_lpm.wake_lock_name, sizeof(bt_lpm.wake_lock_name),
 			"BT_host_wake");
@@ -332,11 +294,9 @@ static int bcm_bt_lpm_init(struct platform_device *pdev)
 static int bcm4334w_bluetooth_probe(struct platform_device *pdev)
 {
 	int rc = 0;
-
-
+#ifdef BT_LPM_ENABLE
 	int ret;
-
-
+#endif
 
 	rc = gpio_request(GPIO_BT_EN, "bcm4334w_bten_gpio");
 	if (unlikely(rc)) {
@@ -357,7 +317,7 @@ static int bcm4334w_bluetooth_probe(struct platform_device *pdev)
 		return rc;
 	}
 
-	s3c_gpio_setpull(GPIO_BT_HOST_WAKE, S3C_GPIO_PULL_NONE);
+	//s3c_gpio_setpull(EXYNOS5260_GPZ1(1), S3C_GPIO_PULL_NONE);
 	gpio_direction_input(GPIO_BT_HOST_WAKE);
 	gpio_direction_output(GPIO_BT_WAKE, 0);
 	gpio_direction_output(GPIO_BT_EN, 0);
@@ -444,4 +404,3 @@ module_exit(bcm4334w_bluetooth_exit);
 MODULE_ALIAS("platform:bcm4334w");
 MODULE_DESCRIPTION("bcm4334w_bluetooth");
 MODULE_LICENSE("GPL");
-
