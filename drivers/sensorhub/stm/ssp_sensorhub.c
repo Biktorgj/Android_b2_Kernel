@@ -294,7 +294,7 @@ static long ssp_sensorhub_ioctl(struct file *file, unsigned int cmd,
 	return length;
 }
 
-static struct file_operations ssp_sensorhub_fops = {
+static const struct file_operations ssp_sensorhub_fops = {
 	.owner = THIS_MODULE,
 	.open = nonseekable_open,
 	.write = ssp_sensorhub_write,
@@ -452,150 +452,6 @@ static int ssp_sensorhub_thread(void *arg)
 	return 0;
 }
 
-void ssp_read_big_library_task(struct work_struct *work)
-{
-	struct ssp_big *big = container_of(work, struct ssp_big, work);
-	struct ssp_sensorhub_data *hub_data = big->data->hub_data;
-	struct ssp_msg *msg;
-	int buf_len, residue = big->length, ret = 0, index = 0, pos = 0;
-
-	hub_data->big_events.library_length = big->length;
-	hub_data->big_events.library_data = kzalloc(big->length, GFP_KERNEL);
-
-	while (residue > 0) {
-		buf_len = residue > DATA_PACKET_SIZE
-			? DATA_PACKET_SIZE : residue;
-
-		msg = kzalloc(sizeof(*msg), GFP_KERNEL);
-		msg->cmd = MSG2SSP_AP_GET_BIG_DATA;
-		msg->length = buf_len;
-		msg->options = AP2HUB_READ | (index++ << SSP_INDEX);
-		msg->data = big->addr;
-		msg->buffer = hub_data->big_events.library_data + pos;
-		msg->free_buffer = 0;
-
-		ret = ssp_spi_sync(big->data, msg, 1000);
-		if (ret != SUCCESS) {
-			sensorhub_err("read big data err(%d)", ret);
-			break;
-		}
-
-		pos += buf_len;
-		residue -= buf_len;
-
-		sensorhub_info("read big data (%5d / %5d)", pos, big->length);
-	}
-
-	hub_data->is_big_event = true;
-	wake_up(&hub_data->sensorhub_wq);
-	kfree(big);
-}
-
-void ssp_send_big_library_task(struct work_struct *work)
-{
-	struct ssp_big *big = container_of(work, struct ssp_big, work);
-	struct ssp_sensorhub_data *hub_data = big->data->hub_data;
-	struct ssp_msg *msg;
-	int buf_len, residue = big->length, ret = 0, index = 0, pos = 0;
-
-	while (residue > 0) {
-		buf_len = residue > DATA_PACKET_SIZE
-			? DATA_PACKET_SIZE : residue;
-
-		msg = kzalloc(sizeof(*msg), GFP_KERNEL);
-		msg->cmd = MSG2SSP_AP_SET_BIG_DATA;
-		msg->length = buf_len;
-		msg->options = AP2HUB_WRITE | (index++ << SSP_INDEX);
-		msg->data = big->addr;
-		msg->buffer = hub_data->big_send_events.library_data + pos;
-		msg->free_buffer = 0;
-
-		ret = ssp_spi_sync(big->data, msg, 1000);
-		if (ret != SUCCESS) {
-			sensorhub_err("send big data err(%d)", ret);
-			break;
-		}
-
-		pos += buf_len;
-		residue -= buf_len;
-
-		sensorhub_info("send big data (%5d / %5d)", pos, big->length);
-	}
-
-	complete(&hub_data->big_write_done);
-	kfree(big);
-}
-
-void ssp_pcm_dump_task(struct work_struct *work)
-{
-	struct ssp_big *big = container_of(work, struct ssp_big, work);
-	struct ssp_sensorhub_data *hub_data = big->data->hub_data;
-	struct ssp_msg *msg;
-	int buf_len, residue = big->length, ret = 0, index = 0;
-
-	mm_segment_t old_fs;
-	struct file *voice_filp;
-	char pcm_path[BIN_PATH_SIZE+1];
-	char *buff;
-
-	old_fs = get_fs();
-	set_fs(KERNEL_DS);
-
-	snprintf(pcm_path, BIN_PATH_SIZE,
-		"/data/voice%d.pcm", hub_data->pcm_cnt);
-	voice_filp = filp_open(pcm_path, O_RDWR | O_CREAT | O_APPEND, 0666);
-	if (IS_ERR(voice_filp)) {
-		sensorhub_err("open pcm dump file err");
-		goto exit;
-	}
-
-	buf_len = big->length > DATA_PACKET_SIZE
-			? DATA_PACKET_SIZE : big->length;
-	buff = kzalloc(buf_len, GFP_KERNEL);
-
-	while (residue > 0) {
-		buf_len = residue > DATA_PACKET_SIZE
-			? DATA_PACKET_SIZE : residue;
-
-		msg = kzalloc(sizeof(*msg), GFP_KERNEL);
-		msg->cmd = MSG2SSP_AP_GET_BIG_DATA;
-		msg->length = buf_len;
-		msg->options = AP2HUB_READ | (index++ << SSP_INDEX);
-		msg->data = big->addr;
-		msg->buffer = buff;
-		msg->free_buffer = 0;
-
-		ret = ssp_spi_sync(big->data, msg, 1000);
-		if (ret != SUCCESS) {
-			sensorhub_err("receive pcm dump err(%d)", ret);
-			break;
-		}
-
-		ret = voice_filp->f_op->write(voice_filp, (char __user *)buff,
-			buf_len, &voice_filp->f_pos);
-		if (ret < 0) {
-			sensorhub_err("write pcm dump to file err(%d)", ret);
-			break;
-		}
-
-		residue -= buf_len;
-		sensorhub_info("write pcm dump...");
-	}
-
-	filp_close(voice_filp, current->files);
-	kfree(buff);
-
-exit:
-	set_fs(old_fs);
-	kfree(big);
-}
-
-int ssp_sensorhub_pcm_dump(struct ssp_sensorhub_data *hub_data)
-{
-	hub_data->pcm_cnt++;
-	return set_big_data_start(hub_data->ssp_data, BIG_TYPE_VOICE_PCM, 0);
-}
-
 int ssp_sensorhub_initialize(struct ssp_data *ssp_data)
 {
 	struct ssp_sensorhub_data *hub_data;
@@ -693,9 +549,9 @@ void ssp_sensorhub_remove(struct ssp_data *ssp_data)
 {
 	struct ssp_sensorhub_data *hub_data = ssp_data->hub_data;
 
-	ssp_sensorhub_fops.write = NULL;
+/*	ssp_sensorhub_fops.write = NULL;
 	ssp_sensorhub_fops.read = NULL;
-	ssp_sensorhub_fops.unlocked_ioctl = NULL;
+	ssp_sensorhub_fops.unlocked_ioctl = NULL;*/
 
 	kthread_stop(hub_data->sensorhub_task);
 	kfifo_free(&hub_data->fifo);
@@ -706,6 +562,7 @@ void ssp_sensorhub_remove(struct ssp_data *ssp_data)
 	complete_all(&hub_data->read_done);
 	wake_lock_destroy(&hub_data->sensorhub_wake_lock);
 	kfree(hub_data);
+	sensorhub_err("DONE");
 }
 
 MODULE_DESCRIPTION("Seamless Sensor Platform(SSP) sensorhub driver");

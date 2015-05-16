@@ -145,5 +145,6 @@ obj-y	+= sensors/
 obj-$(CONFIG_SENSORS_FINGERPRINT)	+= fingerprint/
 obj-$(CONFIG_IR_REMOCON)	+= irda/
 obj-$(CONFIG_ICE4_FPGA)		+= ice4_fpga/
+obj-$(CONFIG_IIO)		+=iio/
 obj-$(CONFIG_SENSORS_SSP)     += sensorhub/
 

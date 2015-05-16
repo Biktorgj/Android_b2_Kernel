@@ -26,7 +26,7 @@
 /* 'LIST_SIZE' should be be rounded-up to a power of 2 */
 #define LIST_SIZE			4
 #define MAX_DATA_COPY_TRY		2
-#define WAKE_LOCK_TIMEOUT		(0.5*HZ)
+#define WAKE_LOCK_TIMEOUT		(3*HZ)
 #define COMPLETION_TIMEOUT		(2*HZ)
 #define DATA				REL_RX
 #define BIG_DATA			REL_RY
@@ -71,7 +71,6 @@ struct ssp_sensorhub_data {
 	spinlock_t sensorhub_lock;
 };
 
-int ssp_sensorhub_pcm_dump(struct ssp_sensorhub_data *hub_data);
 void ssp_sensorhub_report_notice(struct ssp_data *ssp_data, char notice);
 int ssp_sensorhub_handle_data(struct ssp_data *ssp_data, char *dataframe,
 				int start, int end);

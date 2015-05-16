@@ -156,6 +156,8 @@ source "drivers/irda/Kconfig"
 
 source "drivers/ice4_fpga/Kconfig"
 
+source "drivers/iio/Kconfig"
+
 source "drivers/sensorhub/Kconfig"
 
 endmenu

@@ -143,20 +143,13 @@ fw-shipped-$(CONFIG_YAM) += yam/1200.bin yam/9600.bin
 fw-shipped-$(CONFIG_KEYBOARD_CYPRESS_TOUCH) += cypress/cypress_hl.fw
 fw-shipped-$(CONFIG_EPEN_WACOM_G9PM) += epen/W9001_HL_EUR.bin
 
+#for sensorhub
+fw-shipped-$(CONFIG_SENSORS_SSP_STM) += ssp_B2.fw
+fw-shipped-$(CONFIG_SENSORS_SSP) += ssp_crashed.fw
+
 TSPFIRMWARE_DIRECTORY = firmware/tsp_atmel
 ifeq ($(shell test -d $(TSPFIRMWARE_DIRECTORY) && echo yes),yes)
 fw-shipped-$(CONFIG_TOUCHSCREEN_MXT540E) += tsp_atmel/mXT540E.fw
-else
-$(warning '$(TSPFIRMWARE_DIRECTORY)' directory dose not exist)
-endif
-
-TSPFIRMWARE_DIRECTORY_MEL_W = firmware/tsp_melfas/w
-ifeq ($(shell test -d $(TSPFIRMWARE_DIRECTORY_MEL_W) && echo yes),yes)
-fw-shipped-$(CONFIG_TOUCHSCREEN_MELFAS_W) += tsp_melfas/w/CORE.fw
-fw-shipped-$(CONFIG_TOUCHSCREEN_MELFAS_W) += tsp_melfas/w/PRIV.fw
-fw-shipped-$(CONFIG_TOUCHSCREEN_MELFAS_W) += tsp_melfas/w/PUBL.fw
-fw-shipped-$(CONFIG_TOUCHSCREEN_MELFAS_W) += tsp_melfas/w/mms_ts_w.fw
-fw-shipped-$(CONFIG_TOUCHSCREEN_MELFAS_W) += tsp_melfas/w/mms_ts_w_config.fw
 else
 $(warning '$(TSPFIRMWARE_DIRECTORY)' directory dose not exist)
 endif
@@ -185,11 +178,6 @@ fw-shipped-$(CONFIG_TOUCHSCREEN_SYNAPTICS_I2C_RMI) += tsp_synaptics/synaptics_b0
 	tsp_synaptics/synaptics_b0_fac.fw
 else
 $(warning '$(TSPFIRMWARE_DIRECTORY)' directory dose not exist)
-endif
-
-ifeq ("$(CONFIG_KEYBOARD_ABOV_TOUCH)", "y")
-fw-shipped-$(CONFIG_KEYBOARD_ABOV_TOUCH) += abov/abov_tk.fw
-fw-shipped-$(CONFIG_KEYBOARD_ABOV_TOUCH) += abov/abov_tk_r02.fw
 endif
 
 fw-shipped-all := $(fw-shipped-y) $(fw-shipped-m) $(fw-shipped-)

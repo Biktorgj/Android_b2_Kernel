@@ -41,7 +41,7 @@ static int do_transfer(struct ssp_data *data, struct ssp_msg *msg,
 
 	gpio_set_value_cansleep(data->ap_int, 0);
 	while (gpio_get_value_cansleep(data->mcu_int2)) {
-		mdelay(3);
+		usleep_range(2950, 3050);
 		ssp_down = data->bSspShutdown;
 		if (ssp_down || iDelaycnt++ > 500) {
 			pr_err("[SSP]: %s exit1 - Time out!!\n", __func__);
@@ -52,6 +52,7 @@ static int do_transfer(struct ssp_data *data, struct ssp_msg *msg,
 	}
 
 	status = spi_write(data->spi, msg, 9) >= 0;
+
 	if (status == 0) {
 		pr_err("[SSP]: %s spi_write fail!!\n", __func__);
 		gpio_set_value_cansleep(data->ap_int, 1);
@@ -68,7 +69,7 @@ static int do_transfer(struct ssp_data *data, struct ssp_msg *msg,
 	iDelaycnt = 0;
 	gpio_set_value_cansleep(data->ap_int, 1);
 	while (!gpio_get_value_cansleep(data->mcu_int2)) {
-		mdelay(3);
+		usleep_range(2950, 3050);
 		ssp_down = data->bSspShutdown;
 		if (ssp_down || iDelaycnt++ > 500) {
 			pr_err("[SSP]: %s exit2 - Time out!!\n", __func__);
@@ -81,7 +82,7 @@ exit:
 	mutex_unlock(&data->comm_mutex);
 
 	if (ssp_down)
-		pr_err("[SSP] : %s, ssp down", __func__);
+		pr_err("[SSP] : %s, ssp down\n", __func__);
 
 	if (status == -1) {
 		data->uTimeOutCnt += ssp_down ? 0 : 1;
@@ -89,10 +90,14 @@ exit:
 		return status;
 	}
 
-	if (status == 1 && done != NULL)
-		if (wait_for_completion_timeout(done, msecs_to_jiffies(timeout)) == 0)
+	if (status == 1 && done != NULL) {
+		if (wait_for_completion_timeout(done,
+				msecs_to_jiffies(timeout)) == 0) {
 			status = -2;
-
+			pr_err("[SSP] - mcu_int1 level:%d\n",
+				gpio_get_value(data->mcu_int1));
+		}
+	}
 	mutex_lock(&data->pending_mutex);
 	if (!msg_dead) {
 		msg->done = NULL;
@@ -143,13 +148,15 @@ int select_irq_msg(struct ssp_data *data)
 	u16 chLength = 0, msg_options = 0;
 	u8 msg_type = 0;
 	int iRet = 0;
-	char* buffer;
+	char *buffer;
 	char chTempBuf[4] = { -1 };
 
+	data->bHandlingIrq = true;
 	iRet = spi_read(data->spi, chTempBuf, sizeof(chTempBuf));
 	if (iRet < 0) {
-		pr_err("[SSP]: %s spi_read fail!!\n", __func__);
-		return ERROR;
+		pr_err("[SSP] %s spi_read fail, ret = %d\n", __func__, iRet);
+		data->bHandlingIrq = false;
+		return iRet;
 	}
 
 	memcpy(&msg_options, &chTempBuf[0], 2);
@@ -161,7 +168,8 @@ int select_irq_msg(struct ssp_data *data)
 	case AP2HUB_WRITE:
 		mutex_lock(&data->pending_mutex);
 		if (!list_empty(&data->pending_list)) {
-			list_for_each_entry_safe(msg, n, &data->pending_list, list)
+			list_for_each_entry_safe(msg, n,
+				&data->pending_list, list)
 			{
 				if (msg->options == msg_options) {
 					list_del(&msg->list);
@@ -171,23 +179,29 @@ int select_irq_msg(struct ssp_data *data)
 			}
 
 			if (!found) {
-				pr_err("[SSP]: %s %d - Not match error\n", __func__, msg_options);
+				pr_err("[SSP]: %s %d - Not match error\n",
+					__func__, msg_options);
 				goto exit;
 			}
 
 			if (msg->dead && !msg->free_buffer) {
-				msg->buffer = (char*) kzalloc(msg->length, GFP_KERNEL);
+				msg->buffer =
+					kzalloc(msg->length, GFP_KERNEL);
 				msg->free_buffer = 1;
 			} /* For dead msg, make a temporary buffer to read. */
 
 			if (msg_type == AP2HUB_READ)
-				iRet = spi_read(data->spi, msg->buffer, msg->length);
+				iRet = spi_read(data->spi, msg->buffer,
+					msg->length);
 			if (msg_type == AP2HUB_WRITE) {
-				iRet = spi_write(data->spi, msg->buffer, msg->length);
+				iRet = spi_write(data->spi, msg->buffer,
+					msg->length);
 				if (msg_options & AP2HUB_RETURN) {
-					msg->options = AP2HUB_READ | AP2HUB_RETURN;
+					msg->options =
+						AP2HUB_READ | AP2HUB_RETURN;
 					msg->length = 1;
-					list_add_tail(&msg->list, &data->pending_list);
+					list_add_tail(&msg->list,
+						&data->pending_list);
 					goto exit;
 				}
 			}
@@ -200,13 +214,15 @@ int select_irq_msg(struct ssp_data *data)
 			clean_msg(msg);
 		} else
 			pr_err("[SSP]List empty error(%d)\n", msg_type);
+
 exit:
 		mutex_unlock(&data->pending_mutex);
 		break;
 	case HUB2AP_WRITE:
-		buffer = (char*) kzalloc(chLength, GFP_KERNEL);
+		buffer = kzalloc(chLength, GFP_KERNEL);
 		if (buffer == NULL) {
-			pr_err("[SSP] %s, failed to alloc memory for buffer\n", __func__);
+			pr_err("[SSP] %s, failed to alloc memory for buffer\n",
+				__func__);
 			iRet = -ENOMEM;
 			break;
 		}
@@ -224,9 +240,11 @@ exit:
 
 	if (iRet < 0) {
 		pr_err("[SSP]: %s - MSG2SSP_SSD error %d\n", __func__, iRet);
+		data->bHandlingIrq = false;
 		return ERROR;
 	}
 
+	data->bHandlingIrq = false;
 	return SUCCESS;
 }
 
@@ -253,7 +271,8 @@ int ssp_send_cmd(struct ssp_data *data, char command, int arg)
 
 	struct ssp_msg *msg = kzalloc(sizeof(*msg), GFP_KERNEL);
 	if (msg == NULL) {
-		pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n", __func__);
+		pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n",
+			__func__);
 		return -ENOMEM;
 	}
 	msg->cmd = command;
@@ -297,7 +316,6 @@ int send_instruction(struct ssp_data *data, u8 uInst,
 		command = MSG2SSP_INST_BYPASS_SENSOR_REMOVE;
 		break;
 	case ADD_SENSOR:
-	case GET_LOGGING:
 		command = MSG2SSP_INST_BYPASS_SENSOR_ADD;
 		break;
 	case CHANGE_DELAY:
@@ -320,13 +338,15 @@ int send_instruction(struct ssp_data *data, u8 uInst,
 
 	msg = kzalloc(sizeof(*msg), GFP_KERNEL);
 	if (msg == NULL) {
-		pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n", __func__);
-		return -ENOMEM;
+		pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n",
+			__func__);
+		iRet = -ENOMEM;
+		return iRet;
 	}
 	msg->cmd = command;
-	msg->length = uLength + 2;
+	msg->length = uLength + 1;
 	msg->options = AP2HUB_WRITE;
-	msg->buffer = (char*) kzalloc(uLength + 2, GFP_KERNEL);
+	msg->buffer = kzalloc(uLength + 1, GFP_KERNEL);
 	msg->free_buffer = 1;
 
 	msg->buffer[0] = uSensorType;
@@ -393,7 +413,8 @@ int send_instruction_sync(struct ssp_data *data, u8 uInst,
 
 	msg = kzalloc(sizeof(*msg), GFP_KERNEL);
 	if (msg == NULL) {
-		pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n", __func__);
+		pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n",
+			__func__);
 		return -ENOMEM;
 	}
 	msg->cmd = command;
@@ -405,7 +426,7 @@ int send_instruction_sync(struct ssp_data *data, u8 uInst,
 	msg->buffer[0] = uSensorType;
 	memcpy(&msg->buffer[1], uSendBuf, uLength);
 
-	ssp_dbg("[SSP]: %s - Inst = 0x%x, Sensor Type = %u, data = %u\n",
+	ssp_dbg("[SSP]: %s - Inst Sync = 0x%x, Sensor Type = %u, data = %u\n",
 			__func__, command, uSensorType, msg->buffer[0]);
 
 	iRet = ssp_spi_sync(data, msg, 1000);
@@ -425,7 +446,8 @@ int flush(struct ssp_data *data, u8 uSensorType)
 
 	struct ssp_msg *msg = kzalloc(sizeof(*msg), GFP_KERNEL);
 	if (msg == NULL) {
-		pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n", __func__);
+		pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n",
+			__func__);
 		return -ENOMEM;
 	}
 	msg->cmd = MSG2SSP_AP_MCU_BATCH_FLUSH;
@@ -442,8 +464,8 @@ int flush(struct ssp_data *data, u8 uSensorType)
 		return ERROR;
 	}
 
-	ssp_dbg("[SSP]: %s Sensor Type = 0x%x, data = %u\n", __func__, uSensorType,
-			buffer);
+	ssp_dbg("[SSP]: %s Sensor Type = 0x%x, data = %u\n",
+		__func__, uSensorType, buffer);
 
 	return buffer ? 0 : -1;
 }
@@ -456,7 +478,8 @@ int get_batch_count(struct ssp_data *data, u8 uSensorType)
 
 	struct ssp_msg *msg = kzalloc(sizeof(*msg), GFP_KERNEL);
 	if (msg == NULL) {
-		pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n", __func__);
+		pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n",
+			__func__);
 		return -ENOMEM;
 	}
 	msg->cmd = MSG2SSP_AP_MCU_BATCH_COUNT;
@@ -475,8 +498,8 @@ int get_batch_count(struct ssp_data *data, u8 uSensorType)
 
 	memcpy(&result, buffer, 4);
 
-	ssp_dbg("[SSP]: %s Sensor Type = 0x%x, data = %u\n", __func__, uSensorType,
-			result);
+	ssp_dbg("[SSP]: %s Sensor Type = 0x%x, data = %u\n",
+		__func__, uSensorType, result);
 
 	return result;
 }
@@ -490,7 +513,8 @@ int get_chipid(struct ssp_data *data)
 retries:
 	msg = kzalloc(sizeof(*msg), GFP_KERNEL);
 	if (msg == NULL) {
-		pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n", __func__);
+		pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n",
+			__func__);
 		return -ENOMEM;
 	}
 	msg->cmd = MSG2SSP_AP_WHOAMI;
@@ -502,16 +526,16 @@ retries:
 	iRet = ssp_spi_sync(data, msg, 1000);
 
 	if (buffer != DEVICE_ID && iReties++ < 2) {
-	 mdelay(5);
-	 pr_err("[SSP] %s - get chip ID retry\n", __func__);
-	 goto retries;
+		usleep_range(49500, 50500);
+		pr_err("[SSP] %s - get chip ID retry\n", __func__);
+		goto retries;
 	}
 
 	if (iRet == SUCCESS)
 		return buffer;
 
 	pr_err("[SSP] %s - get chip ID failed %d\n", __func__, iRet);
-	return ERROR;	
+	return ERROR;
 }
 
 int set_sensor_position(struct ssp_data *data)
@@ -520,13 +544,14 @@ int set_sensor_position(struct ssp_data *data)
 
 	struct ssp_msg *msg = kzalloc(sizeof(*msg), GFP_KERNEL);
 	if (msg == NULL) {
-		pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n", __func__);
+		pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n",
+			__func__);
 		return -ENOMEM;
 	}
 	msg->cmd = MSG2SSP_AP_SENSOR_FORMATION;
 	msg->length = 3;
 	msg->options = AP2HUB_WRITE;
-	msg->buffer = (char*) kzalloc(3, GFP_KERNEL);
+	msg->buffer = kzalloc(3, GFP_KERNEL);
 	msg->free_buffer = 1;
 
 	msg->buffer[0] = data->accel_position;
@@ -536,10 +561,12 @@ int set_sensor_position(struct ssp_data *data)
 	iRet = ssp_spi_async(data, msg);
 
 	pr_info("[SSP] Sensor Posision A : %u, G : %u, M: %u, P: %u\n",
-			data->accel_position, data->accel_position, data->mag_position, 0);
+		data->accel_position, data->accel_position,
+		data->mag_position, 0);
 
 	if (iRet != SUCCESS) {
-		pr_err("[SSP] %s -fail to set_sensor_position %d\n", __func__, iRet);
+		pr_err("[SSP] %s -fail to set_sensor_position %d\n",
+			__func__, iRet);
 		iRet = ERROR;
 	}
 
@@ -552,13 +579,14 @@ int set_magnetic_static_matrix(struct ssp_data *data)
 
 	struct ssp_msg *msg = kzalloc(sizeof(*msg), GFP_KERNEL);
 	if (msg == NULL) {
-		pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n", __func__);
+		pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n",
+			__func__);
 		return -ENOMEM;
 	}
 	msg->cmd = MSG2SSP_AP_SET_MAGNETIC_STATIC_MATRIX;
 	msg->length = data->mag_matrix_size;
 	msg->options = AP2HUB_WRITE;
-	msg->buffer = (char*) kzalloc(data->mag_matrix_size, GFP_KERNEL);
+	msg->buffer = kzalloc(data->mag_matrix_size, GFP_KERNEL);
 	msg->free_buffer = 1;
 
 	memcpy(msg->buffer, data->mag_matrix, data->mag_matrix_size);
@@ -574,24 +602,25 @@ int set_magnetic_static_matrix(struct ssp_data *data)
 }
 
 unsigned int get_sensor_scanning_info(struct ssp_data *data)
-{	
+{
 	int iRet = 0, z = 0;
 	u32 result = 0;
 	char bin[SENSOR_MAX + 1];
 
 	struct ssp_msg *msg = kzalloc(sizeof(*msg), GFP_KERNEL);
 	if (msg == NULL) {
-		pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n", __func__);
+		pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n",
+			__func__);
 		return -ENOMEM;
 	}
 	msg->cmd = MSG2SSP_AP_SENSOR_SCANNING;
 	msg->length = 4;
 	msg->options = AP2HUB_READ;
-	msg->buffer = (char*) &result;
+	msg->buffer = (char *) &result;
 	msg->free_buffer = 0;
 
 	iRet = ssp_spi_sync(data, msg, 1000);
-	
+
 	if (iRet != SUCCESS)
 		pr_err("[SSP]: %s - i2c fail %d\n", __func__, iRet);
 
@@ -599,7 +628,7 @@ unsigned int get_sensor_scanning_info(struct ssp_data *data)
 	for (z = 0; z < SENSOR_MAX; z++)
 		bin[SENSOR_MAX - 1 - z] = (result & (1 << z)) ? '1' : '0';
 	pr_err("[SSP]: state: %s\n", bin);
-	
+
 	return result;
 }
 
@@ -610,13 +639,14 @@ unsigned int get_firmware_rev(struct ssp_data *data)
 
 	struct ssp_msg *msg = kzalloc(sizeof(*msg), GFP_KERNEL);
 	if (msg == NULL) {
-		pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n", __func__);
+		pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n",
+			__func__);
 		return -ENOMEM;
 	}
 	msg->cmd = MSG2SSP_AP_FIRMWARE_REV;
 	msg->length = 4;
 	msg->options = AP2HUB_READ;
-	msg->buffer = (char*) &result;
+	msg->buffer = (char *) &result;
 	msg->free_buffer = 0;
 
 	iRet = ssp_spi_sync(data, msg, 1000);
@@ -633,7 +663,8 @@ int get_fuserom_data(struct ssp_data *data)
 
 	struct ssp_msg *msg = kzalloc(sizeof(*msg), GFP_KERNEL);
 	if (msg == NULL) {
-		pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n", __func__);
+		pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n",
+			__func__);
 		return -ENOMEM;
 	}
 	msg->cmd = MSG2SSP_AP_FUSEROM;
@@ -667,13 +698,14 @@ int set_big_data_start(struct ssp_data *data, u8 type, u32 length)
 
 	struct ssp_msg *msg = kzalloc(sizeof(*msg), GFP_KERNEL);
 	if (msg == NULL) {
-		pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n", __func__);
+		pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n",
+			__func__);
 		return -ENOMEM;
 	}
 	msg->cmd = MSG2SSP_AP_START_BIG_DATA;
 	msg->length = 5;
 	msg->options = AP2HUB_WRITE;
-	msg->buffer = (char*) kzalloc(5, GFP_KERNEL);
+	msg->buffer = kzalloc(5, GFP_KERNEL);
 	msg->free_buffer = 1;
 
 	msg->buffer[0] = type;
@@ -704,13 +736,14 @@ int set_time(struct ssp_data *data)
 
 	msg = kzalloc(sizeof(*msg), GFP_KERNEL);
 	if (msg == NULL) {
-		pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n", __func__);
+		pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n",
+			__func__);
 		return -ENOMEM;
 	}
 	msg->cmd = MSG2SSP_AP_MCU_SET_TIME;
 	msg->length = 12;
 	msg->options = AP2HUB_WRITE;
-	msg->buffer = (char*) kzalloc(12, GFP_KERNEL);
+	msg->buffer = kzalloc(12, GFP_KERNEL);
 	msg->free_buffer = 1;
 
 	msg->buffer[0] = tm.tm_hour;
@@ -743,13 +776,15 @@ int get_time(struct ssp_data *data)
 
 	getnstimeofday(&ts);
 	rtc_time_to_tm(ts.tv_sec, &tm);
-	pr_info("[SSP]: %s ap %d-%02d-%02d %02d:%02d:%02d.%09lu UTC\n", __func__,
+	pr_info("[SSP]: %s ap %d-%02d-%02d %02d:%02d:%02d.%09lu UTC\n",
+		__func__,
 		tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
 		tm.tm_hour, tm.tm_min, tm.tm_sec, ts.tv_nsec);
 
 	msg = kzalloc(sizeof(*msg), GFP_KERNEL);
 	if (msg == NULL) {
-		pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n", __func__);
+		pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n",
+			__func__);
 		return -ENOMEM;
 	}
 	msg->cmd = MSG2SSP_AP_MCU_GET_TIME;
@@ -782,3 +817,4 @@ int get_time(struct ssp_data *data)
 
 	return iRet;
 }
+

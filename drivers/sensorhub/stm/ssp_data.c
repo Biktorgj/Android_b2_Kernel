@@ -28,8 +28,7 @@
 /*************************************************************************/
 
 static void get_timestamp(struct ssp_data *data, char *pchRcvDataFrame,
-		int *iDataIdx, struct sensor_value *sensorsdata)
-{
+		int *iDataIdx, struct sensor_value *sensorsdata) {
 	s32 otimestamp = 0;
 	s64 ctimestamp = 0;
 
@@ -48,29 +47,80 @@ static void get_3axis_sensordata(char *pchRcvDataFrame, int *iDataIdx,
 }
 
 #ifdef CONFIG_SENSORS_SSP_ADPD142
-static void get_hrm_raw_sensordata(char *pchRcvDataFrame, int *iDataIdx,
-	struct sensor_value *sensorsdata)
-{
-	memcpy(sensorsdata, pchRcvDataFrame + *iDataIdx, 8);
-	*iDataIdx += 8;
-}
-
-static void get_hrm_raw_fac_sensordata(char *pchRcvDataFrame, int *iDataIdx,
-	struct sensor_value *sensorsdata)
-{
-	memcpy(sensorsdata, pchRcvDataFrame + *iDataIdx, 36);
-	*iDataIdx += 36;
-}
-
 static void get_hrm_lib_sensordata(char *pchRcvDataFrame, int *iDataIdx,
 	struct sensor_value *sensorsdata)
 {
-	memcpy(sensorsdata, pchRcvDataFrame + *iDataIdx, 8);
-	*iDataIdx += 8;
+	memcpy(sensorsdata, pchRcvDataFrame + *iDataIdx, 10);
+	*iDataIdx += 10;
 }
 #endif
 
-int handle_big_data(struct ssp_data *data, char *pchRcvDataFrame, int *pDataIdx) {
+static void get_uncalib_sensordata(char *pchRcvDataFrame, int *iDataIdx,
+	struct sensor_value *sensorsdata)
+{
+	memcpy(sensorsdata, pchRcvDataFrame + *iDataIdx, 12);
+	*iDataIdx += 12;
+}
+
+static void get_geomagnetic_uncaldata(char *pchRcvDataFrame, int *iDataIdx,
+	struct sensor_value *sensorsdata)
+{
+	memcpy(sensorsdata, pchRcvDataFrame + *iDataIdx, 12);
+	*iDataIdx += 12;
+}
+
+static void get_geomagnetic_rawdata(char *pchRcvDataFrame, int *iDataIdx,
+	struct sensor_value *sensorsdata)
+{
+	memcpy(sensorsdata, pchRcvDataFrame + *iDataIdx, 6);
+	*iDataIdx += 6;
+}
+
+static void get_geomagnetic_caldata(char *pchRcvDataFrame, int *iDataIdx,
+	struct sensor_value *sensorsdata)
+{
+	memcpy(sensorsdata, pchRcvDataFrame + *iDataIdx, 7);
+	*iDataIdx += 7;
+}
+
+static void get_game_rot_sensordata(char *pchRcvDataFrame, int *iDataIdx,
+	struct sensor_value *sensorsdata)
+{
+	memcpy(sensorsdata, pchRcvDataFrame + *iDataIdx, 17);
+	*iDataIdx += 17;
+}
+
+static void get_rot_sensordata(char *pchRcvDataFrame, int *iDataIdx,
+	struct sensor_value *sensorsdata)
+{
+	memcpy(sensorsdata, pchRcvDataFrame + *iDataIdx, 23);
+	*iDataIdx += 23;
+}
+
+static void get_step_det_sensordata(char *pchRcvDataFrame, int *iDataIdx,
+	struct sensor_value *sensorsdata)
+{
+	memcpy(sensorsdata, pchRcvDataFrame + *iDataIdx, 1);
+	*iDataIdx += 1;
+}
+
+static void get_sig_motion_sensordata(char *pchRcvDataFrame, int *iDataIdx,
+	struct sensor_value *sensorsdata)
+{
+	memcpy(sensorsdata, pchRcvDataFrame + *iDataIdx, 1);
+	*iDataIdx += 1;
+}
+
+static void get_step_cnt_sensordata(char *pchRcvDataFrame, int *iDataIdx,
+	struct sensor_value *sensorsdata)
+{
+	memcpy(&sensorsdata->step_diff, pchRcvDataFrame + *iDataIdx, 4);
+	*iDataIdx += 4;
+}
+
+int handle_big_data(struct ssp_data *data, char *pchRcvDataFrame,
+	int *pDataIdx)
+{
 	u8 bigType = 0;
 	struct ssp_big *big = kzalloc(sizeof(*big), GFP_KERNEL);
 	big->data = data;
@@ -95,8 +145,12 @@ void refresh_task(struct work_struct *work)
 	struct ssp_data *data = container_of((struct delayed_work *)work,
 			struct ssp_data, work_refresh);
 
-	wake_lock(&data->ssp_wake_lock);
+	if (data->bSspShutdown == true) {
+		pr_err("[SSP]: %s - ssp already shutdown\n", __func__);
+		return;
+	}
 
+	wake_lock(&data->ssp_wake_lock);
 	pr_err("[SSP]: %s\n", __func__);
 	data->uResetCnt++;
 
@@ -108,7 +162,8 @@ void refresh_task(struct work_struct *work)
 		if (data->uLastResumeState != 0)
 			ssp_send_cmd(data, data->uLastResumeState, 0);
 		data->uTimeOutCnt = 0;
-	}
+	} else
+		data->uSensorState = 0;
 
 	wake_unlock(&data->ssp_wake_lock);
 }
@@ -129,51 +184,54 @@ int parse_dataframe(struct ssp_data *data, char *pchRcvDataFrame, int iLength)
 	u16 length = 0;
 	struct sensor_value sensorsdata;
 	struct timespec ts;
-	int iRet = FAIL;
 
 	getnstimeofday(&ts);
 
 	for (iDataIdx = 0; iDataIdx < iLength;) {
 		switch (pchRcvDataFrame[iDataIdx++]) {
 		case MSG2AP_INST_BYPASS_DATA:
-			iSensorData =
-				pchRcvDataFrame[iDataIdx++];
+			iSensorData = pchRcvDataFrame[iDataIdx++];
 			if ((iSensorData < 0) || (iSensorData >= SENSOR_MAX)) {
 				pr_err("[SSP]: %s - Mcu data frame1 error %d\n",
-					__func__, iSensorData);
+						__func__, iSensorData);
 				return ERROR;
 			}
-			data->get_sensor_data[iSensorData](pchRcvDataFrame,
+			if (data->get_sensor_data[iSensorData] != NULL)
+				data->get_sensor_data[iSensorData](
+					pchRcvDataFrame,
 					&iDataIdx, &sensorsdata);
-			get_timestamp(data, pchRcvDataFrame, &iDataIdx,
-					&sensorsdata);
-			data->report_sensor_data[iSensorData](data,
-					&sensorsdata);
+			get_timestamp(data, pchRcvDataFrame,
+					&iDataIdx, &sensorsdata);
+
+			if (data->report_sensor_data[iSensorData] != NULL)
+				data->report_sensor_data[iSensorData](data,
+						&sensorsdata);
 			break;
 		case MSG2AP_INST_DEBUG_DATA:
-			iSensorData =
-				print_mcu_debug(pchRcvDataFrame,
-						&iDataIdx, iLength);
+			iSensorData = print_mcu_debug(data, pchRcvDataFrame,
+					&iDataIdx, iLength);
 			if (iSensorData) {
 				pr_err("[SSP]: %s - Mcu data frame3 error %d\n",
-					__func__, iSensorData);
+						__func__, iSensorData);
 				return ERROR;
 			}
 			break;
 		case MSG2AP_INST_LIBRARY_DATA:
 			memcpy(&length, pchRcvDataFrame + iDataIdx, 2);
 			iDataIdx += 2;
-			if (data->bLpModeEnabled == true)
-				iRet = ssp_parse_motion(data, pchRcvDataFrame,
-							iDataIdx, iDataIdx + length);
-			if (iRet == FAIL)
-				ssp_sensorhub_handle_data(data,
-						pchRcvDataFrame, iDataIdx,
-						iDataIdx + length);
+			ssp_sensorhub_handle_data(data, pchRcvDataFrame,
+					iDataIdx, iDataIdx + length);
 			iDataIdx += length;
 			break;
 		case MSG2AP_INST_BIG_DATA:
 			handle_big_data(data, pchRcvDataFrame, &iDataIdx);
+			break;
+		case MSG2AP_INST_META_DATA:
+			sensorsdata.meta_data.what =
+					pchRcvDataFrame[iDataIdx++];
+			sensorsdata.meta_data.sensor =
+					pchRcvDataFrame[iDataIdx++];
+			report_meta_data(data, &sensorsdata);
 			break;
 		case MSG2AP_INST_TIME_SYNC:
 			data->bTimeSyncing = true;
@@ -190,80 +248,49 @@ int parse_dataframe(struct ssp_data *data, char *pchRcvDataFrame, int iLength)
 	return SUCCESS;
 }
 
-static void get_dummy_sensordata(char *pchRcvDataFrame, int *iDataIdx,
-	struct sensor_value *sensorsdata)
-{
-	pr_info("[SSP] %s : not supported\n", __func__);
-}
-
-void ssp_temp_task(struct work_struct *temp)
-{
-	pr_info("[SSP] %s : not supported\n", __func__);
-}
-
-void report_dummy_data(struct ssp_data *data, struct sensor_value *value)
-{
-	pr_info("[SSP] %s : not supported\n", __func__);
-}
-
 void initialize_function_pointer(struct ssp_data *data)
 {
+	int count;
+	for (count = 0; count < SENSOR_MAX; count++) {
+		data->get_sensor_data[count] = NULL;
+		data->report_sensor_data[count] = NULL;
+	}
 	data->get_sensor_data[ACCELEROMETER_SENSOR] = get_3axis_sensordata;
 	data->get_sensor_data[GYROSCOPE_SENSOR] = get_3axis_sensordata;
+	data->get_sensor_data[GEOMAGNETIC_UNCALIB_SENSOR] =
+		get_geomagnetic_uncaldata;
+	data->get_sensor_data[GEOMAGNETIC_RAW] = get_geomagnetic_rawdata;
+	data->get_sensor_data[GEOMAGNETIC_SENSOR] =
+		get_geomagnetic_caldata;
+
+	data->get_sensor_data[ROTATION_VECTOR] = get_rot_sensordata;
+	data->get_sensor_data[GAME_ROTATION_VECTOR] = get_game_rot_sensordata;
+	data->get_sensor_data[STEP_DETECTOR] = get_step_det_sensordata;
+	data->get_sensor_data[SIG_MOTION_SENSOR] = get_sig_motion_sensordata;
+	data->get_sensor_data[GYRO_UNCALIB_SENSOR] = get_uncalib_sensordata;
+	data->get_sensor_data[STEP_COUNTER] = get_step_cnt_sensordata;
 #ifdef CONFIG_SENSORS_SSP_ADPD142
-	data->get_sensor_data[BIO_HRM_RAW] = get_hrm_raw_sensordata;
-	data->get_sensor_data[BIO_HRM_RAW_FAC] = get_hrm_raw_fac_sensordata;
 	data->get_sensor_data[BIO_HRM_LIB] = get_hrm_lib_sensordata;
 #endif
-	data->get_sensor_data[GEOMAGNETIC_UNCALIB_SENSOR] =
-		get_dummy_sensordata;
-	data->get_sensor_data[GEOMAGNETIC_RAW] = get_dummy_sensordata;
-	data->get_sensor_data[GEOMAGNETIC_SENSOR] =
-		get_dummy_sensordata;
-	data->get_sensor_data[PRESSURE_SENSOR] = get_dummy_sensordata;
-	data->get_sensor_data[GESTURE_SENSOR] = get_dummy_sensordata;
-	data->get_sensor_data[PROXIMITY_SENSOR] = get_dummy_sensordata;
-	data->get_sensor_data[PROXIMITY_RAW] = get_dummy_sensordata;
-	data->get_sensor_data[LIGHT_SENSOR] = get_dummy_sensordata;
-	data->get_sensor_data[TEMPERATURE_HUMIDITY_SENSOR] =
-		get_dummy_sensordata;
-	data->get_sensor_data[ROTATION_VECTOR] = get_dummy_sensordata;
-	data->get_sensor_data[GAME_ROTATION_VECTOR] = get_dummy_sensordata;
-	data->get_sensor_data[STEP_DETECTOR] = get_dummy_sensordata;
-	data->get_sensor_data[SIG_MOTION_SENSOR] = get_dummy_sensordata;
-	data->get_sensor_data[GYRO_UNCALIB_SENSOR] = get_dummy_sensordata;
-	data->get_sensor_data[STEP_COUNTER] = get_dummy_sensordata;
+	data->get_sensor_data[TILT_TO_WAKE] = get_3axis_sensordata;
 
 	data->report_sensor_data[ACCELEROMETER_SENSOR] = report_acc_data;
 	data->report_sensor_data[GYROSCOPE_SENSOR] = report_gyro_data;
+	data->report_sensor_data[GEOMAGNETIC_UNCALIB_SENSOR] =
+		report_mag_uncaldata;
+	data->report_sensor_data[GEOMAGNETIC_RAW] = report_geomagnetic_raw_data;
+	data->report_sensor_data[GEOMAGNETIC_SENSOR] =
+		report_mag_data;
+
+	data->report_sensor_data[ROTATION_VECTOR] = report_rot_data;
+	data->report_sensor_data[GAME_ROTATION_VECTOR] = report_game_rot_data;
+	data->report_sensor_data[STEP_DETECTOR] = report_step_det_data;
+	data->report_sensor_data[SIG_MOTION_SENSOR] = report_sig_motion_data;
+	data->report_sensor_data[GYRO_UNCALIB_SENSOR] =
+		report_uncalib_gyro_data;
+	data->report_sensor_data[STEP_COUNTER] = report_step_cnt_data;
 #ifdef CONFIG_SENSORS_SSP_ADPD142
-	data->report_sensor_data[BIO_HRM_RAW] = report_hrm_raw_data;
-	data->report_sensor_data[BIO_HRM_RAW_FAC] = report_hrm_raw_fac_data;
 	data->report_sensor_data[BIO_HRM_LIB] = report_hrm_lib_data;
 #endif
-	data->report_sensor_data[GEOMAGNETIC_UNCALIB_SENSOR] =
-		report_dummy_data;
-	data->report_sensor_data[GEOMAGNETIC_RAW] = report_dummy_data;
-	data->report_sensor_data[GEOMAGNETIC_SENSOR] =
-		report_dummy_data;
-	data->report_sensor_data[PRESSURE_SENSOR] = report_dummy_data;
-	data->report_sensor_data[GESTURE_SENSOR] = report_dummy_data;
-	data->report_sensor_data[PROXIMITY_SENSOR] = report_dummy_data;
-	data->report_sensor_data[PROXIMITY_RAW] = report_dummy_data;
-	data->report_sensor_data[LIGHT_SENSOR] = report_dummy_data;
-	data->report_sensor_data[TEMPERATURE_HUMIDITY_SENSOR] =
-		report_dummy_data;
-	data->report_sensor_data[ROTATION_VECTOR] = report_dummy_data;
-	data->report_sensor_data[GAME_ROTATION_VECTOR] = report_dummy_data;
-	data->report_sensor_data[STEP_DETECTOR] = report_dummy_data;
-	data->report_sensor_data[SIG_MOTION_SENSOR] = report_dummy_data;
-	data->report_sensor_data[GYRO_UNCALIB_SENSOR] = report_dummy_data;
-	data->report_sensor_data[STEP_COUNTER] = report_dummy_data;
-
-	data->ssp_big_task[BIG_TYPE_DUMP] = ssp_dump_task;
-	data->ssp_big_task[BIG_TYPE_READ_LIB] = ssp_read_big_library_task;
-	data->ssp_big_task[BIG_TYPE_VOICE_NET] = ssp_send_big_library_task;
-	data->ssp_big_task[BIG_TYPE_VOICE_GRAM] = ssp_send_big_library_task;
-	data->ssp_big_task[BIG_TYPE_VOICE_PCM] = ssp_pcm_dump_task;
-	data->ssp_big_task[BIG_TYPE_TEMP] = ssp_temp_task;
+	data->report_sensor_data[TILT_TO_WAKE] = report_tilt_wake_data;
 }
