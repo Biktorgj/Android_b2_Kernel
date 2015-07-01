@@ -36,6 +36,13 @@
 
 #include <mach/gpio.h>
 #include <plat/gpio-cfg.h>
+/*
+* ProcFS for BlueSleep compatibility
+*/
+#include <linux/proc_fs.h>
+#define VERSION	 "1.1"
+#define PROC_DIR	"bluetooth/sleep"
+struct proc_dir_entry *bluetooth_dir, *sleep_dir;
 
 #define BT_UART_CFG
 #define BT_LPM_ENABLE
@@ -112,10 +119,7 @@ EXPORT_SYMBOL(bt_uart_rts_ctrl);
 #endif
 
 static int bcm4334w_bt_rfkill_set_power(void *data, bool blocked)
-
-
 {
-
 	/* rfkill_ops callback. Turn transmitter on when blocked is false */
 	if (!blocked) {
 		pr_info("[BT] Bluetooth Power On.\n");
@@ -134,7 +138,6 @@ static int bcm4334w_bt_rfkill_set_power(void *data, bool blocked)
 #ifdef BT_UART_CFG
 		bt_is_running = 0;
 #endif
-
 		gpio_set_value(GPIO_BT_EN, 0);
 	}
 
@@ -163,38 +166,12 @@ static enum hrtimer_restart enter_lpm(struct hrtimer *timer)
 {
 	if (bt_lpm.uport != NULL)
 		set_wake_locked(0);
-
 #ifdef BT_UART_CFG
 	bt_is_running = 0;
 #endif
-
-
-
-
 	wake_lock_timeout(&bt_lpm.bt_wake_lock, HZ/2);
-
 	return HRTIMER_NORESTART;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 void bcm_bt_lpm_exit_lpm_locked(struct uart_port *uport)
@@ -206,34 +183,21 @@ void bcm_bt_lpm_exit_lpm_locked(struct uart_port *uport)
 
 	bt_is_running = 1;
 #endif
-
-
-
-
 	set_wake_locked(1);
-
 	pr_debug("[BT] bcm_bt_lpm_exit_lpm_locked\n");
-	hrtimer_start(&bt_lpm.enter_lpm_timer, bt_lpm.enter_lpm_delay,
-		HRTIMER_MODE_REL);
+	hrtimer_start(&bt_lpm.enter_lpm_timer, bt_lpm.enter_lpm_delay,	HRTIMER_MODE_REL);
 }
 
 static void update_host_wake_locked(int host_wake)
 {
 	if (host_wake == bt_lpm.host_wake)
 		return;
-
 	bt_lpm.host_wake = host_wake;
 
 #ifdef BT_UART_CFG
 	bt_is_running = 1;
 #endif
-
 	if (host_wake) {
-
-
-
-
-
 		wake_lock(&bt_lpm.host_wake_lock);
 	} else  {
 		/* Take a timed wakelock, so that upper layers can take it.
@@ -241,17 +205,6 @@ static void update_host_wake_locked(int host_wake)
 		 * more data to send.
 		 */
 		wake_lock_timeout(&bt_lpm.host_wake_lock, HZ/2);
-
-
-
-
-
-
-
-
-
-
-
 	}
 }
 
@@ -276,26 +229,9 @@ static int bcm_bt_lpm_init(struct platform_device *pdev)
 {
 	int irq;
 	int ret;
-
-
-
-	hrtimer_init(&bt_lpm.enter_lpm_timer, CLOCK_MONOTONIC,
-			HRTIMER_MODE_REL);
+	hrtimer_init(&bt_lpm.enter_lpm_timer, CLOCK_MONOTONIC,HRTIMER_MODE_REL);
 	bt_lpm.enter_lpm_delay = ktime_set(5, 0);  /* 1 sec */ /*1->3*//*3->4*/
 	bt_lpm.enter_lpm_timer.function = enter_lpm;
-
-
-
-
-
-
-
-
-
-
-
-
-
 	bt_lpm.host_wake = 0;
 #ifdef BT_UART_CFG
 	bt_is_running = 0;
@@ -332,12 +268,7 @@ static int bcm_bt_lpm_init(struct platform_device *pdev)
 static int bcm4334w_bluetooth_probe(struct platform_device *pdev)
 {
 	int rc = 0;
-
-
 	int ret;
-
-
-
 	rc = gpio_request(GPIO_BT_EN, "bcm4334w_bten_gpio");
 	if (unlikely(rc)) {
 		pr_err("[BT] GPIO_BT_EN request failed.\n");
@@ -407,14 +338,11 @@ static int bcm4334w_bluetooth_remove(struct platform_device *pdev)
 {
 	rfkill_unregister(bt_rfkill);
 	rfkill_destroy(bt_rfkill);
-
 	gpio_free(GPIO_BT_EN);
 	gpio_free(GPIO_BT_WAKE);
 	gpio_free(GPIO_BT_HOST_WAKE);
-
 	wake_lock_destroy(&bt_lpm.host_wake_lock);
 	wake_lock_destroy(&bt_lpm.bt_wake_lock);
-
 	return 0;
 }
 
@@ -426,10 +354,159 @@ static struct platform_driver bcm4334w_bluetooth_platform_driver = {
 		   .owner = THIS_MODULE,
 		   },
 };
+/* ProcFS function calls for BlueSleep */
+/** Read /proc/btwake does nothing **/
+
+static ssize_t bluepower_read_proc_btwake (struct file *file, char __user *userbuf,	size_t bytes, loff_t *off)
+{
+	return 0;
+}
+static ssize_t bluepower_write_proc_btwake (struct file *file, const char __user *buffer,size_t count, loff_t *pos)
+{
+	return count;
+}
+static ssize_t bluepower_read_proc_hostwake (struct file *file, char __user *userbuf, size_t bytes, loff_t *off)
+{
+	return 0;
+}
+static ssize_t bluesleep_read_proc_asleep (struct file *file, char __user *userbuf, size_t bytes, loff_t *off)
+{
+	return 0;
+}
+static ssize_t bluesleep_read_proc_proto (struct file *file, char __user *userbuf, size_t bytes, loff_t *off)
+{
+	return 0;
+}
+static ssize_t bluesleep_write_proc_proto (struct file *file, const char __user *buffer,size_t count, loff_t *pos)
+{
+	return count;
+}
+static ssize_t bluesleep_read_proc_lpm(struct file *file,	char __user *userbuf,size_t bytes,loff_t *off)
+{
+	return 0;
+}
+
+static ssize_t bluesleep_write_proc_lpm	(struct file *file, const char __user *buffer,size_t count, loff_t *pos)
+{
+	return count;
+}
+
+static ssize_t bluesleep_read_proc_btwrite(struct file *file, char __user *userbuf,size_t bytes, loff_t *off)
+{
+	return 0;
+}
+
+static ssize_t bluesleep_write_proc_btwrite	(struct file *file, const char __user *buffer,size_t count, loff_t *pos)
+{
+	return count;
+}
+
+static const struct file_operations proc_fops_btwake = {
+	.owner = THIS_MODULE,
+	.read = bluepower_read_proc_btwake,
+	.write = bluepower_write_proc_btwake,
+};
+static const struct file_operations proc_fops_hostwake = {
+	.owner = THIS_MODULE,
+	.read = bluepower_read_proc_hostwake,
+};
+static const struct file_operations proc_fops_proto = {
+	.owner = THIS_MODULE,
+	.read = bluesleep_read_proc_proto,
+	.write = bluesleep_write_proc_proto,
+};
+static const struct file_operations proc_fops_asleep = {
+	.owner = THIS_MODULE,
+	.read = bluesleep_read_proc_asleep,
+};
+static const struct file_operations proc_fops_lpm = {
+	.owner = THIS_MODULE,
+	.read = bluesleep_read_proc_lpm,
+	.write = bluesleep_write_proc_lpm,
+};
+static const struct file_operations proc_fops_btwrite = {
+	.owner = THIS_MODULE,
+	.read = bluesleep_read_proc_btwrite,
+	.write = bluesleep_write_proc_btwrite,
+};
 
 static int __init bcm4334w_bluetooth_init(void)
 {
+	int retval;
+	struct proc_dir_entry *ent;
+	/* Create all ProcFS entries first, if they fail we will return an error
+	If everything goes fine, it will return the platform device */
+	
+	bluetooth_dir = proc_mkdir("bluetooth", NULL);
+	if (bluetooth_dir == NULL) {
+		printk("[BT] Error:Unable to create /proc/bluetooth directory");
+		return -ENOMEM;
+	}
+
+	sleep_dir = proc_mkdir("sleep", bluetooth_dir);
+	if (sleep_dir == NULL) {
+		printk("[BT] Error:Unable to create /proc/%s directory", PROC_DIR);
+		return -ENOMEM;
+	}
+
+	/* Creating read/write "btwake" entry */
+	ent = proc_create("btwake", 0, sleep_dir, &proc_fops_btwake);
+	if (ent == NULL) {
+		printk("[BT] Error:Unable to create /proc/%s/btwake entry", PROC_DIR);
+		retval = -ENOMEM;
+		goto fail;
+	}
+
+	/* read only proc entries */
+	if (proc_create("hostwake", 0, sleep_dir,
+			&proc_fops_hostwake) == NULL) {
+		printk("[BT] Error:Unable to create /proc/%s/hostwake entry", PROC_DIR);
+		retval = -ENOMEM;
+		goto fail;
+	}
+
+	/* read/write proc entries */
+	ent = proc_create("proto", 0, sleep_dir, &proc_fops_proto);
+	if (ent == NULL) {
+		printk("[BT] Error:Unable to create /proc/%s/proto entry", PROC_DIR);
+		retval = -ENOMEM;
+		goto fail;
+	}
+
+	/* read only proc entries */
+	if (proc_create("asleep", 0, sleep_dir, &proc_fops_asleep) == NULL) {
+		printk("[BT] Error:Unable to create /proc/%s/asleep entry", PROC_DIR);
+		retval = -ENOMEM;
+		goto fail;
+	}
+
+	/* read/write proc entries */
+	ent = proc_create("lpm", 0, sleep_dir, &proc_fops_lpm);
+	if (ent == NULL) {
+		printk("[BT] Error:Unable to create /proc/%s/lpm entry", PROC_DIR);
+		retval = -ENOMEM;
+		goto fail;
+	}
+
+	/* read/write proc entries */
+	ent = proc_create("btwrite", 0, sleep_dir, &proc_fops_btwrite);
+	if (ent == NULL) {
+		printk("[BT] Error:Unable to create /proc/%s/btwrite entry", PROC_DIR);
+		retval = -ENOMEM;
+		goto fail;
+	}
 	return platform_driver_register(&bcm4334w_bluetooth_platform_driver);
+	
+fail:
+	remove_proc_entry("btwrite", sleep_dir);
+	remove_proc_entry("lpm", sleep_dir);
+	remove_proc_entry("asleep", sleep_dir);
+	remove_proc_entry("proto", sleep_dir);
+	remove_proc_entry("hostwake", sleep_dir);
+	remove_proc_entry("btwake", sleep_dir);
+	remove_proc_entry("sleep", bluetooth_dir);
+	remove_proc_entry("bluetooth", 0);
+	return retval;
 }
 
 static void __exit bcm4334w_bluetooth_exit(void)

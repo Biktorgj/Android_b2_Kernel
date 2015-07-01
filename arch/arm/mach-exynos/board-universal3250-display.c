@@ -43,35 +43,6 @@
 #include <mach/exynos-scaler.h>
 #include <video/platform_lcd.h>
 
-unsigned int lcdtype;
-EXPORT_SYMBOL(lcdtype);
-static int __init lcdtype_setup(char *str)
-{
-	get_option(&str, &lcdtype);
-	return 1;
-}
-__setup("lcdtype=", lcdtype_setup);
-
-phys_addr_t bootloaderfb_start = 0x48000000;
-phys_addr_t bootloaderfb_size = 320 * 320 * 4;
-EXPORT_SYMBOL(bootloaderfb_start);
-EXPORT_SYMBOL(bootloaderfb_size);
-static int __init bootloaderfb_start_setup(char *str)
-{
-	get_option(&str, &bootloaderfb_start);
-#if defined(CONFIG_LCD_MIPI_S6E63J0X03)
-	bootloaderfb_size = 320 * 320 * 4;
-#else
-	bootloaderfb_start = 0x48000000; // disable for copying bootloaderfb
-	bootloaderfb_size = 320 * 320 * 4;
-#endif
-	return 1;
-}
-
-__setup("s3cfb.bootloaderfb=", bootloaderfb_start_setup);
-
-
-
 #define UNIVERSAL3250_HBP		1
 #define UNIVERSAL3250_HFP		1
 #define UNIVERSAL3250_VBP		1
@@ -88,102 +59,6 @@ __setup("s3cfb.bootloaderfb=", bootloaderfb_start_setup);
 #define UNIVERSAL3250_DEFAULT_BPP	24
 
 static struct s3c_fb_pd_win universal3250_fb_win0 = {
-	.win_mode = {
-		.left_margin	= UNIVERSAL3250_HBP,
-		.right_margin	= UNIVERSAL3250_HFP,
-		.upper_margin	= UNIVERSAL3250_VBP,
-		.lower_margin	= UNIVERSAL3250_VFP,
-		.xres		= UNIVERSAL3250_XRES,
-		.yres		= UNIVERSAL3250_YRES,
-		.hsync_len	= UNIVERSAL3250_HSP,
-		.vsync_len	= UNIVERSAL3250_VSW,
-		.cs_setup_time  = 1,
-		.wr_setup_time  = 0,
-		.wr_act_time    = 1,
-		.wr_hold_time   = 0,
-		.rs_pol         = 0,
-		.i80en          = 1,
-	},
-	.virtual_x		= UNIVERSAL3250_VIRTUAL_X,
-	.virtual_y		= UNIVERSAL3250_VIRTUAL_Y,
-	.width			= UNIVERSAL3250_WIDTH,
-	.height			= UNIVERSAL3250_HEIGHT,
-	.max_bpp		= UNIVERSAL3250_MAX_BPP,
-	.default_bpp		= UNIVERSAL3250_DEFAULT_BPP,
-};
-static struct s3c_fb_pd_win universal3250_fb_win1 = {
-	.win_mode = {
-		.left_margin	= UNIVERSAL3250_HBP,
-		.right_margin	= UNIVERSAL3250_HFP,
-		.upper_margin	= UNIVERSAL3250_VBP,
-		.lower_margin	= UNIVERSAL3250_VFP,
-		.xres		= UNIVERSAL3250_XRES,
-		.yres		= UNIVERSAL3250_YRES,
-		.hsync_len	= UNIVERSAL3250_HSP,
-		.vsync_len	= UNIVERSAL3250_VSW,
-		.cs_setup_time  = 1,
-		.wr_setup_time  = 0,
-		.wr_act_time    = 1,
-		.wr_hold_time   = 0,
-		.rs_pol         = 0,
-		.i80en          = 1,
-	},
-	.virtual_x		= UNIVERSAL3250_VIRTUAL_X,
-	.virtual_y		= UNIVERSAL3250_VIRTUAL_Y,
-	.width			= UNIVERSAL3250_WIDTH,
-	.height			= UNIVERSAL3250_HEIGHT,
-	.max_bpp		= UNIVERSAL3250_MAX_BPP,
-	.default_bpp		= UNIVERSAL3250_DEFAULT_BPP,
-};
-static struct s3c_fb_pd_win universal3250_fb_win2 = {
-	.win_mode = {
-		.left_margin	= UNIVERSAL3250_HBP,
-		.right_margin	= UNIVERSAL3250_HFP,
-		.upper_margin	= UNIVERSAL3250_VBP,
-		.lower_margin	= UNIVERSAL3250_VFP,
-		.xres		= UNIVERSAL3250_XRES,
-		.yres		= UNIVERSAL3250_YRES,
-		.hsync_len	= UNIVERSAL3250_HSP,
-		.vsync_len	= UNIVERSAL3250_VSW,
-		.cs_setup_time  = 1,
-		.wr_setup_time  = 0,
-		.wr_act_time    = 1,
-		.wr_hold_time   = 0,
-		.rs_pol         = 0,
-		.i80en          = 1,
-	},
-	.virtual_x		= UNIVERSAL3250_VIRTUAL_X,
-	.virtual_y		= UNIVERSAL3250_VIRTUAL_Y,
-	.width			= UNIVERSAL3250_WIDTH,
-	.height			= UNIVERSAL3250_HEIGHT,
-	.max_bpp		= UNIVERSAL3250_MAX_BPP,
-	.default_bpp		= UNIVERSAL3250_DEFAULT_BPP,
-};
-static struct s3c_fb_pd_win universal3250_fb_win3 = {
-	.win_mode = {
-		.left_margin	= UNIVERSAL3250_HBP,
-		.right_margin	= UNIVERSAL3250_HFP,
-		.upper_margin	= UNIVERSAL3250_VBP,
-		.lower_margin	= UNIVERSAL3250_VFP,
-		.xres		= UNIVERSAL3250_XRES,
-		.yres		= UNIVERSAL3250_YRES,
-		.hsync_len	= UNIVERSAL3250_HSP,
-		.vsync_len	= UNIVERSAL3250_VSW,
-		.cs_setup_time  = 1,
-		.wr_setup_time  = 0,
-		.wr_act_time    = 1,
-		.wr_hold_time   = 0,
-		.rs_pol         = 0,
-		.i80en          = 1,
-	},
-	.virtual_x		= UNIVERSAL3250_VIRTUAL_X,
-	.virtual_y		= UNIVERSAL3250_VIRTUAL_Y,
-	.width			= UNIVERSAL3250_WIDTH,
-	.height			= UNIVERSAL3250_HEIGHT,
-	.max_bpp		= UNIVERSAL3250_MAX_BPP,
-	.default_bpp		= UNIVERSAL3250_DEFAULT_BPP,
-};
-static struct s3c_fb_pd_win universal3250_fb_win4 = {
 	.win_mode = {
 		.left_margin	= UNIVERSAL3250_HBP,
 		.right_margin	= UNIVERSAL3250_HFP,
@@ -287,10 +162,10 @@ static void exynos_fimd_gpio_setup_24bpp(void)
 static struct s5p_platform_mipi_dsim dsim_platform_data;
 static struct s3c_fb_platdata universal3250_lcd0_pdata __initdata = {
 	.win[0]		= &universal3250_fb_win0,
-	.win[1]		= &universal3250_fb_win1,
-	.win[2]		= &universal3250_fb_win2,
-	.win[3]		= &universal3250_fb_win3,
-	.win[4]		= &universal3250_fb_win4,
+	.win[1]		= &universal3250_fb_win0,
+	.win[2]		= &universal3250_fb_win0,
+	.win[3]		= &universal3250_fb_win0,
+	.win[4]		= &universal3250_fb_win0,
 	.default_win	= 3,
 	.vidcon0	= VIDCON0_VIDOUT_RGB | VIDCON0_PNRMODE_RGB,
 	.vidcon1	= VIDCON1_INV_VCLK,
@@ -427,12 +302,4 @@ struct resource *res;
 #endif
 
 	res = platform_get_resource(&s5p_device_fimd0, IORESOURCE_MEM, 1);
-	if (res && bootloaderfb_start) {
-		res->start = bootloaderfb_start;
-		res->end = res->start + bootloaderfb_size - 1;
-		pr_info("bootloader fb located at %8X-%8X\n", res->start,
-				res->end);
-	} else {
-		pr_err("failed to find bootloader fb resource\n");
-	}
 }
