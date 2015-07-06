@@ -125,6 +125,7 @@ static const unsigned char DISPLAY_ON[] = {
 };
 
 /*** My amazing brightness levels ;) ***/
+int SavedBrightness=128; // default to 128...
 #define MCS_MTP_SET3		0xd4
 static const unsigned char GAMMA_10[] = {
 	MCS_MTP_SET3,
@@ -211,13 +212,14 @@ static int update_brightness(int brightness)
 	dsim = dsim_base;
 	backlightlevel = get_backlight_level(brightness);
 	// First we activate the test mode for the LCD, then we send the command
-	if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,	TEST_KEY_ON_2, ARRAY_SIZE(TEST_KEY_ON_2)) == -1)
-				dev_err(dsim->dev, "fail to send panel_condition_set command.\n");
+	if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,	TEST_KEY_ON_2, ARRAY_SIZE(TEST_KEY_ON_2)) == -1) 
+			dev_err(dsim->dev, "fail to send panel_condition_set command.\n");
 	/* Insert a little delay between commands to avoid overlapping
 	   Otherwise, when moving too fast between levels strange things happen
 	   (i.e. when fading out/in the display)
 	   */
-	mdelay(100);
+	printk ("s6e63j0x03: Set brightness to %i\n", brightness);
+	SavedBrightness=brightness; 
 	switch (backlightlevel)	{
 		case 0 ... 51:
 		if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,
@@ -245,7 +247,6 @@ static int update_brightness(int brightness)
 					dev_err(dsim->dev, "fail to send panel_condition_set command.\n");		
 		break;
 	} // switch close
-	mdelay(100);
 	if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE, TEST_KEY_OFF_2, ARRAY_SIZE(TEST_KEY_OFF_2)) == -1)
 					dev_err(dsim->dev, "fail to send panel_condition_set command.\n");
 	return 1;
@@ -258,9 +259,7 @@ static int s6e63j0x03_set_brightness(struct backlight_device *bd)
 		printk(KERN_ALERT "Brightness should be in the range of 0 ~ 255\n");
 		return -EINVAL;
 	}
-
 	update_brightness(brightness);
-
 	return 1;
 }
 
@@ -319,7 +318,7 @@ static void init_lcd(struct mipi_dsim_device *dsim)
 	dev_err(dsim->dev, "fail to send panel_condition_set command.\n");
 	
 	if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,
-			LPTS_TIMMING_SET_1, ARRAY_SIZE(LPTS_TIMMING_SET_1)) == -1)
+ 			LPTS_TIMMING_SET_1, ARRAY_SIZE(LPTS_TIMMING_SET_1)) == -1)
 	dev_err(dsim->dev, "fail to send panel_condition_set command.\n");
 
 	if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,
@@ -335,7 +334,8 @@ static void init_lcd(struct mipi_dsim_device *dsim)
 	if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,
 			DEFAULT_WHITE_CTRL, ARRAY_SIZE(DEFAULT_WHITE_CTRL)) == -1)
 	dev_err(dsim->dev, "fail to send panel_condition_set command.\n");
-	
+	if (update_brightness(SavedBrightness)== 0)
+		printk ("s6e63j0x03 - DisplayON: Set brightness to saved value");
 	if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,
 			ACL_OFF, ARRAY_SIZE(ACL_OFF)) == -1)
 	dev_err(dsim->dev, "fail to send panel_condition_set command.\n");
@@ -359,15 +359,11 @@ static void init_lcd(struct mipi_dsim_device *dsim)
 	if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,
 			DISPLAY_ON, ARRAY_SIZE(DISPLAY_ON)) == -1)
 	dev_err(dsim->dev, "fail to send panel_condition_set command.\n");
-
-
-
-}
+	}
 
 static int s6e63j0x03_displayon(struct mipi_dsim_device *dsim)
 {
 	printk("%s was called\n", __func__);
-
 	init_lcd(dsim);
 	return 1;
 }

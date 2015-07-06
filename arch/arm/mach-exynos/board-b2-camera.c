@@ -127,7 +127,7 @@ void __init exynos3_universal3250_camera_init(void)
 {
 #if defined(CONFIG_VIDEO_EXYNOS_FIMC_IS)
 	int ret;
-/*
+
 	dev_set_name(&exynos3_device_fimc_is.dev, "s5p-mipi-csis.0");
 	clk_add_alias("gscl_wrap0", FIMC_IS_DEV_NAME,
 			"gscl_wrap0", &exynos3_device_fimc_is.dev);
@@ -135,7 +135,7 @@ void __init exynos3_universal3250_camera_init(void)
 	clk_add_alias("gscl_wrap1", FIMC_IS_DEV_NAME,
 			"gscl_wrap1", &exynos3_device_fimc_is.dev);
 	dev_set_name(&exynos3_device_fimc_is.dev, FIMC_IS_DEV_NAME);
-*/
+
 	exynos_fimc_is_data.subip_info = &subip_info;
 
 	SET_QOS(exynos_fimc_is_data.dvfs_data, FIMC_IS_SN_DEFAULT,

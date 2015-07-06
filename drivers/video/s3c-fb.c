@@ -91,25 +91,8 @@ static struct pm_qos_request exynos5_fimd_int_qos;
 #if defined(CONFIG_FIMD_USE_BUS_DEVFREQ)
 static struct pm_qos_request exynos5_fimd_mif_qos;
 #endif
-
-
 #include <mach/sec_debug.h>
-
-
-
-
-
-
-
-
-
 #include "exynos_display_handler.h"
-
-
-
-
-
-
 
 /* This driver will export a number of framebuffer interfaces depending
  * on the configuration passed in via the platform data. Each fb instance
@@ -164,7 +147,6 @@ static bool s3c_fb_validate_x_alignment(struct s3c_fb *sfb, int x, u32 w,
 		u32 bits_per_pixel)
 {
 	uint8_t pixel_alignment = 32 / bits_per_pixel;
-
 	if (x % pixel_alignment) {
 		dev_err(sfb->dev, "left X coordinate not properly aligned to %u-pixel boundary (bpp = %u, x = %u)\n",
 				pixel_alignment, bits_per_pixel, x);
@@ -175,7 +157,6 @@ static bool s3c_fb_validate_x_alignment(struct s3c_fb *sfb, int x, u32 w,
 				pixel_alignment, bits_per_pixel, x, w);
 		return 0;
 	}
-
 	return 1;
 }
 
@@ -469,12 +450,7 @@ static inline u32 vidw_alpha(bool has_osd_alpha, u8 r, u8 g, u8 b)
 static inline u32 wincon(u32 bits_per_pixel, u32 transp_length, u32 red_length)
 {
 	u32 data = 0;
-
-
-
-
 	bool burstlen_16 = false;
-
 	/* 64 bit DMA are use 16 burst length */
 	if (soc_is_exynos5410() || soc_is_exynos3470())
 		burstlen_16 = true;
@@ -625,16 +601,10 @@ static void s3c_fb_configure_lcd(struct s3c_fb *sfb,
 
 	data = sfb->pdata->vidcon0;
 	data &= ~(VIDCON0_CLKVAL_F_MASK | VIDCON0_CLKDIR);
-
-
 	if (clkdiv > 1)
 		data |= VIDCON0_CLKVAL_F(clkdiv-1) | VIDCON0_CLKDIR;
 	else
 		data &= ~VIDCON0_CLKDIR;
-
-
-
-
 
 	data |= VIDCON0_VCLKFREE;
 	data |= VIDCON0_ENVID | VIDCON0_ENVID_F;
@@ -760,17 +730,7 @@ static int s3c_fb_set_par(struct fb_info *info)
 		dev_err(sfb->dev, "%s::output_on is FALSE\n", __func__);
 		return -EINVAL;
 	}
-
-
-
-
-
-
-
-
-
 	pm_runtime_get_sync(sfb->dev);
-
 	if (sfb->power_state == POWER_DOWN)
 		return 0;
 
@@ -785,21 +745,8 @@ static int s3c_fb_set_par(struct fb_info *info)
 	info->fix.xpanstep = fb_panstep(var->xres, var->xres_virtual);
 	info->fix.ypanstep = fb_panstep(var->yres, var->yres_virtual);
 
-
-
-
-
-
-
-
-
-
-
-
 	/* disable the window whilst we update it */
 	old_wincon = readl(regs + WINCON(win_no));
-
-
 	writel(0, regs + WINCON(win_no));
 
 	/* write the buffer address */
@@ -1005,20 +952,6 @@ static int s3c_fb_enable(struct s3c_fb *sfb);
 static int s3c_fb_disable(struct s3c_fb *sfb);
 
 #if defined(CONFIG_FB_I80_COMMAND_MODE)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 static void s3c_fb_sw_trigger(struct s3c_fb *sfb, enum trig_con_set mode)
 {
 	u32 irq_sts_reg;
@@ -1219,7 +1152,6 @@ static void s3c_fb_disable_irq(struct s3c_fb *sfb)
 #if defined(CONFIG_FB_I80_COMMAND_MODE)
 
 	struct display_driver *dispdrv = get_display_driver();
-
 	if (sfb->irq_enabled == false)
 		return;
 	disp_pm_runtime_get_sync(dispdrv);
