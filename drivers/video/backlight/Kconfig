@@ -235,6 +235,14 @@ config LCD_MIPI_S6E63J0X03
 	  If you have a S6E63J0X03 Panel, say Y to enable its
 	  LCD control driver.
 
+config LCD_MIPI_S6E63J0X03V2
+	tristate "320 X 320 S6E63J0X03 OLED LCD Driver - Version 2"
+	depends on BACKLIGHT_CLASS_DEVICE
+	default n
+	help
+	  If you have a S6E63J0X03 Panel, say Y to enable its
+	  LCD control driver. Backported from Exynos Video Driver
+
 endif # LCD_CLASS_DEVICE
 
 #

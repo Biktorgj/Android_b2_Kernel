@@ -194,6 +194,42 @@ static const unsigned char WHITE_CTRL[] = {
 	0x20, 0x00
 };
 
+/** Amoled Low Power Mode Enable **/
+static const unsigned char PARTIAL_AREA_SET[] = {
+	0x30,
+	0x00, 0x00
+};
+
+static const unsigned char PARTIAL_MODE_ON[] = {
+	0x12,
+	0x00, 0x00
+};
+
+static const unsigned char IDLE_MODE_ON[] = {
+	0x39,
+	0x00, 0x00
+};
+
+static const unsigned char IDLE_MODE_OFF[] = {
+	0x38,
+	0x00, 0x00
+};
+
+static const unsigned char NORMAL_MODE_ON[] = {
+	0x13,
+	0x00, 0x00
+};
+static const unsigned char FRAME_FREQ_60HZ_SET[] = {
+	0xB5,
+	0x00, 0x01, 0x00
+};
+
+static const unsigned char FRAME_FREQ_30HZ_SET[] = {
+	0xB5,
+	0x00, 0x02, 0x00
+};
+
+
 static int s6e63j0x03_get_brightness(struct backlight_device *bd)
 {
 	return bd->props.brightness;
@@ -214,10 +250,6 @@ static int update_brightness(int brightness)
 	// First we activate the test mode for the LCD, then we send the command
 	if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,	TEST_KEY_ON_2, ARRAY_SIZE(TEST_KEY_ON_2)) == -1) 
 			dev_err(dsim->dev, "fail to send panel_condition_set command.\n");
-	/* Insert a little delay between commands to avoid overlapping
-	   Otherwise, when moving too fast between levels strange things happen
-	   (i.e. when fading out/in the display)
-	   */
 	printk ("s6e63j0x03: Set brightness to %i\n", brightness);
 	SavedBrightness=brightness; 
 	switch (backlightlevel)	{
@@ -370,11 +402,30 @@ static int s6e63j0x03_displayon(struct mipi_dsim_device *dsim)
 
 static int s6e63j0x03_suspend(struct mipi_dsim_device *dsim)
 {
+	if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,	PARTIAL_AREA_SET, ARRAY_SIZE(PARTIAL_AREA_SET)) == -1)
+		printk ("s6e63j0x03 Suspend: Error in Partial Area Set\n");
+	if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,	PARTIAL_MODE_ON, ARRAY_SIZE(PARTIAL_MODE_ON)) == -1)
+		printk ("s6e63j0x03 Suspend: Error activating partial mode\n");
+	if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,	IDLE_MODE_ON, ARRAY_SIZE(IDLE_MODE_ON)) == -1)
+		printk ("s6e63j0x03 Suspend: Error setting IDLE mode to ON\n");
+	if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,	FRAME_FREQ_30HZ_SET,ARRAY_SIZE(FRAME_FREQ_30HZ_SET)) == -1)
+		printk ("s6e63j0x03 Suspend: Error Setting Freq to 30Hz");
+	printk ("s6e63j0x03 - Entered ALPM mode\n");
 	return 1;
 }
 
 static int s6e63j0x03_resume(struct mipi_dsim_device *dsim)
 {
+	
+	if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,	IDLE_MODE_OFF, ARRAY_SIZE(IDLE_MODE_OFF)) == -1)
+		printk ("s6e63j0x03 Resume: Error deactivating idle mode\n");
+	if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,	NORMAL_MODE_ON, ARRAY_SIZE(NORMAL_MODE_ON)) == -1)
+		printk ("s6e63j0x03 Resume: Error reactivating normal mode\n");
+	if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,	FRAME_FREQ_60HZ_SET,ARRAY_SIZE(FRAME_FREQ_30HZ_SET)) == -1)
+		printk ("s6e63j0x03 Resume: Error resetting frame freq to 60hz\n");
+	if (update_brightness(SavedBrightness)== 0)
+		printk ("s6e63j0x03 - DisplayON: Set brightness to saved value\n");
+	printk ("s6e63j0x03 - Exited from ALPM mode\n");
 	return 1;
 }
 

@@ -629,8 +629,8 @@ static void mms_config_set(void *context)
 static int mms_config_get(struct mms_ts_info *info, u8 mode)
 {
 	struct i2c_client *client = info->client;
-	int ret = 0;
-	const struct firmware *fw;
+//	int ret = 0;
+//	const struct firmware *fw;
 	char fw_path[MAX_FW_PATH+1];
 	mm_segment_t old_fs = {0};
 	struct file *fp = NULL;
@@ -1279,26 +1279,18 @@ static irqreturn_t mms_ts_interrupt(int irq, void *dev_id)
 			input_mt_slot(info->input_dev, id);
 			input_mt_report_slot_state(info->input_dev,
 			MT_TOOL_FINGER, true);
-			input_report_key(info->input_dev,
-			BTN_TOUCH, 1);
-			input_report_key(info->input_dev,
-			BTN_TOOL_FINGER, 1);
-			input_report_abs(info->input_dev,
-			ABS_MT_POSITION_X, posX);
-			input_report_abs(info->input_dev,
-			ABS_MT_POSITION_Y, posY);
-			input_report_abs(info->input_dev,
-			ABS_MT_WIDTH_MAJOR, width);
-			input_report_abs(info->input_dev,
-			ABS_MT_PRESSURE, strenth);
-			input_report_abs(info->input_dev,
-			ABS_MT_TOUCH_MAJOR, major_axis);
-			input_report_abs(info->input_dev,
-			ABS_MT_TOUCH_MINOR, minor_axis);
-			/*
+			input_report_key(info->input_dev,BTN_TOUCH, 1);
+			input_report_key(info->input_dev,BTN_TOOL_FINGER, 1);
+			input_report_abs(info->input_dev,ABS_MT_POSITION_X, posX);
+			input_report_abs(info->input_dev,ABS_MT_POSITION_Y, posY);
+			input_report_abs(info->input_dev,ABS_MT_WIDTH_MAJOR, width);
+			input_report_abs(info->input_dev,ABS_MT_PRESSURE, strenth);
+			input_report_abs(info->input_dev,ABS_MT_TOUCH_MAJOR, major_axis);
+			input_report_abs(info->input_dev,ABS_MT_TOUCH_MINOR, minor_axis);
+	
 			input_report_abs(info->input_dev,
 			ABS_MT_PALM, palm);
-			*/
+			
 			info->mcount[id] += 1;
 			if (info->finger_state[id] == TSP_STATE_RELEASE) {
 				info->finger_state[id] = TSP_STATE_PRESS;
@@ -1428,8 +1420,7 @@ static void get_intensity_data(struct mms_ts_info *info)
 				min_value = min(min_value, raw_data);
 			}
 			info->intensity[i * tx_num + j] = raw_data;
-			dev_dbg(&info->client->dev,
-			"[TSP] intensity[%d][%d] = %dn", j, i,
+			dev_dbg(&info->client->dev,	"[TSP] intensity[%d][%d] = %dn", j, i,
 			info->intensity[i * tx_num + j]);
 		}
 	}
@@ -1750,7 +1741,7 @@ static void fw_update(void *device_data)
 	int retries = 3;
 	int ret = 0, i = 0;
 	bool fw_read_flag = false;
-	const struct firmware *fw;
+//	const struct firmware *fw;
 	mm_segment_t old_fs = {0};
 	struct file *fp = NULL;
 	long fsize = 0, nread = 0;
@@ -2219,12 +2210,11 @@ static struct attribute_group sec_touch_factory_attr_group = {
 #endif /* SEC_TSP_FACTORY_TEST */
 static int melfas_power(struct mms_ts_info *info, int onoff)
 {
-	int rc;
-	static struct regulator *vddo_vreg;
-	static struct regulator *avdd_vreg;
-	dev_info(&info->client->dev,
-	"[TSP] %s called with ON= %dn", __func__, onoff);
-	if (!vddo_vreg) {
+//	int rc;
+//	static struct regulator *vddo_vreg;
+//	static struct regulator *avdd_vreg;
+	dev_info(&info->client->dev,"[TSP] %s called with ON= %dn", __func__, onoff);
+	/*if (!vddo_vreg) {
 		vddo_vreg = regulator_get(&info->client->dev, "vddo");
 		if (IS_ERR(vddo_vreg)) {
 			vddo_vreg = NULL;
@@ -2297,7 +2287,7 @@ static int melfas_power(struct mms_ts_info *info, int onoff)
 	}
 	dev_info(&info->client->dev, "[TSP] %s: vddo: %d, avdd: %dn",
 	__func__, regulator_is_enabled(vddo_vreg),
-	regulator_is_enabled(avdd_vreg));
+	regulator_is_enabled(avdd_vreg));*/
 	usleep_range(100000, 100100);
 	return 0;
 }
@@ -2423,12 +2413,12 @@ const struct i2c_device_id *id)
 	0, MAX_PRESSURE, 0, 0);
 	input_set_abs_params(input_dev, ABS_MT_TOUCH_MINOR,
 	0, MAX_PRESSURE, 0, 0);
-	/*
+	
 	input_set_abs_params(input_dev, ABS_MT_ANGLE,
 	MIN_ANGLE, MAX_ANGLE, 0, 0);
 	input_set_abs_params(input_dev, ABS_MT_PALM,
 	0, 1, 0, 0);
-	*/
+	
 	input_set_drvdata(input_dev, info);
 	ret = input_register_device(input_dev);
 	if (ret) {

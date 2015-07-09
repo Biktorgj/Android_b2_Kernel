@@ -26,7 +26,7 @@ obj-$(CONFIG_LCD_MIPI_S6D7AA0)	+= s6d7aa0_mipi_lcd.o
 obj-$(CONFIG_LCD_LMS501KF03)       += lms501kf03.o
 obj-$(CONFIG_LCD_MIPI_NT35510)       += nt35510_mipi_lcd.o
 obj-$(CONFIG_LCD_MIPI_S6E63J0X03)	+= s6e63j0x03_mipi_lcd.o
-
+obj-$(CONFIG_LCD_MIPI_S6E63J0X03V2)	+= s6e63j0x03_mipi_lcd_v2.o
 obj-$(CONFIG_BACKLIGHT_CLASS_DEVICE) += backlight.o
 obj-$(CONFIG_BACKLIGHT_ATMEL_PWM)    += atmel-pwm-bl.o
 obj-$(CONFIG_BACKLIGHT_EP93XX)	+= ep93xx_bl.o

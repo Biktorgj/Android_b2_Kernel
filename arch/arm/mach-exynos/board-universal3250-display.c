@@ -85,7 +85,7 @@ static struct s3c_fb_pd_win universal3250_fb_win0 = {
 static int mipi_lcd_power_control(struct mipi_dsim_device *dsim,
 		unsigned int power)
 {
-	printk("%s was called\n", __func__);
+	printk("%s was called : %i\n", __func__, power);
 
 	if (power) {
 		gpio_request_one(EXYNOS3_GPX2(2), GPIOF_OUT_INIT_LOW, "GPX2");
@@ -110,7 +110,7 @@ static int mipi_lcd_power_control(struct mipi_dsim_device *dsim,
 		gpio_free(EXYNOS3_GPE0(1));
 
 	} else {
-		gpio_request_one(EXYNOS3_GPX2(2), GPIOF_OUT_INIT_HIGH, "GPX2");
+	/*	gpio_request_one(EXYNOS3_GPX2(2), GPIOF_OUT_INIT_HIGH, "GPX2");
 		usleep_range(20000, 21000);
 		gpio_set_value(EXYNOS3_GPX2(2), 0);
 		usleep_range(20000, 21000);
@@ -126,7 +126,7 @@ static int mipi_lcd_power_control(struct mipi_dsim_device *dsim,
 		usleep_range(20000, 21000);
 		gpio_set_value(EXYNOS3_GPE0(1), 0);
 		usleep_range(20000, 21000);
-		gpio_free(EXYNOS3_GPE0(1));
+		gpio_free(EXYNOS3_GPE0(1));*/
 	}
 	usleep_range(20000, 21000);
 	return 1;
@@ -287,8 +287,7 @@ void __init exynos3_universal3250_display_init(void)
 {
 struct resource *res;
 	printk ("B2 - Init Display\n");
-	s3c_set_platdata(&exynos3250_scaler_pd, sizeof(exynos3250_scaler_pd),
-			&exynos5_device_scaler0);
+	s3c_set_platdata(&exynos3250_scaler_pd, sizeof(exynos3250_scaler_pd),&exynos5_device_scaler0);
 	s5p_dsim0_set_platdata(&dsim_platform_data);
 	s5p_fimd0_set_platdata(&universal3250_lcd0_pdata);
 	printk ("B2 - Platform - Add devices to FB\n");
@@ -297,8 +296,7 @@ struct resource *res;
 
 #if defined(CONFIG_LCD_MIPI_S6E63J0X03)
 	printk ("\nB2 - Setup FIMD Clock");
-	exynos4_fimd_setup_clock(&s5p_device_fimd0.dev, "sclk_fimd", \
-				"sclk_lcd_blk", 50 * MHZ);
+	exynos4_fimd_setup_clock(&s5p_device_fimd0.dev, "sclk_fimd", "sclk_lcd_blk", 50 * MHZ);
 #endif
 
 	res = platform_get_resource(&s5p_device_fimd0, IORESOURCE_MEM, 1);
