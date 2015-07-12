@@ -359,20 +359,26 @@ static void init_lcd(struct mipi_dsim_device *dsim)
 
 	usleep_range(120000, 120000);
 
+
+
 	if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,
 			DEFAULT_WHITE_BRIGHTNESS, ARRAY_SIZE(DEFAULT_WHITE_BRIGHTNESS)) == -1)
 	dev_err(dsim->dev, "fail to send panel_condition_set command.\n");
+
 
 	if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,
 			DEFAULT_WHITE_CTRL, ARRAY_SIZE(DEFAULT_WHITE_CTRL)) == -1)
 	dev_err(dsim->dev, "fail to send panel_condition_set command.\n");
 	if (update_brightness(SavedBrightness)== 0)
 		printk ("s6e63j0x03 - DisplayON: Set brightness to saved value");
+
 	if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,
 			ACL_OFF, ARRAY_SIZE(ACL_OFF)) == -1)
 	dev_err(dsim->dev, "fail to send panel_condition_set command.\n");
 
 	if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,
+
+
 			ELVSS_COND, ARRAY_SIZE(ELVSS_COND)) == -1)
 	dev_err(dsim->dev, "fail to send panel_condition_set command.\n");
 	

@@ -110,7 +110,7 @@ static int mipi_lcd_power_control(struct mipi_dsim_device *dsim,
 		gpio_free(EXYNOS3_GPE0(1));
 
 	} else {
-	/*	gpio_request_one(EXYNOS3_GPX2(2), GPIOF_OUT_INIT_HIGH, "GPX2");
+		gpio_request_one(EXYNOS3_GPX2(2), GPIOF_OUT_INIT_HIGH, "GPX2");
 		usleep_range(20000, 21000);
 		gpio_set_value(EXYNOS3_GPX2(2), 0);
 		usleep_range(20000, 21000);
@@ -126,7 +126,7 @@ static int mipi_lcd_power_control(struct mipi_dsim_device *dsim,
 		usleep_range(20000, 21000);
 		gpio_set_value(EXYNOS3_GPE0(1), 0);
 		usleep_range(20000, 21000);
-		gpio_free(EXYNOS3_GPE0(1));*/
+		gpio_free(EXYNOS3_GPE0(1));
 	}
 	usleep_range(20000, 21000);
 	return 1;

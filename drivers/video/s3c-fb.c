@@ -83,7 +83,7 @@ static struct pm_qos_request exynos5_fimd_mif_qos;
 #endif
 #include <mach/sec_debug.h>
 #include "exynos_display_handler.h"
-
+#include <linux/wakelock.h>
 /* This driver will export a number of framebuffer interfaces depending
  * on the configuration passed in via the platform data. Each fb instance
  * maps to a hardware window. Currently there is no support for runtime
@@ -113,7 +113,7 @@ static struct pm_qos_request exynos5_fimd_mif_qos;
 #define FHD_MAX_BW_PER_WINDOW	(1080 * 1920 * 4 * 60)
 
 struct s3c_fb;
-int blankMode;
+struct wakeup_source idle_on_wakelock;
 #ifdef CONFIG_ION_EXYNOS
 extern struct ion_device *ion_exynos;
 #endif
@@ -884,7 +884,6 @@ static int s3c_fb_blank(int blank_mode, struct fb_info *info)
 	struct display_driver *dispdrv;
 	int ret=0;
 	printk("s3c_fb_blank: Setting to blank mode %d\n", blank_mode);
-	blankMode=blank_mode;
 	dispdrv = get_display_driver();
 #ifdef CONFIG_FB_HIBERNATION_DISPLAY
 	disp_pm_gate_lock(dispdrv, true);
@@ -908,6 +907,7 @@ static int s3c_fb_blank(int blank_mode, struct fb_info *info)
 				if (sfb->power_state == POWER_HIBER_DOWN)
 					disp_pm_add_refcount(dispdrv);
 			#endif
+			__pm_relax(&idle_on_wakelock);
 			ret = s3c_fb_disable(sfb);
 			exynos_display_notifier_call_chain(blank_mode, NULL);
 			break;
@@ -917,6 +917,7 @@ static int s3c_fb_blank(int blank_mode, struct fb_info *info)
 			exynos_display_notifier_call_chain(blank_mode, NULL);
 			ret = s3c_fb_enable(sfb);
 			s3c_fb_sw_trigger(sfb, TRIG_UNMASK);
+			__pm_stay_awake(&idle_on_wakelock);
 			break;
 			
 		case FB_BLANK_VSYNC_SUSPEND:
@@ -3711,7 +3712,6 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 	int i;
 	int ret = 0;
 	u32 reg;
-
 	platid = platform_get_device_id(pdev);
 	fbdrv = (struct s3c_fb_driverdata *)platid->driver_data;
 
@@ -4108,6 +4108,8 @@ printk("s3c-fb: Activate Window\n");
 	dev_info(sfb->dev, "window %d: fb %s\n", default_win, fbinfo->fix.id);
 
 	bts_initialize("pd-disp1", true);
+	wakeup_source_init(&idle_on_wakelock, "IDLE_ON_WAKELOCK");
+
 	return 0;
 
 err_fb:
@@ -4181,6 +4183,7 @@ static int __devexit s3c_fb_remove(struct platform_device *pdev)
 	int win;
 	pm_runtime_get_sync(sfb->dev);
 	unregister_framebuffer(sfb->windows[sfb->pdata->default_win]->fbinfo);
+	wakeup_source_trash(&idle_on_wakelock);
 
 #ifdef CONFIG_ION_EXYNOS
 	if (sfb->update_regs_thread)
@@ -4370,6 +4373,7 @@ err:
 	return ret;
 }
 
+
 #ifdef CONFIG_PM_SLEEP
 static int s3c_fb_suspend(struct device *dev)
 {
@@ -4377,47 +4381,55 @@ static int s3c_fb_suspend(struct device *dev)
 	struct s3c_fb *sfb = platform_get_drvdata(pdev);
 	int ret = 0;
 	u32 vidcon0;
-	
-#ifdef CONFIG_FB_HIBERNATION_DISPLAY_CLOCK_GATING
-	struct display_driver *dispdrv;
-#endif
-printk("s3c-fb: Suspend called\n");
-
 	mutex_lock(&sfb->output_lock);
-	flush_kthread_worker(&sfb->update_regs_worker);
-	vidcon0 = readl(sfb->regs + VIDCON0); 
-	/* see the note in the framebuffer datasheet about
-	 * why you cannot take both of these bits down at the
-	 * same time.	*/
-	
-	if (vidcon0 & VIDCON0_ENVID) {
-		vidcon0 |= VIDCON0_ENVID;
-		vidcon0 &= ~VIDCON0_ENVID_F;
-		writel(vidcon0, sfb->regs + VIDCON0);
-		sfb->power_state = POWER_DOWN;
-		printk ("s3c-fb: Video is down, shut down the display\n");
-		if (sfb->output_on) {
-			if (sfb->pdata->backlight_off)
-				sfb->pdata->backlight_off();
-			if (sfb->pdata->lcd_off)
-				sfb->pdata->lcd_off();
-			sfb->output_on = false;
-			printk ("s3c-fb: Output disabled!\n");
-		}
-	} else{
-		dev_warn(sfb->dev, "ENVID not set while disabling fb");
-		printk("s3c-fb: Display was active when trying to suspend!\n");
-		}
-		/*	if (!sfb->variant.has_clksel)
-			clk_disable(sfb->lcd_clk);
-	if (!s3c_fb_inquire_version(sfb))
-			clk_disable(sfb->axi_disp1);
-	clk_disable(sfb->bus_clk);*/
-#ifdef CONFIG_FB_HIBERNATION_DISPLAY_CLOCK_GATING
-	dispdrv = get_display_driver();
-	call_block_pm_ops(dispdrv, clk_off, dispdrv);
+	sfb->power_state = POWER_DOWN;
+	if (sfb->output_on) {
+		if (sfb->pdata->backlight_off)
+			sfb->pdata->backlight_off();
+
+		if (sfb->pdata->lcd_off)
+			sfb->pdata->lcd_off();
+
+#ifdef CONFIG_ION_EXYNOS
+		flush_kthread_worker(&sfb->update_regs_worker);
 #endif
-	pm_runtime_put_sync(sfb->dev);
+
+
+		vidcon0 = readl(sfb->regs + VIDCON0); 
+
+
+		/* see the note in the framebuffer datasheet about
+		 * why you cannot take both of these bits down at the
+		 * same time.
+		*/
+
+		if (vidcon0 & VIDCON0_ENVID) {
+			vidcon0 |= VIDCON0_ENVID;
+			vidcon0 &= ~VIDCON0_ENVID_F;
+			writel(vidcon0, sfb->regs + VIDCON0);
+		} else
+			dev_warn(sfb->dev, "ENVID not set while disabling fb");
+
+
+		if (!sfb->variant.has_clksel)
+			clk_disable(sfb->lcd_clk);
+
+		if (!s3c_fb_inquire_version(sfb))
+			clk_disable(sfb->axi_disp1);
+
+		clk_disable(sfb->bus_clk);
+#ifdef CONFIG_ION_EXYNOS
+#if !defined(CONFIG_FB_EXYNOS_FIMD_SYSMMU_DISABLE)
+#ifdef CONFIG_S5P_DEV_FIMD0
+	iovmm_deactivate(&s5p_device_fimd0.dev);
+#else
+	iovmm_deactivate(&s5p_device_fimd1.dev);
+#endif
+#endif
+#endif
+		pm_runtime_put_sync(sfb->dev);
+		sfb->output_on = false;
+	}
 	mutex_unlock(&sfb->output_lock);
 	return ret;
 }
@@ -4427,57 +4439,92 @@ static int s3c_fb_resume(struct device *dev)
 	struct platform_device *pdev = to_platform_device(dev);
 	struct s3c_fb *sfb = platform_get_drvdata(pdev);
 	struct s3c_fb_platdata *pd = sfb->pdata;
+
 	int win_no;
 	int default_win;
 	int ret = 0;
 	u32 reg;
-#ifdef CONFIG_FB_HIBERNATION_DISPLAY_CLOCK_GATING
-	struct display_driver *dispdrv;
-#endif
+
 	mutex_lock(&sfb->output_lock);
 	if (sfb->output_on) {
-		printk("s3c-fb resume: Display was already on!\n");
-	ret = -EBUSY;
+		ret = -EBUSY;
 		goto err;
 	}
 
+
+#ifdef CONFIG_PM_RUNTIME
 	pm_runtime_get_sync(sfb->dev);
-#ifdef CONFIG_FB_HIBERNATION_DISPLAY_CLOCK_GATING
-	dispdrv = get_display_driver();
-	call_block_pm_ops(dispdrv, clk_on, dispdrv);
+#elif !defined(CONFIG_FIMD_USE_BUS_DEVFREQ) && !defined(CONFIG_FIMD_USE_WIN_OVERLAP_CNT)
+	if (!sfb->fb_mif_handle) {
+		sfb->fb_mif_handle = exynos5_bus_mif_min(300000);
+		if (!sfb->fb_mif_handle)
+			dev_err(sfb->dev, "failed to request min_freq for mif\n");
+	}
+
+	if (!sfb->fb_int_handle) {
+		sfb->fb_int_handle = exynos5_bus_int_min(160000);
+		if (!sfb->fb_int_handle)
+			dev_err(sfb->dev, "failed to request min_freq for int\n");
+	}
 #endif
-/*	clk_enable(sfb->bus_clk);
+	clk_enable(sfb->bus_clk);
 	if (!s3c_fb_inquire_version(sfb))
 		clk_enable(sfb->axi_disp1);
 	if (!sfb->variant.has_clksel)
-		clk_enable(sfb->lcd_clk);*/
+		clk_enable(sfb->lcd_clk); 
 	/* setup gpio and output polarity controls */
 	pd->setup_gpio();
 	sfb->power_state = POWER_ON;
 	writel(pd->vidcon1, sfb->regs + VIDCON1);
+	if (soc_is_exynos5410())
+		writel(REG_CLKGATE_MODE_NON_CLOCK_GATE,
+			sfb->regs + REG_CLKGATE_MODE);
+
 	/* set video clock running at under-run */
 	if (sfb->variant.has_fixvclk) {
-		printk ("s3c-fb resume: Set video fixed clock\n");
 		reg = readl(sfb->regs + VIDCON1);
 		reg &= ~VIDCON1_VCLK_MASK;
 		reg |= VIDCON1_VCLK_HOLD;
 		writel(reg, sfb->regs + VIDCON1);
-	}
+	} 
+
 	/* zero all windows before we do anything */
 	for (win_no = 0; win_no < sfb->variant.nr_windows; win_no++)
-		s3c_fb_clear_win(sfb, win_no);
+		s3c_fb_clear_win(sfb, win_no); 
 	/* use platform specified window as the basis for the lcd timings */
 	default_win = sfb->pdata->default_win;
 	s3c_fb_configure_lcd(sfb, &pd->win[default_win]->win_mode);
+#if defined(CONFIG_FB_I80_COMMAND_MODE)
 	s3c_fb_config_i80(sfb, &pd->win[default_win]->win_mode);
+#endif
 	mutex_lock(&sfb->vsync_info.irq_lock);
 	if (sfb->vsync_info.irq_refcount)
 		s3c_fb_enable_irq(sfb);
 	mutex_unlock(&sfb->vsync_info.irq_lock);
+
+#ifdef CONFIG_ION_EXYNOS
+#if !defined(CONFIG_FB_EXYNOS_FIMD_SYSMMU_DISABLE)
+#ifdef CONFIG_S5P_DEV_FIMD1
+	ret = iovmm_activate(&s5p_device_fimd1.dev);
+#else
+	ret = iovmm_activate(&s5p_device_fimd0.dev);
+#endif
+#endif
+	if (ret < 0) {
+		dev_err(sfb->dev, "failed to reactivate vmm\n");
+		goto err;
+	}
+#endif
+
+#ifdef CONFIG_S5P_DP
+	writel(DPCLKCON_ENABLE, sfb->regs + DPCLKCON);
+#endif
+
 	sfb->output_on = true;
+
 err:
 	mutex_unlock(&sfb->output_lock);
-	return ret;
+	return ret; 
 }
 #endif
 
@@ -4488,17 +4535,20 @@ static int s3c_fb_runtime_suspend(struct device *dev)
 	struct s3c_fb *sfb = platform_get_drvdata(pdev);
 #ifdef CONFIG_FB_HIBERNATION_DISPLAY_CLOCK_GATING
 	struct display_driver *dispdrv;
+
 	dispdrv = get_display_driver();
 	call_block_pm_ops(dispdrv, clk_off, dispdrv);
 #else
+
 	if (!sfb->variant.has_clksel)
 		clk_disable(sfb->lcd_clk);
+
 	if (!s3c_fb_inquire_version(sfb))
 		clk_disable(sfb->axi_disp1);
+
 	clk_disable(sfb->bus_clk);
 #endif
 	pr_info("[INFO] %s\n", __func__);
-	printk ("s3c-fb: PM Runtime Suspend has benn called\n");
 	if (sfb->power_state != POWER_HIBER_DOWN)
 		sfb->power_state = POWER_DOWN;
 	return 0;
@@ -4514,6 +4564,19 @@ static int s3c_fb_runtime_resume(struct device *dev)
 	dispdrv = get_display_driver();
 	call_block_pm_ops(dispdrv, clk_on, dispdrv);
 #else
+
+#if !defined(CONFIG_FIMD_USE_BUS_DEVFREQ) && !defined(CONFIG_FIMD_USE_WIN_OVERLAP_CNT)
+	if (!sfb->fb_mif_handle) {
+		sfb->fb_mif_handle = exynos5_bus_mif_min(300000);
+		if (!sfb->fb_mif_handle)
+			dev_err(sfb->dev, "failed to request min_freq for mif\n");
+	}
+	if (!sfb->fb_int_handle) {
+		sfb->fb_int_handle = exynos5_bus_int_min(160000);
+		if (!sfb->fb_int_handle)
+			dev_err(sfb->dev, "failed to request min_freq for int\n");
+	}
+#endif
 	clk_enable(sfb->bus_clk);
 	if (!s3c_fb_inquire_version(sfb))
 		clk_enable(sfb->axi_disp1);
@@ -4521,7 +4584,6 @@ static int s3c_fb_runtime_resume(struct device *dev)
 		clk_enable(sfb->lcd_clk);
 #endif
 	pr_info("[INFO] %s\n", __func__);
-	printk ("s3c-fb: PM Runtime Resume has been called!\n");
 	/* setup gpio and output polarity controls */
 	pd->setup_gpio();
 	if (sfb->power_state != POWER_HIBER_DOWN)
