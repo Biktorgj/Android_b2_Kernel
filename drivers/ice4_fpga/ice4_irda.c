@@ -31,6 +31,7 @@
 #include <linux/mutex.h>
 #include <linux/gpio.h>
 #include <linux/platform_data/ice4_irda.h>
+#include <linux/regulator/consumer.h>
 
 #define IRDA_TEST_CODE_SIZE	141
 #define IRDA_TEST_CODE_ADDR	0x00
@@ -84,6 +85,33 @@ static void print_fpga_gpio_status(struct ice4_fpga_data *data)
 	pr_info("%s : CRESET_B : %d\n", __func__,
 			gpio_get_value(data->gpio_creset));
 }
+
+int irled_ldo(bool on)
+{
+	struct regulator *regulator_irled;
+
+	regulator_irled = regulator_get(NULL, "v_irled_3.3");
+	if (IS_ERR(regulator_irled)) {
+		pr_info("%s : unable to get regulator!\n", __func__);
+		return PTR_ERR(regulator_irled);
+	}
+
+	pr_info("%s : irled ldo %d!\n", __func__, on);
+
+	if (on) {
+		regulator_enable(regulator_irled);
+		usleep_range(2500, 3000);
+	} else {
+		if (regulator_is_enabled(regulator_irled))
+			regulator_disable(regulator_irled);
+		else
+			regulator_force_disable(regulator_irled);
+	}
+	regulator_put(regulator_irled);
+
+	return 0;
+}
+
 
 /* sysfs node ir_send */
 static void ir_remocon_work(struct ice4_fpga_data *data, int count)
@@ -178,6 +206,8 @@ static ssize_t remocon_store(struct device *dev, struct device_attribute *attr,
 	unsigned int value;
 	int count, i;
 
+	irled_ldo(true);
+
 	pr_info("%s : ir_send called\n", __func__);
 
 	for (i = 0; i < MAX_SIZE; i++) {
@@ -213,6 +243,8 @@ static ssize_t remocon_store(struct device *dev, struct device_attribute *attr,
 	}
 
 	ir_remocon_work(data, data->count);
+
+	irled_ldo(false);
 
 	return size;
 }
@@ -419,9 +451,9 @@ static int __devinit ice4_irda_probe(struct i2c_client *client,
 	}
 
 	if (ice4_irda_check_cdone(data))
-		pr_debug("FPGA FW is loaded!\n");
+		pr_err("FPGA FW is loaded!\n");
 	else
-		pr_debug("FPGA FW is NOT loaded!\n");
+		pr_err("FPGA FW is NOT loaded!\n");
 
 	gpio_set_value(data->gpio_fpga_rst_n, GPIO_LEVEL_HIGH);
 

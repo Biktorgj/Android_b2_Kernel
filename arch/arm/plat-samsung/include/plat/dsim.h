@@ -327,6 +327,7 @@ struct mipi_dsim_lcd_driver {
 	int	(*suspend)(struct mipi_dsim_device *dsim);
 	int	(*displayon)(struct mipi_dsim_device *dsim);
 	int	(*resume)(struct mipi_dsim_device *dsim);
+	void (*alpm) (struct mipi_dsim_device *dsim, bool state);
 };
 
 /**

@@ -113,7 +113,6 @@ static struct pm_qos_request exynos5_fimd_mif_qos;
 #define FHD_MAX_BW_PER_WINDOW	(1080 * 1920 * 4 * 60)
 
 struct s3c_fb;
-struct wakeup_source idle_on_wakelock;
 #ifdef CONFIG_ION_EXYNOS
 extern struct ion_device *ion_exynos;
 #endif
@@ -627,7 +626,7 @@ static int s3c_fb_set_par(struct fb_info *info)
 	int win_no = win->index;
 	u32 data;
 	int old_wincon;
-	printk ("s3c-fb: Set framebuffer parameters\n");
+
 	dev_dbg(sfb->dev, "setting framebuffer parameters\n");
 
 	if (unlikely(!sfb->output_on)) {
@@ -900,30 +899,24 @@ static int s3c_fb_blank(int blank_mode, struct fb_info *info)
 #endif
 	switch (blank_mode) {
 		case FB_BLANK_POWERDOWN:
-			printk("s3c-fb: Blank Powerdown\n");
 		case FB_BLANK_NORMAL:
-			printk("s3c-fb: Blank Normal\n");
 			#ifdef CONFIG_FB_HIBERNATION_DISPLAY
 				if (sfb->power_state == POWER_HIBER_DOWN)
 					disp_pm_add_refcount(dispdrv);
 			#endif
-			__pm_relax(&idle_on_wakelock);
 			ret = s3c_fb_disable(sfb);
 			exynos_display_notifier_call_chain(blank_mode, NULL);
 			break;
 
 		case FB_BLANK_UNBLANK:
-			printk("s3c-fb: Display Unblank\n");
 			exynos_display_notifier_call_chain(blank_mode, NULL);
 			ret = s3c_fb_enable(sfb);
 			s3c_fb_sw_trigger(sfb, TRIG_UNMASK);
-			__pm_stay_awake(&idle_on_wakelock);
 			break;
 			
 		case FB_BLANK_VSYNC_SUSPEND:
 		case FB_BLANK_HSYNC_SUSPEND:
 		default:
-			printk("s3c-fb: VSYNC-HSYNC or other - suspend\n");
 			ret = -EINVAL;
 		}
 	pm_runtime_put_sync(sfb->dev);
@@ -4054,7 +4047,6 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 #ifdef CONFIG_ION_EXYNOS
 #if !defined(CONFIG_FB_EXYNOS_FIMD_SYSMMU_DISABLE)
 #ifdef CONFIG_S5P_DEV_FIMD0
-	printk("s3c-fb: IOVMM Activate... \n");
 	ret = iovmm_activate(&s5p_device_fimd0.dev);
 	printk("s3c-fb: IOVMM Activated. \n");
 #else
@@ -4074,24 +4066,17 @@ static int __devinit s3c_fb_probe(struct platform_device *pdev)
 #endif
 
 #if defined(CONFIG_FB_I80_COMMAND_MODE)
-printk("s3c-fb: Disable IRQ\n");
 	sfb->irq_enabled = false;
-printk("s3c-fb: Enable IRQ\n");
 	s3c_fb_enable_irq(sfb);
 #endif
-printk("s3c-fb: Activate Window DMA\n");
 	s3c_fb_activate_window_dma(sfb, default_win);
-printk("s3c-fb: Activate Window\n");	
 	s3c_fb_activate_window(sfb, default_win);
 
 	dev_dbg(sfb->dev, "about to register framebuffer\n");
-	printk("s3c-fb: Register Framebuffer\n");
-
 	/* run the check_var and set_par on our configuration. */
 
 	fbinfo = sfb->windows[default_win]->fbinfo;
 	ret = register_framebuffer(fbinfo);
-	printk("s3c-fb: Registered.\n");
 	if (ret < 0) {
 		dev_err(sfb->dev, "failed to register framebuffer\n");
 		goto err_fb;
@@ -4103,12 +4088,8 @@ printk("s3c-fb: Activate Window\n");
 			fbinfo->var.yres,
 			fbinfo->var.bits_per_pixel, 3);
 	}
-
-
 	dev_info(sfb->dev, "window %d: fb %s\n", default_win, fbinfo->fix.id);
-
 	bts_initialize("pd-disp1", true);
-	wakeup_source_init(&idle_on_wakelock, "IDLE_ON_WAKELOCK");
 
 	return 0;
 
@@ -4183,7 +4164,6 @@ static int __devexit s3c_fb_remove(struct platform_device *pdev)
 	int win;
 	pm_runtime_get_sync(sfb->dev);
 	unregister_framebuffer(sfb->windows[sfb->pdata->default_win]->fbinfo);
-	wakeup_source_trash(&idle_on_wakelock);
 
 #ifdef CONFIG_ION_EXYNOS
 	if (sfb->update_regs_thread)
@@ -4318,7 +4298,7 @@ static int s3c_fb_enable(struct s3c_fb *sfb)
 
 	struct clk *clk_child, *clk_parent;
 	mutex_lock(&sfb->output_lock);
-	printk ("s3c-fb: Enable Framebuffer\n");
+
 	if (sfb->output_on) {
 		ret = -EBUSY;
 		goto err;
