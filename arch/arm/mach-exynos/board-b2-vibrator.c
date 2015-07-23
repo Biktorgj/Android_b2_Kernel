@@ -115,8 +115,8 @@ void dc_motor_voltage(int val)
 #if defined(DC_MOTOR_LOG)
 	pr_info("[VIB] %s : %d\n", __func__, val);
 #endif
-
-	val *= 100000;
+  val *= 100000;
+	
 
 	if (val) {
 		if (regulator_set_voltage(regulator, val, val))
