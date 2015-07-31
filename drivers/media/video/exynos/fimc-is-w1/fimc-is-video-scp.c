@@ -71,8 +71,8 @@ int fimc_is_scp_video_probe(void *data)
 	if (ret)
 		dev_err(&core->pdev->dev, "%s is fail(%d)\n", __func__, ret);
 
+	printk("[SCP:V:X] %s(%d)\n", __func__, ret);
 p_err:
-	info("[SCP:V:X] %s(%d)\n", __func__, ret);
 	return ret;
 }
 
@@ -226,7 +226,7 @@ static int fimc_is_scp_video_querycap(struct file *file, void *fh,
 	struct fimc_is_core *core = video_drvdata(file);
 
 	strncpy(cap->driver, core->pdev->name, sizeof(cap->driver) - 1);
-
+	printk ("fimc scp: capture devname: %s\n", cap->driver);
 	dbg("%s(devname : %s)\n", __func__, cap->driver);
 	strncpy(cap->card, core->pdev->name, sizeof(cap->card) - 1);
 	cap->bus_info[0] = 0;

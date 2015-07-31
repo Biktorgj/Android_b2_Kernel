@@ -59,6 +59,8 @@ int fimc_is_scp_video_probe(void *data)
 	if (ret != 0)
 		dev_err(&(core->pdev->dev),
 		"%s::Failed to fimc_is_video_probe()\n", __func__);
+	else
+		printk(""%s::Failed to fimc_is_video_probe()\n", __func__);
 
 	return ret;
 }

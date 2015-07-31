@@ -508,11 +508,11 @@ static int fimc_is_isp_video_s_input(struct file *file, void *priv,
 	}
 
 	/* if there's only one group of isp, defines group id to 3a0 connected */
-	if (GET_FIMC_IS_NUM_OF_SUBIP(core, 3a0)
-			|| GET_FIMC_IS_NUM_OF_SUBIP(core, 3a1)) {
+	/*if (GET_FIMC_IS_NUM_OF_SUBIP(core, 3a0)
+			|| GET_FIMC_IS_NUM_OF_SUBIP(core, 3a1)) {*/
 
 		/* 2. checking 3ax group to connect */
-		if ((tax_vindex == FIMC_IS_VIDEO_3A0C_NUM) ||
+	/*	if ((tax_vindex == FIMC_IS_VIDEO_3A0C_NUM) ||
 			(tax_vindex == FIMC_IS_VIDEO_3A0P_NUM)) {
 			group_id = GROUP_ID_3A0;
 			info("[ISP:V:%d] <-> [3A0:V:0]\n", device->instance);
@@ -528,8 +528,9 @@ static int fimc_is_isp_video_s_input(struct file *file, void *priv,
 		}
 	} else {
 		group_id = GROUP_ID_3A0;
-	}
-
+	}*/
+	group_id = GROUP_ID_3A0;
+	printk("[ISP:V:%d] <-> [3A0:V:0]\n", device->instance);
 	/* 3. checking reprocessing stream */
 	if (rep_stream) {
 		for (dindex = 0; dindex < FIMC_IS_MAX_NODES; ++dindex) {

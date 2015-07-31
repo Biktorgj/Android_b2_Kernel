@@ -22,6 +22,10 @@
 #include <plat/mipi_dsi.h>
 #include <plat/gpio-cfg.h>
 
+#include <linux/proc_fs.h>
+#define PROC_DIR	"lcdsettings/"
+struct proc_dir_entry *display_dir;
+
 #define GAMMA_PARAM_SIZE 26
 #define MAX_BRIGHTNESS 255
 #define MIN_BRIGHTNESS 0
@@ -30,6 +34,11 @@
 static struct mipi_dsim_device *dsim_base;
 static struct backlight_device *bd;
 int alpmMode=0;
+int procfsAmbientBrightness=2;
+int procfsPartialMode=0;
+int procfsIdleMode=0;
+
+
 #ifdef CONFIG_HAS_EARLYSUSPEND
 static struct early_suspend    s6e63j0x03_early_suspend;
 #endif
@@ -245,12 +254,32 @@ static int get_backlight_level(int brightness)
 void s6e63j0x03_alpm_control(struct mipi_dsim_device *dsim, bool state)
 {
 	if (state)	{
+	if (procfsPartialMode){
 	if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,	PARTIAL_AREA_SET, ARRAY_SIZE(PARTIAL_AREA_SET)) == -1)
 		printk ("s6e63j0x03 Suspend: Error in Partial Area Set\n");
 	if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,	PARTIAL_MODE_ON, ARRAY_SIZE(PARTIAL_MODE_ON)) == -1)
 		printk ("s6e63j0x03 Suspend: Error activating partial mode\n");
-//	if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,	IDLE_MODE_ON, ARRAY_SIZE(IDLE_MODE_ON)) == -1)
-//		printk ("s6e63j0x03 Suspend: Error setting IDLE mode to ON\n");
+	}
+	if (procfsIdleMode){
+	if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,	IDLE_MODE_ON, ARRAY_SIZE(IDLE_MODE_ON)) == -1)
+		printk ("s6e63j0x03 Suspend: Error setting IDLE mode to ON\n");
+	}
+	switch (procfsAmbientBrightness)
+	{
+		case 1:
+		if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,	GAMMA_10, ARRAY_SIZE(GAMMA_30)) == -1)
+				dev_err(dsim->dev, "fail to send panel_condition_set command.\n");
+		break;
+		case 2:
+		if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,	GAMMA_30, ARRAY_SIZE(GAMMA_30)) == -1)
+				dev_err(dsim->dev, "fail to send panel_condition_set command.\n");
+		break;	
+		case 3:
+		if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,	GAMMA_60, ARRAY_SIZE(GAMMA_30)) == -1)
+				dev_err(dsim->dev, "fail to send panel_condition_set command.\n");
+		break;
+	}
+	
 	if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,	FRAME_FREQ_30HZ_SET,ARRAY_SIZE(FRAME_FREQ_30HZ_SET)) == -1)
 		printk ("s6e63j0x03 Suspend: Error Setting Freq to 30Hz");
 	printk ("s6e63j0x03 - ALPM mode enabled\n");
@@ -259,12 +288,17 @@ void s6e63j0x03_alpm_control(struct mipi_dsim_device *dsim, bool state)
 	else{
 	if (SavedBrightness>10)
 		{
-	//	if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,	IDLE_MODE_OFF, ARRAY_SIZE(IDLE_MODE_OFF)) == -1)
-	//		printk ("s6e63j0x03 Resume: Error deactivating idle mode\n");
-		if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,	NORMAL_MODE_ON, ARRAY_SIZE(NORMAL_MODE_ON)) == -1)
-			printk ("s6e63j0x03 Resume: Error reactivating normal mode\n");
+		if (procfsIdleMode){
+			if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,	IDLE_MODE_OFF, ARRAY_SIZE(IDLE_MODE_OFF)) == -1)
+				printk ("s6e63j0x03 Resume: Error deactivating idle mode\n");
+		}
+		if (procfsPartialMode){
+			if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,	NORMAL_MODE_ON, ARRAY_SIZE(NORMAL_MODE_ON)) == -1)
+				printk ("s6e63j0x03 Resume: Error reactivating normal mode\n");
+		}
 		if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,	FRAME_FREQ_60HZ_SET,ARRAY_SIZE(FRAME_FREQ_30HZ_SET)) == -1)
 			printk ("s6e63j0x03 Resume: Error resetting frame freq to 60hz\n");
+		
 		printk ("s6e63j0x03 - ALPM mode disabled\n");
 		alpmMode=0;
 		}
@@ -281,7 +315,6 @@ static int update_brightness(int brightness)
 	// First we activate the test mode for the LCD, then we send the command
 	if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,	TEST_KEY_ON_2, ARRAY_SIZE(TEST_KEY_ON_2)) == -1) 
 			dev_err(dsim->dev, "fail to send panel_condition_set command.\n");
-	printk ("s6e63j0x03: Set brightness to %i\n", brightness);
 	if (SavedBrightness==10 && brightness>10)
 		{
 		SavedBrightness=brightness;
@@ -291,28 +324,23 @@ static int update_brightness(int brightness)
 		SavedBrightness=brightness; 
 	switch (backlightlevel)	{
 		case 0 ... 51:
-		if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,
-				GAMMA_10, ARRAY_SIZE(GAMMA_30)) == -1)
+		if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,	GAMMA_30, ARRAY_SIZE(GAMMA_30)) == -1)
 					dev_err(dsim->dev, "fail to send panel_condition_set command.\n");
 		break;
 		case 52 ... 103:
-		if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,
-				GAMMA_60, ARRAY_SIZE(GAMMA_60)) == -1)
+		if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,	GAMMA_60, ARRAY_SIZE(GAMMA_60)) == -1)
 					dev_err(dsim->dev, "fail to send panel_condition_set command.\n");
 		break;
 		case 104 ... 155:
-		if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,
-				GAMMA_120, ARRAY_SIZE(GAMMA_120)) == -1)
+		if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,	GAMMA_120, ARRAY_SIZE(GAMMA_120)) == -1)
 					dev_err(dsim->dev, "fail to send panel_condition_set command.\n");
 		break;
 		case 156 ... 207:
-		if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,
-				GAMMA_200, ARRAY_SIZE(GAMMA_200)) == -1)
+		if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,	GAMMA_200, ARRAY_SIZE(GAMMA_200)) == -1)
 					dev_err(dsim->dev, "fail to send panel_condition_set command.\n");
 		break;
 		case 208 ... 255:
-		if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,
-				GAMMA_300, ARRAY_SIZE(GAMMA_300)) == -1)
+		if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,	GAMMA_300, ARRAY_SIZE(GAMMA_300)) == -1)
 					dev_err(dsim->dev, "fail to send panel_condition_set command.\n");		
 		break;
 	} // switch close
@@ -337,10 +365,102 @@ static const struct backlight_ops s6e63j0x03_backlight_ops = {
 	.update_status = s6e63j0x03_set_brightness,
 };
 
+/* PROCFS ALPM MODE */
+static ssize_t s6e63j0x03_read_proc_ambientbrightness(struct file *file, char __user *userbuf,size_t bytes, loff_t *off)
+{
+	return procfsAmbientBrightness;
+}
+
+static ssize_t s6e63j0x03_write_proc_ambientbrightness(struct file *file, const char __user *buffer,size_t count, loff_t *pos)
+{
+	printk ("s6e63j0x03: brightness mode change called, %c\n", buffer[0]);
+	if (buffer[0]=='1')
+		procfsAmbientBrightness=1;
+	else if (buffer[0]=='2')
+		procfsAmbientBrightness=2;
+	else if (buffer[0]=='3')
+		procfsAmbientBrightness=3;
+	return count;
+}
+static const struct file_operations proc_fops_alpm = {
+	.owner = THIS_MODULE,
+	.read = s6e63j0x03_read_proc_ambientbrightness,
+	.write = s6e63j0x03_write_proc_ambientbrightness,
+};
+/* IDLE MODE */
+static ssize_t s6e63j0x03_read_proc_idlemode(struct file *file, char __user *userbuf,size_t bytes, loff_t *off)
+{
+	return procfsIdleMode;
+}
+
+static ssize_t s6e63j0x03_write_proc_idlemode(struct file *file, const char __user *buffer,size_t count, loff_t *pos)
+{
+	printk ("s6e63j0x03: Idle mode change called, %c\n", buffer[0]);
+	if (buffer[0]=='1')
+		procfsIdleMode=1;
+	else
+		procfsIdleMode=0;
+	
+	return count;
+}
+
+static const struct file_operations proc_fops_idlemode = {
+	.owner = THIS_MODULE,
+	.read = s6e63j0x03_read_proc_idlemode,
+	.write = s6e63j0x03_write_proc_idlemode,
+};
+/* PARTIAL MODE */
+static ssize_t s6e63j0x03_read_proc_partialmode(struct file *file, char __user *userbuf,size_t bytes, loff_t *off)
+{
+	return procfsPartialMode;
+}
+
+static ssize_t s6e63j0x03_write_proc_partialmode	(struct file *file, const char __user *buffer,size_t count, loff_t *pos)
+{
+	printk ("s6e63j0x03: Partial mode change called, %c\n", buffer[0]);
+	if (buffer[0]=='1')
+		procfsPartialMode=1;
+	else
+		procfsPartialMode=0;
+	return count;
+}
+
+static const struct file_operations proc_fops_partialmode = {
+	.owner = THIS_MODULE,
+	.read = s6e63j0x03_read_proc_partialmode,
+	.write = s6e63j0x03_write_proc_partialmode,
+};
 static int s6e63j0x03_probe(struct mipi_dsim_device *dsim)
 {
+	int retval;
+	struct proc_dir_entry *ent;
 	dsim_base = dsim;
 	printk("%s was called\n", __func__);
+	
+	display_dir = proc_mkdir("lcdsettings", NULL);
+	if (display_dir == NULL) {
+		printk("s6e63j0x03 Error:Unable to create /proc/lcdsettings directory");
+		return -ENOMEM;
+	}
+	ent = proc_create("ambient_brightness", 0, display_dir, &proc_fops_alpm);
+	if (ent == NULL) {
+		printk("[BT] Error:Unable to create /proc/%s/ambient_brightness entry", PROC_DIR);
+		retval = -ENOMEM;
+		goto fail;
+	}
+	ent = proc_create("idlemode", 0, display_dir, &proc_fops_idlemode);
+	if (ent == NULL) {
+		printk("s6e63j0x03 Error:Unable to create /proc/%s/idlemode entry", PROC_DIR);
+		retval = -ENOMEM;
+		goto fail;
+	}
+	ent = proc_create("partialmode", 0, display_dir, &proc_fops_partialmode);
+	if (ent == NULL) {
+		printk("s6e63j0x03 Error:Unable to create /proc/%s/partialmode entry", PROC_DIR);
+		retval = -ENOMEM;
+		goto fail;
+	}
+
 
 	bd = backlight_device_register("panel", NULL,
 		NULL, &s6e63j0x03_backlight_ops, NULL);
@@ -351,7 +471,13 @@ static int s6e63j0x03_probe(struct mipi_dsim_device *dsim)
 	bd->props.brightness = DEFAULT_BRIGHTNESS;
 
 	return 1;
-}
+fail:
+	remove_proc_entry("alpm", display_dir);
+	remove_proc_entry("idlemode", display_dir);
+	remove_proc_entry("partialmode", display_dir);
+	remove_proc_entry("lcdsettings", 0);
+	return retval;
+	}
 
 static void init_lcd(struct mipi_dsim_device *dsim)
 {
@@ -386,24 +512,13 @@ static void init_lcd(struct mipi_dsim_device *dsim)
 
 	usleep_range(120000, 120000);
 
-	if (!alpmMode)
-		{
 		if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,	DEFAULT_WHITE_BRIGHTNESS, ARRAY_SIZE(DEFAULT_WHITE_BRIGHTNESS)) == -1)
 			dev_err(dsim->dev, "fail to send panel_condition_set command.\n");
 		if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,	DEFAULT_WHITE_CTRL, ARRAY_SIZE(DEFAULT_WHITE_CTRL)) == -1)
 			dev_err(dsim->dev, "fail to send panel_condition_set command.\n");
 		if (update_brightness(SavedBrightness)== 0)
 			printk ("s6e63j0x03 - DisplayON: Set brightness to saved value");
-		}
-	else
-		{
-		if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,	DEFAULT_WHITE_BRIGHTNESS, ARRAY_SIZE(DEFAULT_WHITE_BRIGHTNESS)) == -1)
-			dev_err(dsim->dev, "fail to send panel_condition_set command.\n");
-		if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,	DEFAULT_WHITE_CTRL, ARRAY_SIZE(DEFAULT_WHITE_CTRL)) == -1)
-			dev_err(dsim->dev, "fail to send panel_condition_set command.\n");
-		if (update_brightness(10)== 0)
-			printk ("s6e63j0x03 - DisplayON: Set brightness to saved value");
-		}
+
 	if (s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_LONG_WRITE,	ACL_OFF, ARRAY_SIZE(ACL_OFF)) == -1)
 	dev_err(dsim->dev, "fail to send panel_condition_set command.\n");
 

@@ -4366,37 +4366,26 @@ static int s3c_fb_suspend(struct device *dev)
 	if (sfb->output_on) {
 		if (sfb->pdata->backlight_off)
 			sfb->pdata->backlight_off();
-
 		if (sfb->pdata->lcd_off)
 			sfb->pdata->lcd_off();
-
 #ifdef CONFIG_ION_EXYNOS
 		flush_kthread_worker(&sfb->update_regs_worker);
 #endif
-
-
 		vidcon0 = readl(sfb->regs + VIDCON0); 
-
-
 		/* see the note in the framebuffer datasheet about
 		 * why you cannot take both of these bits down at the
 		 * same time.
 		*/
-
 		if (vidcon0 & VIDCON0_ENVID) {
 			vidcon0 |= VIDCON0_ENVID;
 			vidcon0 &= ~VIDCON0_ENVID_F;
 			writel(vidcon0, sfb->regs + VIDCON0);
 		} else
 			dev_warn(sfb->dev, "ENVID not set while disabling fb");
-
-
 		if (!sfb->variant.has_clksel)
 			clk_disable(sfb->lcd_clk);
-
 		if (!s3c_fb_inquire_version(sfb))
 			clk_disable(sfb->axi_disp1);
-
 		clk_disable(sfb->bus_clk);
 #ifdef CONFIG_ION_EXYNOS
 #if !defined(CONFIG_FB_EXYNOS_FIMD_SYSMMU_DISABLE)

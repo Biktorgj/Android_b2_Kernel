@@ -64,7 +64,8 @@ static DECLARE_COMPLETION(dsim_rd_comp);
 #define MIPI_WR_TIMEOUT msecs_to_jiffies(35)
 #define MIPI_RD_TIMEOUT msecs_to_jiffies(35)
 
-
+int powerState;
+int savedPowerState;
 /* DDI power will be kept from bootloader */
 #define SEC_LCD_PWR_CONTINUOSLY		1
 
@@ -987,7 +988,7 @@ static int s5p_mipi_dsi_disable(struct mipi_dsim_device *dsim)
 static int s5p_mipi_dsi_set_power(void *data, unsigned long power)
 {
 	struct mipi_dsim_device *dsim = data;
-
+	powerState=power;
 	if ((power == FB_BLANK_UNBLANK) && (!dsim->enabled))
 		s5p_mipi_dsi_enable(dsim);
 	else if ((power == FB_BLANK_POWERDOWN) && (dsim->enabled))
@@ -1397,10 +1398,27 @@ static int s5p_mipi_dsi_suspend(struct device *dev)
 	struct platform_device *pdev = to_platform_device(dev);
 	struct mipi_dsim_device *dsim = platform_get_drvdata(pdev);
 	int ret;
-	printk("s5p_mipi suspend: Attempting to enter LPM mode.\n");
-	dsim->dsim_lcd_drv->alpm(dsim, 1);
-	ret=s5p_mipi_dsi_ulps_enable(dsim,1);
-	pm_runtime_put_sync(dev);
+	printk ("s5p_mipi suspend: START\n");
+	savedPowerState=powerState;
+	if (powerState == FB_BLANK_UNBLANK)
+		{
+		printk("s5p_mipi suspend: entering LPM mode.\n");
+		dsim->dsim_lcd_drv->alpm(dsim, 1);
+		ret=s5p_mipi_dsi_ulps_enable(dsim,1);
+		pm_runtime_put_sync(dev);
+		}
+	else
+		{
+		printk("s5p_mipi suspend: full suspend\n");
+		dsim->dsim_lcd_drv->suspend(dsim);
+		dsim->enabled = false;
+		dsim->state = DSIM_STATE_SUSPEND;
+		s5p_mipi_dsi_d_phy_onoff(dsim, 0);
+		if (dsim->pd->mipi_power)
+			dsim->pd->mipi_power(dsim, 0);
+		pm_runtime_put_sync(dev);
+		clk_disable(dsim->clock);
+		}
 	printk ("s5p_mipi suspend: completed.\n");
 	return 0;
 }
@@ -1410,22 +1428,40 @@ static int s5p_mipi_dsi_resume(struct device *dev)
 	struct platform_device *pdev = to_platform_device(dev);
 	struct mipi_dsim_device *dsim = platform_get_drvdata(pdev);
 	int ret;
-	printk("s5p_mipi: Attempting to resume from LPM mode.\n");
+	printk ("s5p_mipi resume: START\n");
+	if (savedPowerState == FB_BLANK_UNBLANK)
+		{
+		printk("s5p_mipi resume: exiting LPM mode \n");
+		pm_runtime_get_sync(&pdev->dev);
+		ret=s5p_mipi_dsi_ulps_enable(dsim,0);
+		s5p_mipi_dsi_init_dsim(dsim);
+		s5p_mipi_dsi_init_link(dsim);
+		s5p_mipi_dsi_set_data_transfer_mode(dsim, 0);
+		s5p_mipi_dsi_set_display_mode(dsim, dsim->dsim_config);
+		s5p_mipi_dsi_set_hs_enable(dsim);
+		dsim->enabled = true;
+		mdelay(10);
+		dsim->dsim_lcd_drv->alpm(dsim, 0);
+		}
+	else
+		{
+		printk("s5p_mipi resume: full resume \n");
+		pm_runtime_get_sync(&pdev->dev);
+		clk_enable(dsim->clock);
+		if (dsim->pd->mipi_power)
+			dsim->pd->mipi_power(dsim, 1);
+		if (dsim->dsim_lcd_drv->resume)
+			dsim->dsim_lcd_drv->resume(dsim);
+		s5p_mipi_dsi_init_dsim(dsim);
+		s5p_mipi_dsi_init_link(dsim);
+		s5p_mipi_dsi_set_data_transfer_mode(dsim, 0);
+		s5p_mipi_dsi_set_display_mode(dsim, dsim->dsim_config);
+		s5p_mipi_dsi_set_hs_enable(dsim);
+		dsim->enabled = true;
+		dsim->dsim_lcd_drv->displayon(dsim);
+		}
 
-	pm_runtime_get_sync(&pdev->dev);
-	ret=s5p_mipi_dsi_ulps_enable(dsim,0);
-	s5p_mipi_dsi_init_dsim(dsim);
-	s5p_mipi_dsi_init_link(dsim);
-
-	s5p_mipi_dsi_set_data_transfer_mode(dsim, 0);
-	s5p_mipi_dsi_set_display_mode(dsim, dsim->dsim_config);
-	s5p_mipi_dsi_set_hs_enable(dsim);
-
-	dsim->enabled = true;
-	mdelay(10);
-	dsim->dsim_lcd_drv->alpm(dsim, 0);
 	printk("s5p_mipi resume: completed.\n");
-
 	return 0;
 }
 

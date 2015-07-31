@@ -60,9 +60,9 @@
 #include "fimc-is-dvfs.h"
 
 #define SDCARD_FW
-#define FIMC_IS_SETFILE_SDCARD_PATH		"/opt/usr/media/"
+#define FIMC_IS_SETFILE_SDCARD_PATH		"/system/vendor/firmware/"
 #define FIMC_IS_FW				"fimc_is_fw2.bin"
-#define FIMC_IS_FW_SDCARD			"/opt/usr/media/fimc_is_fw2.bin"
+#define FIMC_IS_FW_SDCARD			"/system/vendor/fimc_is_fw2.bin"
 
 #define FIMC_IS_FW_BASE_MASK			((1 << 26) - 1)
 #define FIMC_IS_VERSION_SIZE			42

@@ -17,7 +17,10 @@
 #include <linux/dc_motor.h>
 
 #include "board-universal3250.h"
-
+#include <linux/proc_fs.h>
+#define PROC_DIR	"vibra/"
+struct proc_dir_entry *vibra_dir;
+int procfsVibratorStrength=28;
 #define ERROR_REGULATOR_NAME "error"
 
 static int prev_val;
@@ -91,11 +94,11 @@ void dc_motor_voltage(int val)
 	if (!val) {
 		dc_motor_power(val);
 		return ;
-	} else if (DC_MOTOR_VOL_MAX < val) {
-		val = DC_MOTOR_VOL_MAX;
+	} else if (procfsVibratorStrength < val) {
+		val = procfsVibratorStrength;
 	} else if (DC_MOTOR_VOL_MIN > val)
 		val = DC_MOTOR_VOL_MIN;
-
+// MIN 12 MAX 28
 	if (prev_val == val)
 		return ;
 	else
@@ -142,10 +145,70 @@ static struct platform_device dc_motor_device = {
 	},
 };
 
+/* PARTIAL MODE */
+static ssize_t vibrator_read_proc_vstrength(struct file *file, char __user *userbuf,size_t bytes, loff_t *off)
+{
+	return procfsVibratorStrength;
+}
+
+static ssize_t vibrator_write_proc_vstrength(struct file *file, const char __user *buffer,size_t count, loff_t *pos)
+{
+	switch (buffer[0])
+		{
+		case '0':
+		break;
+		case '1':
+		procfsVibratorStrength=12;
+		break;
+		case '2':
+		procfsVibratorStrength=14;
+		break;
+		case '3':
+		procfsVibratorStrength=16;
+		break;
+		case '4':
+		procfsVibratorStrength=18;
+		break;
+		case '5':
+		procfsVibratorStrength=20;
+		break;
+		case '6':
+		procfsVibratorStrength=22;
+		break;
+		case '7':
+		procfsVibratorStrength=24;
+		break;
+		case '8':
+		procfsVibratorStrength=26;
+		break;
+		case '9':
+		procfsVibratorStrength=28;
+		break;
+	}
+
+	return count;
+}
+
+static const struct file_operations proc_fops_vstrength = {
+	.owner = THIS_MODULE,
+	.read = vibrator_read_proc_vstrength,
+	.write = vibrator_write_proc_vstrength,
+};
 void __init exynos3_universal3250_vibrator_init(void)
 {
+	int retval;
+	struct proc_dir_entry *ent;
+	printk("%s was called\n", __func__);
+	
+	vibra_dir = proc_mkdir("vibrasettings", NULL);
+	if (vibra_dir == NULL) {
+		printk("vibrator Error:Unable to create /proc/vibrasettings directory");
+	}
+	ent = proc_create("strength", 0, vibra_dir, &proc_fops_vstrength);
+	if (ent == NULL) {
+		printk("vibrator Error:Unable to create /proc/%s/strength entry", PROC_DIR);
+	}
 	pr_info("[VIB] %s", __func__);
-
 	platform_device_register(&dc_motor_device);
 }
 
