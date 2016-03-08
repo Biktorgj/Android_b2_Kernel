@@ -371,7 +371,8 @@ KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
 		   -fno-delete-null-pointer-checks \
 		   -fdiagnostics-show-option -Werror \
 		   -Wno-error=unused-variable \
-		   -Wno-error=unused-function
+		   -Wno-error=unused-function \
+		   -Wno-error=maybe-uninitialized
 KBUILD_AFLAGS_KERNEL :=
 KBUILD_CFLAGS_KERNEL :=
 KBUILD_AFLAGS   := -D__ASSEMBLY__
